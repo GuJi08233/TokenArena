@@ -12,6 +12,9 @@ COPY pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY web/package.json ./web/
 COPY web/prisma ./web/prisma/
 
+# Approve build scripts for native dependencies (prisma, esbuild, sharp, etc.)
+RUN pnpm config set onlyBuiltDependencies "@parcel/watcher" "@prisma/engines" "@swc/core" esbuild msw prisma sharp --location project
+
 # Install dependencies
 RUN pnpm install --filter ./web --frozen-lockfile
 
