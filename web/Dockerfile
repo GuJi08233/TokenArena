@@ -4,8 +4,8 @@
 FROM node:24-alpine AS deps
 WORKDIR /app
 
-# Install pnpm
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# Install pnpm (pinned to match dev environment)
+RUN corepack enable && corepack prepare pnpm@10.32.1 --activate
 
 # Copy root workspace files
 COPY pnpm-lock.yaml pnpm-workspace.yaml ./
@@ -13,7 +13,7 @@ COPY web/package.json ./web/
 COPY web/prisma ./web/prisma/
 
 # Approve build scripts for native dependencies (prisma, esbuild, sharp, etc.)
-RUN pnpm config set onlyBuiltDependencies "@parcel/watcher" "@prisma/engines" "@swc/core" esbuild msw prisma sharp --location project
+RUN printf 'onlyBuiltDependencies[]=@parcel/watcher\nonlyBuiltDependencies[]=@prisma/engines\nonlyBuiltDependencies[]=@swc/core\nonlyBuiltDependencies[]=esbuild\nonlyBuiltDependencies[]=msw\nonlyBuiltDependencies[]=prisma\nonlyBuiltDependencies[]=sharp\n' > .npmrc
 
 # Install dependencies
 RUN pnpm install --filter ./web --frozen-lockfile
@@ -22,7 +22,7 @@ RUN pnpm install --filter ./web --frozen-lockfile
 FROM node:24-alpine AS builder
 WORKDIR /app
 
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable && corepack prepare pnpm@10.32.1 --activate
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/web/node_modules ./web/node_modules
