@@ -1,21 +1,43 @@
-# CLI package (@poco-ai/tokenarena): test, build, package smoke, and publish.
-# Publishes to npm when a v* tag is pushed or when workflow_dispatch is run.
-
-name: Publish CLI to npm
+name: CLI macOS
 
 on:
-    workflow_dispatch:
-    push:
-      tags:
-        - "v*"
+  pull_request:
+    paths:
+      - ".github/workflows/cli-macos.yml"
+      - "cli/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+    paths:
+      - ".github/workflows/cli-macos.yml"
+      - "cli/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ matrix.node-version }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
-  packages: write
 
 jobs:
-  publish-npm:
-    runs-on: ubuntu-latest
+  cli:
+    name: Node ${{ matrix.node-version }}
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version:
+          - 20
+          - 22
+
     steps:
       - uses: actions/checkout@v4
 
@@ -23,8 +45,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
-          registry-url: https://registry.npmjs.org/
+          node-version: ${{ matrix.node-version }}
           cache: pnpm
 
       - name: Install dependencies
@@ -35,6 +56,11 @@ jobs:
 
       - name: Build CLI
         run: pnpm --filter ./cli build
+
+      - name: Smoke test dist entry
+        run: |
+          pnpm --filter ./cli exec node dist/index.js --help
+          pnpm --filter ./cli exec node dist/index.js status
 
       - name: Smoke test packed CLI
         shell: bash
@@ -54,8 +80,3 @@ jobs:
           npm install --no-audit --no-fund "$package_file"
           ./node_modules/.bin/tokenarena --help
           ./node_modules/.bin/tokenarena status
-
-      - name: Publish to npm
-        run: pnpm --filter ./cli publish --access public --no-git-checks
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
