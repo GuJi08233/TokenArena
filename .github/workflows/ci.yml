@@ -24,7 +24,7 @@ jobs:
       DATABASE_URL: postgresql://test:test@localhost:5432/tokenarena_test
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: pnpm/action-setup@v4
 
