@@ -35,6 +35,7 @@ ENV NODE_ENV=production
 # Build-time placeholders (overridden at runtime)
 ENV BETTER_AUTH_URL=http://localhost:3000
 ENV BETTER_AUTH_SECRET=build-time-placeholder-secret-key
+ENV DATABASE_URL=postgresql://build:build@localhost:5432/build
 
 # Build the application
 WORKDIR /app/web

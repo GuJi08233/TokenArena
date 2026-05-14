@@ -20,10 +20,6 @@ on:
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ matrix.node-version }}
-  cancel-in-progress: true
-
 permissions:
   contents: read
 
@@ -31,6 +27,9 @@ jobs:
   cli:
     name: Node ${{ matrix.node-version }}
     runs-on: macos-latest
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ matrix.node-version }}
+      cancel-in-progress: true
     strategy:
       fail-fast: false
       matrix:
