@@ -10,8 +10,10 @@
     "start": "next start",
     "pretest": "prisma generate",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage --coverage.reporter=text --coverage.reporter=json-summary",
     "lint": "biome check",
     "format": "biome format --write",
+    "format:check": "biome format",
     "db:seed": "prisma db seed"
   },
   "dependencies": {
@@ -56,6 +58,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/three": "0.167.1",
+    "@vitest/coverage-v8": "^3.2.4",
     "jsdom": "^29.0.1",
     "prisma": "^7.5.0",
     "tailwindcss": "^4",
