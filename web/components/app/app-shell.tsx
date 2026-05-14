@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { AccountMenu } from "@/components/usage/account-menu";
 import { UsernameAutoAdjustedToast } from "@/components/usage/username-auto-adjusted-toast";
 import { Link } from "@/i18n/navigation";
+import type { UsageShareCardData } from "@/lib/usage/share-card";
 import { cn } from "@/lib/utils";
 
 type AppShellProps = {
@@ -22,6 +23,7 @@ type AppShellProps = {
     username?: string | null;
     usernameAutoAdjusted?: boolean | null;
   } | null;
+  usageReportShareData?: UsageShareCardData | null;
   mainClassName?: string;
   children: ReactNode;
 };
@@ -29,6 +31,7 @@ type AppShellProps = {
 export async function AppShell({
   locale,
   viewer,
+  usageReportShareData,
   mainClassName,
   children,
 }: AppShellProps) {
@@ -90,7 +93,9 @@ export async function AppShell({
                 <div className="flex items-center gap-2">
                   <LanguageSwitcher authenticated variant="icon" />
                   <ThemeSwitcher authenticated variant="icon" />
-                  <AchievementNotification />
+                  <AchievementNotification
+                    usageReportShareData={usageReportShareData}
+                  />
                 </div>
                 <AccountMenu
                   email={viewer.email}

@@ -8,7 +8,11 @@ import type {
   UsagePricingSummary,
 } from "@/lib/usage/types";
 
-export const usageShareCardTemplates = ["summary", "persona"] as const;
+export const usageShareCardTemplates = [
+  "summary",
+  "persona",
+  "receipt",
+] as const;
 export type UsageShareCardTemplate = (typeof usageShareCardTemplates)[number];
 
 export const usageShareCardPersonas = [
@@ -102,6 +106,8 @@ export type UsageShareCardData = {
     estimatedCostUsd: number;
     totalSeconds: number;
   }>;
+  /** Models with usage > 0, sorted by tokens descending (receipt lines). */
+  modelUsage: Array<{ label: string; totalTokens: number }>;
 };
 
 function safeRatio(value: number, total: number) {
@@ -297,6 +303,11 @@ export function buildUsageShareCardData(input: {
     averageTokensPerSession,
   });
 
+  const modelUsage = input.breakdowns.models
+    .filter((row) => row.totalTokens > 0)
+    .sort((a, b) => b.totalTokens - a.totalTokens)
+    .map((row) => ({ label: row.name, totalTokens: row.totalTokens }));
+
   return {
     username: input.username,
     period: getPeriodFromPreset(input.range.preset),
@@ -343,5 +354,6 @@ export function buildUsageShareCardData(input: {
       activeSeconds: input.overview.activeSeconds.current,
     }),
     trend: compressTrend(input.tokenTrend),
+    modelUsage,
   };
 }

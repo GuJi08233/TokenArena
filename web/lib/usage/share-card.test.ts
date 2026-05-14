@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { buildUsageShareCardData } from "@/lib/usage/share-card";
+import {
+  buildUsageShareCardData,
+  usageShareCardTemplates,
+} from "@/lib/usage/share-card";
 import type {
   TokenTrendPoint,
   UsageBreakdowns,
@@ -62,6 +65,10 @@ function createTrend(count: number): TokenTrendPoint[] {
 }
 
 describe("buildUsageShareCardData", () => {
+  it("includes the receipt share template", () => {
+    expect(usageShareCardTemplates).toContain("receipt");
+  });
+
   it("assigns the reasoning persona when reasoning tokens dominate", () => {
     const data = buildUsageShareCardData({
       username: "alice",
@@ -122,6 +129,7 @@ describe("buildUsageShareCardData", () => {
     });
 
     expect(data.persona).toBe("reasoning_master");
+    expect(data.modelUsage).toEqual([{ label: "GPT-5", totalTokens: 700_000 }]);
     expect(data.insight).toEqual({
       kind: "reasoning_share",
       share: 0.35,
@@ -207,6 +215,11 @@ describe("buildUsageShareCardData", () => {
     });
 
     expect(data.persona).toBe("model_orchestrator");
+    expect(data.modelUsage).toEqual([
+      { label: "GPT-5", totalTokens: 300_000 },
+      { label: "Claude 4", totalTokens: 280_000 },
+      { label: "Gemini 2.5", totalTokens: 220_000 },
+    ]);
     expect(data.insight).toEqual({
       kind: "model_variety",
       count: 3,

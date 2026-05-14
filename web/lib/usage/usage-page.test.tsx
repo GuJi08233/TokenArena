@@ -67,6 +67,9 @@ const mocks = vi.hoisted(() => ({
   ShareBadgesDialog: vi.fn(() =>
     React.createElement("div", { "data-slot": "share-badges-dialog" }),
   ),
+  UsageShareDialog: vi.fn(() =>
+    React.createElement("div", { "data-slot": "usage-share-dialog" }),
+  ),
   ProfileHeatmapMarkdownButton: vi.fn(({ markdown }: { markdown: string }) =>
     React.createElement("button", {
       type: "button",
@@ -147,6 +150,10 @@ vi.mock("@/components/shared/theme-switcher", () => ({
 
 vi.mock("@/components/usage/usage-visualization-card", () => ({
   UsageVisualizationCard: mocks.UsageVisualizationCard,
+}));
+
+vi.mock("@/components/usage/share-dialog", () => ({
+  UsageShareDialog: mocks.UsageShareDialog,
 }));
 
 vi.mock("@/lib/session", () => ({
@@ -302,6 +309,15 @@ describe("UsagePage", () => {
         username: "test_user",
         publicProfileEnabled: true,
         appUrl: "https://token.poco-ai.com",
+      }),
+      undefined,
+    );
+    expect(mocks.AppShell).toHaveBeenCalledWith(
+      expect.objectContaining({
+        viewer: expect.objectContaining({
+          id: "user_123",
+          username: "test_user",
+        }),
       }),
       undefined,
     );

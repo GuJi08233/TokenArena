@@ -39,6 +39,7 @@ import {
   SETTINGS_CLI_KEYS_HREF,
   settingsCliKeysHrefWithCreateDialog,
 } from "@/lib/usage/settings-routes";
+import { buildUsageShareCardData } from "@/lib/usage/share-card";
 import type { UsageFilters } from "@/lib/usage/types";
 
 type UsagePageProps = {
@@ -141,6 +142,17 @@ export default async function UsagePage({
 
   const hasData =
     overview.totalTokens.current > 0 || overview.sessions.current > 0;
+  const usageReportShareData = hasData
+    ? buildUsageShareCardData({
+        username: session.user.username ?? "Anonymous Builder",
+        range,
+        filters,
+        overview,
+        pricingSummary: pricing.summary,
+        breakdowns,
+        tokenTrend,
+      })
+    : null;
   const lastSyncedText = lastSyncedAt
     ? t("lastSynced", {
         value: formatDateTime(lastSyncedAt, preference.timezone, locale),
@@ -159,7 +171,6 @@ export default async function UsagePage({
   const heatmapMarkdown = compactSvgUrl
     ? `![TokenArena Activity](${compactSvgUrl})`
     : null;
-
   return (
     <AppShell
       locale={locale}
@@ -171,6 +182,7 @@ export default async function UsagePage({
         username: session.user.username,
         usernameAutoAdjusted: session.user.usernameAutoAdjusted,
       }}
+      usageReportShareData={usageReportShareData}
     >
       <UsagePageShell>
         <div className="space-y-4">
