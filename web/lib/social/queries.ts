@@ -443,7 +443,7 @@ export async function getPublicProfileActivityShareData(input: {
     select: profileUserSelect,
   });
 
-  if (!user || !user.usagePreference?.publicProfileEnabled) {
+  if (!user?.usagePreference?.publicProfileEnabled) {
     return null;
   }
 

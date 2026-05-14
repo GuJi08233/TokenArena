@@ -119,7 +119,7 @@ export function buildModelLookupCandidates(rawModel: string) {
   }
 
   for (const value of [normalized, lastSegment]) {
-    if (!value || !value.includes(MODEL_VARIANT_SEPARATOR)) {
+    if (!value?.includes(MODEL_VARIANT_SEPARATOR)) {
       continue;
     }
 
