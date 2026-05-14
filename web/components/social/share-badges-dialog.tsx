@@ -9,6 +9,7 @@ import {
   Dialog,
   DialogClose,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -128,6 +129,9 @@ export function ShareBadgesDialog({
             <DialogTitle className="min-w-0 truncate text-lg font-semibold leading-7">
               {t("title")}
             </DialogTitle>
+            <DialogDescription className="sr-only">
+              {t("description")}
+            </DialogDescription>
             <DialogClose asChild>
               <Button
                 type="button"

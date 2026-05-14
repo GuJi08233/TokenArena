@@ -1,4 +1,3 @@
-import Script from "next/script";
 import { defaultThemeMode, type ThemeMode, themeStorageKey } from "@/lib/theme";
 
 type ThemeScriptProps = {
@@ -23,8 +22,8 @@ export function ThemeScript({ initialThemeMode }: ThemeScriptProps) {
 `;
 
   return (
-    <Script id="tokenarena-theme-init" strategy="beforeInteractive">
+    <script id="tokenarena-theme-init" suppressHydrationWarning>
       {script}
-    </Script>
+    </script>
   );
 }
