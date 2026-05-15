@@ -19,6 +19,12 @@ export default defineConfig({
     passWithNoTests: true,
     coverage: {
       reporter: ["text", "json-summary", "lcov"],
+      thresholds: {
+        statements: 75,
+        branches: 70,
+        functions: 75,
+        lines: 75,
+      },
     },
   },
 });

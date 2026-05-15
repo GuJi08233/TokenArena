@@ -145,7 +145,7 @@ function getMetricValue(row: BreakdownRow, metric: BreakdownMetric) {
 }
 
 function sortRowsByMetric(rows: BreakdownRow[], metric: BreakdownMetric) {
-  return [...rows].sort((left, right) => {
+  return rows.toSorted((left, right) => {
     const diff = getMetricValue(right, metric) - getMetricValue(left, metric);
 
     if (diff !== 0) {

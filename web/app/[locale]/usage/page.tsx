@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
+import { Suspense } from "react";
 
 import { AppShell } from "@/components/app/app-shell";
 import { ProfileHeatmap } from "@/components/social/profile-heatmap";
@@ -82,11 +83,13 @@ export default async function UsagePage({
   const { locale } = await params;
   const session = await getSessionOrRedirect(locale);
   redirectIfUsernameSetupNeeded(locale, session.user);
-  const t = await getTranslations({ locale, namespace: "usage" });
-  const tProfile = await getTranslations({
-    locale,
-    namespace: "social.profile",
-  });
+  const [t, tProfile] = await Promise.all([
+    getTranslations({ locale, namespace: "usage" }),
+    getTranslations({
+      locale,
+      namespace: "social.profile",
+    }),
+  ]);
   const resolvedSearchParams = (searchParams ? await searchParams : {}) ?? {};
   const query = resolveQueryParams(resolvedSearchParams, locale);
   const dashboardDataPromise = getUsageDashboardData({
@@ -177,24 +180,26 @@ export default async function UsagePage({
             </CardContent>
           </Card>
 
-          <FiltersBar
-            preset={dashboard.range.preset}
-            range={{
-              from: dashboard.range.from.toISOString(),
-              to: dashboard.range.to.toISOString(),
-              timezone: dashboard.range.timezone,
-            }}
-            filters={dashboard.filters}
-            options={filterOptions}
-            lastSyncedText={lastSyncedText}
-            badgesSlot={
-              <ShareBadgesDialog
-                username={session.user.username}
-                publicProfileEnabled={preference.publicProfileEnabled}
-                appUrl={appUrl}
-              />
-            }
-          />
+          <Suspense fallback={null}>
+            <FiltersBar
+              preset={dashboard.range.preset}
+              range={{
+                from: dashboard.range.from.toISOString(),
+                to: dashboard.range.to.toISOString(),
+                timezone: dashboard.range.timezone,
+              }}
+              filters={dashboard.filters}
+              options={filterOptions}
+              lastSyncedText={lastSyncedText}
+              badgesSlot={
+                <ShareBadgesDialog
+                  username={session.user.username}
+                  publicProfileEnabled={preference.publicProfileEnabled}
+                  appUrl={appUrl}
+                />
+              }
+            />
+          </Suspense>
 
           {hasData ? (
             <>

@@ -1,5 +1,6 @@
 import { Users } from "lucide-react";
 import type { Metadata } from "next";
+import Image from "next/image";
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { ProfileAchievementWall } from "@/components/social/profile-achievement-wall";
@@ -33,11 +34,18 @@ type PublicProfilePageProps = {
   }>;
 };
 
+const joinedDateFormatterCache = new Map<string, Intl.DateTimeFormat>();
+
 function formatJoinedDate(value: Date, locale: string) {
-  return new Intl.DateTimeFormat(locale, {
-    year: "numeric",
-    month: "short",
-  }).format(value);
+  let formatter = joinedDateFormatterCache.get(locale);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat(locale, {
+      year: "numeric",
+      month: "short",
+    });
+    joinedDateFormatterCache.set(locale, formatter);
+  }
+  return formatter.format(value);
 }
 
 function getInitial(value: string) {
@@ -48,8 +56,10 @@ export async function generateMetadata({
   params,
 }: PublicProfilePageProps): Promise<Metadata> {
   const { locale, username } = await params;
-  const t = await getTranslations({ locale, namespace: "social.profile" });
-  const profile = await getPublicProfilePageData({ username });
+  const [t, profile] = await Promise.all([
+    getTranslations({ locale, namespace: "social.profile" }),
+    getPublicProfilePageData({ username }),
+  ]);
   const description =
     profile?.bio?.trim() ||
     (locale === "zh"
@@ -96,8 +106,10 @@ export default async function PublicProfilePage({
   params,
 }: PublicProfilePageProps) {
   const { locale, username } = await params;
-  const viewer = await getOptionalSession();
-  const t = await getTranslations({ locale, namespace: "social.profile" });
+  const [viewer, t] = await Promise.all([
+    getOptionalSession(),
+    getTranslations({ locale, namespace: "social.profile" }),
+  ]);
   const profile = await getPublicProfilePageData({
     username,
     viewerUserId: viewer?.user.id ?? null,
@@ -143,11 +155,13 @@ export default async function PublicProfilePage({
             <CardContent className="space-y-4 py-4">
               <div className="space-y-3">
                 {profile.image ? (
-                  /* biome-ignore lint/performance/noImgElement: user avatars may come from arbitrary remote URLs */
-                  <img
+                  <Image
                     src={profile.image}
                     alt={profile.name}
+                    width={96}
+                    height={96}
                     className="size-24 rounded-full border border-border/60 object-cover"
+                    unoptimized
                   />
                 ) : (
                   <div className="inline-flex size-24 items-center justify-center rounded-full border border-border/60 bg-muted text-3xl font-semibold text-foreground">
