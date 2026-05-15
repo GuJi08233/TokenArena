@@ -83,11 +83,7 @@ export default function CountUp({
   );
 
   const initialText = formatValue(direction === "down" ? to : from);
-  const [display, setDisplay] = useState(initialText);
-
-  useEffect(() => {
-    setDisplay(formatValue(direction === "down" ? to : from));
-  }, [from, to, direction, formatValue]);
+  const [display, setDisplay] = useState(() => initialText);
 
   useEffect(() => {
     if (isInView && startWhen) {

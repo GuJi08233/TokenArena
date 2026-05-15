@@ -1,7 +1,7 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,14 +38,14 @@ export function AccountIdentityCard({
   initialBio,
   preferenceSnapshot,
 }: AccountIdentityCardProps) {
-  const router = useRouter();
+  const { push, refresh } = useRouter();
   const t = useTranslations("usage.settings");
   const [name, setName] = useState(initialName);
   const [username, setUsername] = useState(initialUsername);
-  const [savedName, setSavedName] = useState(initialName);
-  const [savedUsername, setSavedUsername] = useState(initialUsername);
+  const savedName = useRef(initialName);
+  const savedUsername = useRef(initialUsername);
   const [bio, setBio] = useState(initialBio ?? "");
-  const [savedBio, setSavedBio] = useState(initialBio ?? "");
+  const savedBio = useRef(initialBio ?? "");
   const [nameError, setNameError] = useState<string | null>(null);
   const [usernameError, setUsernameError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -56,13 +56,13 @@ export function AccountIdentityCard({
   useEffect(() => {
     setName(initialName);
     setUsername(initialUsername);
-    setSavedName(initialName);
-    setSavedUsername(initialUsername);
+    savedName.current = initialName;
+    savedUsername.current = initialUsername;
   }, [initialName, initialUsername]);
 
   useEffect(() => {
     setBio(initialBio ?? "");
-    setSavedBio(initialBio ?? "");
+    savedBio.current = initialBio ?? "";
   }, [initialBio]);
 
   useEffect(() => {
@@ -83,9 +83,10 @@ export function AccountIdentityCard({
   );
 
   const hasIdentityChanges =
-    name.trim() !== savedName.trim() || normalizedUsername !== savedUsername;
+    name.trim() !== savedName.current.trim() ||
+    normalizedUsername !== savedUsername.current;
 
-  const hasBioChanges = bio.trim() !== savedBio.trim();
+  const hasBioChanges = bio.trim() !== savedBio.current.trim();
 
   const hasChanges = hasIdentityChanges || hasBioChanges;
 
@@ -105,7 +106,7 @@ export function AccountIdentityCard({
       throw new Error(payload.error ?? t("saveFailed"));
     }
 
-    setSavedBio(payload.bio ?? "");
+    savedBio.current = payload.bio ?? "";
     emitPreferenceSavedNotice({
       timezone: preferenceSnapshot.timezone,
       projectMode: preferenceSnapshot.projectMode,
@@ -180,8 +181,8 @@ export function AccountIdentityCard({
           return;
         }
 
-        setSavedName(trimmedName);
-        setSavedUsername(normalizedUsername);
+        savedName.current = trimmedName;
+        savedUsername.current = normalizedUsername;
         setSuccessMessage(t("identity.saved"));
         setJustSaved(true);
 
@@ -189,12 +190,12 @@ export function AccountIdentityCard({
           if (hasBioChanges) {
             await saveBio(bio);
           }
-          router.refresh();
-          router.push("/usage");
+          refresh();
+          push("/usage");
           return;
         }
 
-        router.refresh();
+        refresh();
       }
 
       if (hasBioChanges) {
@@ -203,7 +204,7 @@ export function AccountIdentityCard({
           setSuccessMessage(t("saved"));
           setJustSaved(true);
         }
-        router.refresh();
+        refresh();
       }
     } catch (error) {
       const errorMessage = getAuthErrorMessage(

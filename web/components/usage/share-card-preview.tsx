@@ -145,12 +145,20 @@ const sizePresets = {
   },
 } as const;
 
+const shortDateFormatterCache = new Map<string, Intl.DateTimeFormat>();
+
 function formatShortDate(value: string, locale: string, timezone: string) {
-  return new Intl.DateTimeFormat(locale, {
-    month: "short",
-    day: "numeric",
-    timeZone: timezone,
-  }).format(new Date(value));
+  const cacheKey = `${locale}:${timezone}`;
+  let formatter = shortDateFormatterCache.get(cacheKey);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat(locale, {
+      month: "short",
+      day: "numeric",
+      timeZone: timezone,
+    });
+    shortDateFormatterCache.set(cacheKey, formatter);
+  }
+  return formatter.format(new Date(value));
 }
 
 function getRangeLabel(
@@ -307,12 +315,12 @@ function TrendBars({
 
   return (
     <div className="flex h-full items-end gap-2">
-      {data.map((point, index) => {
+      {data.map((point, _index) => {
         const height = Math.max((point.totalTokens / maxValue) * 100, 10);
 
         return (
           <div
-            key={`${point.label}-${index}`}
+            key={point.label}
             className="flex min-w-0 flex-1 flex-col justify-end gap-2"
           >
             <div
@@ -827,13 +835,20 @@ function buildThermalReceiptClipPath(
   return `polygon(${pts.join(", ")})`;
 }
 
+const mmddFormatterCache = new Map<string, Intl.DateTimeFormat>();
+
 function formatMmddInTimezone(iso: string, timeZone: string): string {
   const instant = new Date(iso);
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone,
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(instant);
+  let formatter = mmddFormatterCache.get(timeZone);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      month: "2-digit",
+      day: "2-digit",
+    });
+    mmddFormatterCache.set(timeZone, formatter);
+  }
+  const parts = formatter.formatToParts(instant);
   const month = parts.find((p) => p.type === "month")?.value ?? "01";
   const day = parts.find((p) => p.type === "day")?.value ?? "01";
   return `${month}${day}`;
@@ -1098,9 +1113,9 @@ function ReceiptTemplate({
           <div className="my-5 border-[var(--receipt-paper-border)] border-t" />
 
           <div className="space-y-2.5">
-            {modelReceiptLines.map((row, index) => (
+            {modelReceiptLines.map((row, _index) => (
               <ReceiptLine
-                key={`model-row-${index}-${row.label}`}
+                key={`model-row-${row.label}`}
                 label={row.label}
                 value={row.value}
                 size={size}

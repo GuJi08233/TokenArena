@@ -880,7 +880,10 @@ export async function getLastSyncedAt(userId: string) {
 
   return (
     [bucket?.updatedAt, session?.updatedAt, device?.lastSeenAt]
-      .filter((value): value is Date => Boolean(value))
+      .reduce<Date[]>((acc, value) => {
+        if (value) acc.push(value);
+        return acc;
+      }, [])
       .sort((left, right) => right.getTime() - left.getTime())[0] ?? null
   );
 }

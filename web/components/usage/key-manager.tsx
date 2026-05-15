@@ -69,7 +69,7 @@ export function KeyManager({
 }: KeyManagerProps) {
   const t = useTranslations("usage.keys");
   const locale = useLocale();
-  const router = useRouter();
+  const { replace } = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [keys, setKeys] = useState(initialKeys);
@@ -97,8 +97,8 @@ export function KeyManager({
     const next = new URLSearchParams(searchParams.toString());
     next.delete(SETTINGS_CLI_KEY_CREATE_QUERY.name);
     const query = next.toString();
-    router.replace(query ? `${pathname}?${query}` : pathname);
-  }, [searchParams, pathname, router]);
+    replace(query ? `${pathname}?${query}` : pathname);
+  }, [searchParams, pathname, replace]);
 
   const request = async <T,>(
     input: RequestInfo,

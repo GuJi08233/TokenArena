@@ -8,6 +8,7 @@ import {
   LogOut,
   Users,
 } from "lucide-react";
+import Image from "next/image";
 import { useTranslations } from "next-intl";
 import { useEffect, useRef, useState } from "react";
 
@@ -72,12 +73,14 @@ function AccountAvatar({
 
   if (image && !imageFailed) {
     return (
-      /* biome-ignore lint/performance/noImgElement: user avatars may come from arbitrary remote URLs */
-      <img
+      <Image
         src={image}
         alt=""
+        width={Number.parseInt(sizeClassName.match(/\d+/)?.[0] ?? "32", 10)}
+        height={Number.parseInt(sizeClassName.match(/\d+/)?.[0] ?? "32", 10)}
         className={`${sizeClassName} rounded-full object-cover`}
         onError={() => setImageFailed(true)}
+        unoptimized
       />
     );
   }
@@ -203,7 +206,7 @@ export function AccountMenu({
           }}
         >
           <div
-            className="flex items-center gap-3 rounded-lg bg-muted/40 px-2 py-2"
+            className="flex items-center gap-3 rounded-lg bg-muted/40 p-2"
             role="none"
           >
             <AccountAvatar

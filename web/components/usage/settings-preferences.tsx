@@ -66,32 +66,20 @@ export function SettingsPreferences({
   const [publicProfileEnabled, setPublicProfileEnabled] = useState(
     initialPublicProfileEnabled,
   );
-  const [savedTimezone, setSavedTimezone] = useState(initialTimezone);
-  const [savedProjectMode, setSavedProjectMode] =
-    useState<ProjectMode>(initialProjectMode);
-  const [savedPublicProfileEnabled, setSavedPublicProfileEnabled] = useState(
-    initialPublicProfileEnabled,
-  );
+  const savedTimezone = useRef(initialTimezone);
+  const savedProjectMode = useRef<ProjectMode>(initialProjectMode);
+  const savedPublicProfileEnabled = useRef(initialPublicProfileEnabled);
   const [error, setError] = useState<string | null>(null);
   const hasChanges = hasPreferenceChanges(
     {
-      timezone: savedTimezone,
-      projectMode: savedProjectMode,
-      publicProfileEnabled: savedPublicProfileEnabled,
+      timezone: savedTimezone.current,
+      projectMode: savedProjectMode.current,
+      publicProfileEnabled: savedPublicProfileEnabled.current,
       bio: "",
     },
     { timezone, projectMode, publicProfileEnabled, bio: "" },
   );
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    setTimezone(initialTimezone);
-    setSavedTimezone(initialTimezone);
-    setProjectMode(initialProjectMode);
-    setSavedProjectMode(initialProjectMode);
-    setPublicProfileEnabled(initialPublicProfileEnabled);
-    setSavedPublicProfileEnabled(initialPublicProfileEnabled);
-  }, [initialTimezone, initialProjectMode, initialPublicProfileEnabled]);
 
   const savePreferences = useCallback(
     async (
@@ -119,9 +107,9 @@ export function SettingsPreferences({
           throw new Error(payload.error ?? "Unable to save preferences.");
         }
 
-        setSavedTimezone(payload.timezone);
-        setSavedProjectMode(payload.projectMode);
-        setSavedPublicProfileEnabled(payload.publicProfileEnabled);
+        savedTimezone.current = payload.timezone;
+        savedProjectMode.current = payload.projectMode;
+        savedPublicProfileEnabled.current = payload.publicProfileEnabled;
         emitPreferenceSavedNotice({
           timezone: payload.timezone,
           projectMode: payload.projectMode,

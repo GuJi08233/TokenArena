@@ -136,14 +136,14 @@ export function FiltersBar({
   badgesSlot,
 }: FiltersBarProps) {
   const t = useTranslations("usage.filters");
-  const router = useRouter();
+  const { replace } = useRouter();
   const searchParams = useSearchParams();
   const [isCustomOpen, setIsCustomOpen] = useState(false);
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
-  const [customFrom, setCustomFrom] = useState(
+  const [customFrom, setCustomFrom] = useState(() =>
     buildDateValue(range.from, range.timezone),
   );
-  const [customTo, setCustomTo] = useState(
+  const [customTo, setCustomTo] = useState(() =>
     buildDateValue(range.to, range.timezone),
   );
 
@@ -153,7 +153,7 @@ export function FiltersBar({
   );
   const badgesSlotChildren = Children.toArray(badgesSlot);
   const updateParams = (updates: Record<string, string | null>) => {
-    router.replace(buildUsageHref(searchParams.toString(), updates));
+    replace(buildUsageHref(searchParams.toString(), updates));
   };
 
   const setPreset = (nextPreset: DashboardPreset) => {

@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
 
@@ -55,12 +56,14 @@ export function SettingsPageHeader({
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex min-w-0 items-center gap-3">
           {viewer.image && !imageFailed ? (
-            /* biome-ignore lint/performance/noImgElement: user avatars may come from arbitrary remote URLs */
-            <img
+            <Image
               src={viewer.image}
               alt=""
+              width={40}
+              height={40}
               className="size-10 shrink-0 rounded-full object-cover"
               onError={() => setImageFailed(true)}
+              unoptimized
             />
           ) : (
             <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-full bg-foreground text-sm font-semibold text-background">

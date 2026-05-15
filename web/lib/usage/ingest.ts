@@ -388,8 +388,10 @@ export async function ingestUsagePayload(input: IngestUsagePayloadInput) {
       })),
     });
 
-    await upsertBuckets(tx, input);
-    await upsertSessions(tx, input, catalog);
+    await Promise.all([
+      upsertBuckets(tx, input),
+      upsertSessions(tx, input, catalog),
+    ]);
 
     const affectedDates = collectAffectedLeaderboardDates({
       bucketStarts: input.payload.buckets.map((bucket) => bucket.bucketStart),

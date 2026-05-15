@@ -31,6 +31,17 @@ type SettingsPreferenceState = {
   bio: string | null;
 };
 
+const EMPTY_CONNECTED_ACCOUNTS: Array<{
+  id: string;
+  providerId: string;
+  accountId: string;
+  createdAt: string;
+  updatedAt: string;
+  scopes: string[];
+}> = [];
+
+const EMPTY_AVAILABLE_PROVIDERS: LoginProvider[] = [];
+
 export type { SettingsSectionId };
 
 export type SettingsBodyProps = {
@@ -69,8 +80,8 @@ export function SettingsBody({
   initialPublicProfileEnabled,
   initialBio,
   initialKeys,
-  connectedAccounts = [],
-  availableProviders = [],
+  connectedAccounts = EMPTY_CONNECTED_ACCOUNTS,
+  availableProviders = EMPTY_AVAILABLE_PROVIDERS,
   keyManagerVariant = "page",
   initialSection = "account",
   navigateWithUrl = false,
@@ -81,30 +92,12 @@ export function SettingsBody({
   const pathname = usePathname();
   const [section, setSection] = useState<SettingsSectionId>(initialSection);
 
-  useEffect(() => {
-    setSection(initialSection);
-  }, [initialSection]);
-
   const [preferences, setPreferences] = useState<SettingsPreferenceState>({
     timezone: initialTimezone,
     projectMode: initialProjectMode,
     publicProfileEnabled: initialPublicProfileEnabled,
     bio: initialBio,
   });
-
-  useEffect(() => {
-    setPreferences({
-      timezone: initialTimezone,
-      projectMode: initialProjectMode,
-      publicProfileEnabled: initialPublicProfileEnabled,
-      bio: initialBio,
-    });
-  }, [
-    initialBio,
-    initialProjectMode,
-    initialPublicProfileEnabled,
-    initialTimezone,
-  ]);
 
   useEffect(() => {
     const handlePreferenceSaved = (event: Event) => {
