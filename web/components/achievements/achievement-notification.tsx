@@ -8,7 +8,7 @@ import {
   Sparkles,
   Target,
 } from "lucide-react";
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence, domAnimation, LazyMotion, m } from "motion/react";
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import { useLocale, useTranslations } from "next-intl";
@@ -69,19 +69,19 @@ const itemVariants = {
 
 function AnimatedSection({ children }: { children: React.ReactNode }) {
   return (
-    <motion.div
+    <m.div
       variants={containerVariants}
       initial="hidden"
       animate="visible"
       className="contents"
     >
       {children}
-    </motion.div>
+    </m.div>
   );
 }
 
 function AnimatedItem({ children }: { children: React.ReactNode }) {
-  return <motion.div variants={itemVariants}>{children}</motion.div>;
+  return <m.div variants={itemVariants}>{children}</m.div>;
 }
 
 function SkeletonRow() {
@@ -149,7 +149,7 @@ export function AchievementNotification({
         </span>
       </span>
 
-      <span className="relative flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-md bg-black shadow-inner ring-1 ring-border transition-transform duration-200 dark:ring-border group-hover:scale-[1.04] group-active:scale-[1.04]">
+      <span className="relative flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-md bg-gray-950 shadow-inner ring-1 ring-border transition-transform duration-200 dark:ring-border group-hover:scale-[1.04] group-active:scale-[1.04]">
         <Image
           src="/printer.jpg"
           alt=""
@@ -163,7 +163,7 @@ export function AchievementNotification({
   ) : null;
 
   return (
-    <>
+    <LazyMotion features={domAnimation}>
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button
@@ -176,7 +176,7 @@ export function AchievementNotification({
             <Bell className="size-4" aria-hidden strokeWidth={1.8} />
             <AnimatePresence>
               {recentCount > 0 ? (
-                <motion.span
+                <m.span
                   key="badge"
                   className="pointer-events-none absolute inset-0 z-10 flex items-start justify-end p-0.5"
                   initial={{ opacity: 0 }}
@@ -184,10 +184,10 @@ export function AchievementNotification({
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.12 }}
                 >
-                  <motion.span
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    exit={{ scale: 0 }}
+                  <m.span
+                    initial={{ scale: 0.95, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ scale: 0.95, opacity: 0 }}
                     transition={{
                       type: "spring",
                       stiffness: 400,
@@ -196,10 +196,10 @@ export function AchievementNotification({
                     className="inline-flex min-h-4 min-w-4 items-center justify-center rounded-full bg-foreground px-0.5 text-[9px] font-semibold leading-none text-background tabular-nums"
                   >
                     {recentCount}
-                  </motion.span>
-                </motion.span>
+                  </m.span>
+                </m.span>
               ) : usageReportShareData ? (
-                <motion.span
+                <m.span
                   key="dot-wrap"
                   className="pointer-events-none absolute inset-0 z-10 flex items-start justify-end p-1"
                   initial={{ opacity: 0 }}
@@ -207,10 +207,10 @@ export function AchievementNotification({
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.12 }}
                 >
-                  <motion.span
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    exit={{ scale: 0 }}
+                  <m.span
+                    initial={{ scale: 0.95, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ scale: 0.95, opacity: 0 }}
                     transition={{
                       type: "spring",
                       stiffness: 500,
@@ -218,7 +218,7 @@ export function AchievementNotification({
                     }}
                     className="size-1.5 shrink-0 rounded-full bg-emerald-500 ring-2 ring-background dark:bg-emerald-400"
                   />
-                </motion.span>
+                </m.span>
               ) : null}
             </AnimatePresence>
           </Button>
@@ -257,7 +257,7 @@ export function AchievementNotification({
                 {reportNotice && (
                   <div className="px-4 py-3">{reportNotice}</div>
                 )}
-                <div className="px-4 py-4 text-xs text-muted-foreground">
+                <div className="p-4 text-xs text-muted-foreground">
                   {t("error")}
                 </div>
               </div>
@@ -285,7 +285,7 @@ export function AchievementNotification({
                           {formatTokenCount(summary.score, locale)}
                         </div>
                       </div>
-                      <div className="px-3 py-3">
+                      <div className="p-3">
                         <div className="text-[10px] uppercase tracking-widest text-muted-foreground/70">
                           {t("level")}
                         </div>
@@ -293,7 +293,7 @@ export function AchievementNotification({
                           {summary.level}
                         </div>
                       </div>
-                      <div className="px-3 py-3">
+                      <div className="p-3">
                         <div className="text-[10px] uppercase tracking-widest text-muted-foreground/70">
                           {t("streak")}
                         </div>
@@ -354,7 +354,7 @@ export function AchievementNotification({
                           ))}
                         </div>
                       ) : (
-                        <div className="border border-dashed border-border/50 px-3 py-3 text-xs text-muted-foreground">
+                        <div className="border border-dashed border-border/50 p-3 text-xs text-muted-foreground">
                           {t("emptyRecent")}
                         </div>
                       )}
@@ -390,7 +390,7 @@ export function AchievementNotification({
                               </div>
                               {/* Progress bar */}
                               <div className="h-1 w-full overflow-hidden bg-muted/80">
-                                <motion.div
+                                <m.div
                                   className="h-full bg-foreground/80"
                                   initial={{ width: 0 }}
                                   animate={{
@@ -408,7 +408,7 @@ export function AchievementNotification({
                           ))}
                         </div>
                       ) : (
-                        <div className="border border-dashed border-border/50 px-3 py-3 text-xs text-muted-foreground">
+                        <div className="border border-dashed border-border/50 p-3 text-xs text-muted-foreground">
                           {t("emptyNextTargets")}
                         </div>
                       )}
@@ -447,6 +447,6 @@ export function AchievementNotification({
           trigger={null}
         />
       ) : null}
-    </>
+    </LazyMotion>
   );
 }
