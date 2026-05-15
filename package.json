@@ -27,7 +27,9 @@
     "publish": "pnpm --filter ./cli publish --access public",
     "migrate": "pnpm --filter ./web exec prisma migrate deploy",
     "db:seed": "pnpm --filter ./web run db:seed",
-    "react-doctor": "pnpm --filter ./web react-doctor"
+    "react-doctor": "pnpm --filter ./web react-doctor",
+    "react-doctor:badge": "node scripts/update-react-doctor-badge.mjs",
+    "react-doctor:badge:staged": "node scripts/update-react-doctor-badge.mjs --staged"
   },
   "devDependencies": {
     "husky": "^9.1.7"
