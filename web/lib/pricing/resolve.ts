@@ -118,13 +118,7 @@ export function buildModelLookupCandidates(rawModel: string) {
     candidates.push(lastSegment);
   }
 
-  const seen = new Set<string>();
-
-  for (const candidate of candidates) {
-    if (candidate && !seen.has(candidate)) {
-      seen.add(candidate);
-    }
-  }
+  const seen = new Set<string>(candidates.filter(Boolean));
 
   for (const value of [normalized, lastSegment]) {
     if (!value?.includes(MODEL_VARIANT_SEPARATOR)) {

@@ -878,8 +878,15 @@ export async function getLastSyncedAt(userId: string) {
     }),
   ]);
 
-  const timestamps = [bucket?.updatedAt, session?.updatedAt, device?.lastSeenAt]
-    .filter((d): d is Date => d != null)
-    .map((d) => d.getTime());
+  const timestamps = [
+    bucket?.updatedAt,
+    session?.updatedAt,
+    device?.lastSeenAt,
+  ].reduce<number[]>((acc, d) => {
+    if (d != null) {
+      acc.push(d.getTime());
+    }
+    return acc;
+  }, []);
   return timestamps.length > 0 ? new Date(Math.max(...timestamps)) : null;
 }
