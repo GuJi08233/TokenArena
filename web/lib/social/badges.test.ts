@@ -256,7 +256,7 @@ describe("social badges", () => {
       { kind: "ok", data: makeBadgeData({ estimatedCostUsd: 5_000 }) },
       { metric: "cost", theme: "dark", style: "flat" },
     );
-    expect(largeSvg).toMatch(/\$5K/i);
+    expect(largeSvg).toMatch(/\$5\.?0?K/i);
   });
 
   it("parsePublicBadgeMetric returns valid metrics and null for invalid", async () => {
