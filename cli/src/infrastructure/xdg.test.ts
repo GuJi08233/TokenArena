@@ -48,7 +48,7 @@ describe("xdg", () => {
 
     it("returns default when env var not set", () => {
       delete process.env.XDG_DATA_HOME;
-      expect(getDataHome()).toMatch(/\.local\/share$/);
+      expect(getDataHome()).toMatch(/[/\\]\.local[/\\]share$/);
     });
   });
 
@@ -72,7 +72,7 @@ describe("xdg", () => {
 
     it("returns default when env var not set", () => {
       delete process.env.XDG_STATE_HOME;
-      expect(getStateHome()).toMatch(/\.local\/state$/);
+      expect(getStateHome()).toMatch(/[/\\]\.local[/\\]state$/);
     });
   });
 
@@ -85,7 +85,7 @@ describe("xdg", () => {
     it("falls back to state home when not set", () => {
       delete process.env.XDG_RUNTIME_DIR;
       delete process.env.XDG_STATE_HOME;
-      expect(getRuntimeDir()).toMatch(/\.local\/state$/);
+      expect(getRuntimeDir()).toMatch(/[\/\\]\.local[\/\\]state$/);
     });
   });
 });
