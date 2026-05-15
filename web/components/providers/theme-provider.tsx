@@ -57,6 +57,11 @@ export function ThemeProvider({
     resolveThemeAppearance(initialThemeMode, false),
   );
 
+  // Sync internal state when the prop changes (e.g. server-driven navigation).
+  useEffect(() => {
+    setThemeModeState(initialThemeMode);
+  }, [initialThemeMode]);
+
   useEffect(() => {
     setResolvedTheme(applyTheme(themeMode));
 
