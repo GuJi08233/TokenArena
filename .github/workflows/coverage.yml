@@ -99,10 +99,20 @@ jobs:
               await github.rest.issues.createComment({ owner, repo, issue_number, body });
             }
 
-      - name: Upload coverage to Codecov
+      - name: Upload CLI coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
-          files: cli/coverage/lcov.info,web/coverage/lcov.info
+          files: cli/coverage/lcov.info
+          flags: cli
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+          slug: poco-ai/tokenarena
+
+      - name: Upload web coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: web/coverage/lcov.info
+          flags: web
           fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
           slug: poco-ai/tokenarena

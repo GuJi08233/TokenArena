@@ -50,3 +50,12 @@ jobs:
 
       - name: Check bundle size limits
         run: pnpm --filter ./web size
+
+      - name: Upload bundle size to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          flags: bundle
+          directory: web/
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+          slug: poco-ai/tokenarena
