@@ -10,6 +10,7 @@ permissions:
     pull-requests: write
     issues: write
     id-token: write
+    actions: read
 
 jobs:
   claude:
@@ -17,8 +18,17 @@ jobs:
     steps:
       - uses: anthropics/claude-code-action@v1
         with:
-          anthropic_api_key: ""
-          claude_code_oauth_token: ${{ secrets.ANTHROPIC_API_KEY }}
-          claude_args: "--model glm-5.1"
-        env:
-          ANTHROPIC_BASE_URL: ${{ secrets.ANTHROPIC_BASE_URL }}
+          settings: |
+            {
+                "env": {
+                    "ANTHROPIC_AUTH_TOKEN": "${{ secrets.ANTHROPIC_API_KEY }}",
+                    "ANTHROPIC_BASE_URL": "${{ secrets.ANTHROPIC_BASE_URL }}",
+                    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "glm-5.1",
+                    "ANTHROPIC_DEFAULT_OPUS_MODEL": "glm-5.1",
+                    "ANTHROPIC_DEFAULT_SONNET_MODEL": "glm-5.1",
+                    "ANTHROPIC_REASONING_MODEL": "glm-5.1",
+                    "ANTHROPIC_MODEL": "glm-5.1"
+                }
+            }
+          additional_permissions: |
+            actions: read
