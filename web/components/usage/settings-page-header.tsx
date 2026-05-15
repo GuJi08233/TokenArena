@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useTranslations } from "next-intl";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Link } from "@/i18n/navigation";
@@ -45,7 +45,8 @@ export function SettingsPageHeader({
     viewer.email;
   const identityForInitial =
     viewer.name?.trim() || viewer.username || viewer.email;
-  const [imageFailed, setImageFailed] = useState(false);
+  const imageFailedRef = useRef(false);
+  const [, forceUpdate] = useState(0);
   const profileUsername = viewer.username?.trim();
   const homeHref = profileUsername
     ? `/u/${encodeURIComponent(profileUsername)}`
@@ -55,14 +56,17 @@ export function SettingsPageHeader({
     <header className="mb-3 px-4 pb-6 pt-1 sm:mb-4 sm:px-5 sm:pb-8 md:px-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex min-w-0 items-center gap-3">
-          {viewer.image && !imageFailed ? (
+          {viewer.image && !imageFailedRef.current ? (
             <Image
               src={viewer.image}
               alt=""
               width={40}
               height={40}
               className="size-10 shrink-0 rounded-full object-cover"
-              onError={() => setImageFailed(true)}
+              onError={() => {
+                imageFailedRef.current = true;
+                forceUpdate((n) => n + 1);
+              }}
               unoptimized
             />
           ) : (

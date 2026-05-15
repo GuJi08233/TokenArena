@@ -69,9 +69,10 @@ function AccountAvatar({
   sizeClassName: string;
   textClassName: string;
 }) {
-  const [imageFailed, setImageFailed] = useState(false);
+  const imageFailedRef = useRef(false);
+  const [, forceUpdate] = useState(0);
 
-  if (image && !imageFailed) {
+  if (image && !imageFailedRef.current) {
     return (
       <Image
         src={image}
@@ -79,7 +80,10 @@ function AccountAvatar({
         width={Number.parseInt(sizeClassName.match(/\d+/)?.[0] ?? "32", 10)}
         height={Number.parseInt(sizeClassName.match(/\d+/)?.[0] ?? "32", 10)}
         className={`${sizeClassName} rounded-full object-cover`}
-        onError={() => setImageFailed(true)}
+        onError={() => {
+          imageFailedRef.current = true;
+          forceUpdate((n) => n + 1);
+        }}
         unoptimized
       />
     );
