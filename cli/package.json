@@ -23,7 +23,7 @@
     "build": "tsup",
     "prepack": "pnpm run build",
     "test": "vitest run",
-    "test:coverage": "vitest run --coverage --coverage.reporter=text --coverage.reporter=json-summary",
+    "test:coverage": "vitest run --coverage --coverage.reporter=text --coverage.reporter=json-summary --coverage.reporter=lcov",
     "lint": "biome check",
     "format": "biome format --write",
     "format:check": "biome format"
