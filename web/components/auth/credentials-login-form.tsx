@@ -17,7 +17,7 @@ type CredentialsLoginFormProps = {
 export function CredentialsLoginForm({
   showInvalidSessionMessage = false,
 }: CredentialsLoginFormProps) {
-  const router = useRouter();
+  const { push, refresh } = useRouter();
   const t = useTranslations("auth");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -74,8 +74,8 @@ export function CredentialsLoginForm({
         return;
       }
 
-      router.push("/usage");
-      router.refresh();
+      push("/usage");
+      refresh();
     } catch (error) {
       setFormError(getAuthErrorMessage(error, t("login.errors.default")));
     } finally {

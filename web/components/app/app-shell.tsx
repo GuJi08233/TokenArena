@@ -1,6 +1,7 @@
 import Image from "next/image";
 import { getTranslations } from "next-intl/server";
 import type { ReactNode } from "react";
+import { Suspense } from "react";
 import { AchievementNotification } from "@/components/achievements/achievement-notification";
 import { AppFooter } from "@/components/app/app-footer";
 import { AppHeaderNav } from "@/components/app/header-nav";
@@ -91,7 +92,9 @@ export async function AppShell({
             {viewer ? (
               <>
                 <div className="flex items-center gap-2">
-                  <LanguageSwitcher authenticated variant="icon" />
+                  <Suspense fallback={null}>
+                    <LanguageSwitcher authenticated variant="icon" />
+                  </Suspense>
                   <ThemeSwitcher authenticated variant="icon" />
                   <AchievementNotification
                     usageReportShareData={usageReportShareData}
@@ -106,7 +109,9 @@ export async function AppShell({
               </>
             ) : (
               <>
-                <LanguageSwitcher variant="icon" />
+                <Suspense fallback={null}>
+                  <LanguageSwitcher variant="icon" />
+                </Suspense>
                 <ThemeSwitcher variant="icon" />
                 <Button asChild type="button" variant="outline" size="sm">
                   <Link href="/login">{t("signIn")}</Link>

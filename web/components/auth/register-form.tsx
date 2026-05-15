@@ -24,7 +24,7 @@ if (!authConfig.isSelfHosted) {
 }
 
 export function RegisterForm() {
-  const router = useRouter();
+  const { push, refresh } = useRouter();
   const t = useTranslations("auth");
   const [name, setName] = useState("");
   const [username, setUsername] = useState("");
@@ -121,8 +121,8 @@ export function RegisterForm() {
         return;
       }
 
-      router.push("/usage");
-      router.refresh();
+      push("/usage");
+      refresh();
     } catch (error) {
       const errorMessage = getAuthErrorMessage(
         error,

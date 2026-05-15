@@ -42,7 +42,7 @@ export function LanguageSwitcher({
   const t = useTranslations("common");
   const locale = useLocale() as AppLocale;
   const pathname = usePathname();
-  const router = useRouter();
+  const { replace } = useRouter();
   const searchParams = useSearchParams();
   const compact = variant === "compact";
 
@@ -63,7 +63,7 @@ export function LanguageSwitcher({
     const query = Object.fromEntries(searchParams.entries());
     const href = Object.keys(query).length > 0 ? { pathname, query } : pathname;
 
-    router.replace(href, { locale: nextLocale });
+    replace(href, { locale: nextLocale });
     setOpen(false);
   };
 
