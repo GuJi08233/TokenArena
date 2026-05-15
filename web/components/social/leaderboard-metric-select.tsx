@@ -1,7 +1,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { useCallback } from "react";
+import { Suspense, useCallback } from "react";
 import {
   Select,
   SelectContent,
@@ -39,7 +39,7 @@ function buildLeaderboardHref(
   return query ? `${pathname}?${query}` : pathname;
 }
 
-export function LeaderboardMetricSelect({
+function LeaderboardMetricSelectInner({
   value,
   defaultValue,
   ariaLabel,
@@ -84,5 +84,13 @@ export function LeaderboardMetricSelect({
         ))}
       </SelectContent>
     </Select>
+  );
+}
+
+export function LeaderboardMetricSelect(props: LeaderboardMetricSelectProps) {
+  return (
+    <Suspense fallback={null}>
+      <LeaderboardMetricSelectInner {...props} />
+    </Suspense>
   );
 }

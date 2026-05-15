@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { Children, type ReactNode, useMemo, useState } from "react";
+import { Children, type ReactNode, Suspense, useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -127,7 +127,7 @@ function getPresetLabel(
   return value === "custom" ? t("custom") : value.toUpperCase();
 }
 
-export function FiltersBar({
+function FiltersBarInner({
   preset,
   range,
   filters,
@@ -409,5 +409,13 @@ export function FiltersBar({
         ) : null}
       </div>
     </div>
+  );
+}
+
+export function FiltersBar(props: FiltersBarProps) {
+  return (
+    <Suspense fallback={null}>
+      <FiltersBarInner {...props} />
+    </Suspense>
   );
 }
