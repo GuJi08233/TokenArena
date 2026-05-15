@@ -12,11 +12,9 @@ COPY pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY web/package.json ./web/
 COPY web/prisma ./web/prisma/
 
-# Approve build scripts for native dependencies (prisma, esbuild, sharp, etc.)
-RUN printf 'onlyBuiltDependencies[]=@parcel/watcher\nonlyBuiltDependencies[]=@prisma/engines\nonlyBuiltDependencies[]=@swc/core\nonlyBuiltDependencies[]=esbuild\nonlyBuiltDependencies[]=msw\nonlyBuiltDependencies[]=prisma\nonlyBuiltDependencies[]=sharp\n' > .npmrc
-
-# Install dependencies
-RUN pnpm install --filter ./web --frozen-lockfile
+# Approve build scripts for native dependencies and install
+RUN printf 'onlyBuiltDependencies[]=@parcel/watcher\nonlyBuiltDependencies[]=@prisma/engines\nonlyBuiltDependencies[]=@swc/core\nonlyBuiltDependencies[]=esbuild\nonlyBuiltDependencies[]=msw\nonlyBuiltDependencies[]=prisma\nonlyBuiltDependencies[]=sharp\n' > .npmrc \
+    && pnpm install --filter ./web --frozen-lockfile
 
 # Stage 2: Build the application
 FROM node:26-alpine AS builder
@@ -49,8 +47,8 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
 # Create non-root user
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
+RUN addgroup --system --gid 1001 nodejs \
+    && adduser --system --uid 1001 nextjs
 
 # Copy pnpm-installed dependencies so Prisma CLI is available at runtime
 COPY --from=deps --chown=nextjs:nodejs /app/node_modules ./node_modules
