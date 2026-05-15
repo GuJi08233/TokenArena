@@ -21,6 +21,8 @@ export const projectModeOptions: Array<{
 type PreferenceSnapshot = {
   timezone: string;
   projectMode: ProjectMode;
+  locale?: string;
+  theme?: string;
   publicProfileEnabled?: boolean;
   bio?: string | null;
 };
@@ -40,6 +42,8 @@ export function hasPreferenceChanges(
   return (
     initial.timezone !== current.timezone ||
     initial.projectMode !== current.projectMode ||
+    initial.locale !== current.locale ||
+    initial.theme !== current.theme ||
     initial.publicProfileEnabled !== current.publicProfileEnabled ||
     (initial.bio ?? "") !== (current.bio ?? "")
   );
