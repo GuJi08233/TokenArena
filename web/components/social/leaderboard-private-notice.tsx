@@ -18,7 +18,7 @@ export function LeaderboardPublicProfileButton({
 }: LeaderboardPublicProfileButtonProps) {
   const t = useTranslations("social.leaderboard");
   const tSettings = useTranslations("usage.settings");
-  const router = useRouter();
+  const { refresh } = useRouter();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -47,7 +47,7 @@ export function LeaderboardPublicProfileButton({
         publicProfileEnabled: payload.publicProfileEnabled,
         bio: payload.bio,
       });
-      router.refresh();
+      refresh();
     } catch (requestError) {
       setError(
         requestError instanceof Error
