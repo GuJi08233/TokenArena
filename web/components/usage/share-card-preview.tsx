@@ -151,7 +151,7 @@ function formatShortDate(value: string, locale: string, timezone: string) {
   const cacheKey = `${locale}:${timezone}`;
   let formatter = shortDateFormatterCache.get(cacheKey);
   if (!formatter) {
-    formatter = new Intl.DateTimeFormat(locale, {
+    formatter = Intl.DateTimeFormat(locale, {
       month: "short",
       day: "numeric",
       timeZone: timezone,
@@ -841,7 +841,7 @@ function formatMmddInTimezone(iso: string, timeZone: string): string {
   const instant = new Date(iso);
   let formatter = mmddFormatterCache.get(timeZone);
   if (!formatter) {
-    formatter = new Intl.DateTimeFormat("en-CA", {
+    formatter = Intl.DateTimeFormat("en-CA", {
       timeZone,
       month: "2-digit",
       day: "2-digit",

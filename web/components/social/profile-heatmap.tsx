@@ -51,7 +51,7 @@ const monthLabelFormatterCache = new Map<string, Intl.DateTimeFormat>();
 function formatMonthLabel(value: string, locale: string) {
   let formatter = monthLabelFormatterCache.get(locale);
   if (!formatter) {
-    formatter = new Intl.DateTimeFormat(locale, {
+    formatter = Intl.DateTimeFormat(locale, {
       month: "short",
       timeZone: "UTC",
     });

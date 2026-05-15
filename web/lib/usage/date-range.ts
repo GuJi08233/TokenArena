@@ -27,7 +27,7 @@ function getZonedFormatter(timezone: string) {
     return cached;
   }
 
-  const formatter = new Intl.DateTimeFormat("en-CA", {
+  const formatter = Intl.DateTimeFormat("en-CA", {
     timeZone: timezone,
     hourCycle: "h23",
     year: "numeric",

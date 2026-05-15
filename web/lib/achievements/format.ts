@@ -19,7 +19,7 @@ function getCurrencyFormatter(locale: string, maximumFractionDigits: number) {
   const cacheKey = String(maximumFractionDigits);
   let formatter = byDigits.get(cacheKey);
   if (!formatter) {
-    formatter = new Intl.NumberFormat(locale, {
+    formatter = Intl.NumberFormat(locale, {
       style: "currency",
       currency: "USD",
       maximumFractionDigits,
@@ -35,7 +35,7 @@ function getAchievementDateFormatter(locale: string, timezone: string) {
   const cacheKey = `${locale}:${timezone}`;
   let formatter = achievementDateFormatterCache.get(cacheKey);
   if (!formatter) {
-    formatter = new Intl.DateTimeFormat(locale, {
+    formatter = Intl.DateTimeFormat(locale, {
       timeZone: timezone,
       year: "numeric",
       month: "short",

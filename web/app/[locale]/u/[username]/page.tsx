@@ -39,7 +39,7 @@ const joinedDateFormatterCache = new Map<string, Intl.DateTimeFormat>();
 function formatJoinedDate(value: Date, locale: string) {
   let formatter = joinedDateFormatterCache.get(locale);
   if (!formatter) {
-    formatter = new Intl.DateTimeFormat(locale, {
+    formatter = Intl.DateTimeFormat(locale, {
       year: "numeric",
       month: "short",
     });
