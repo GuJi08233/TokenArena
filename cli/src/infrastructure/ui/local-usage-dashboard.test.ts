@@ -175,4 +175,81 @@ describe("renderLocalUsageDashboard", () => {
     expect(tabLine).toContain("Qwen Code");
     expect(tabLine).toContain("OpenCode");
   });
+
+  it("renders with interactive hints", () => {
+    const output = renderLocalUsageDashboard(dashboard, 0, {
+      width: 120,
+      interactive: true,
+    });
+    expect(output).toContain("Tab");
+    expect(output).toContain("quit");
+  });
+
+  it("renders rank tables with no items", () => {
+    const output = renderLocalUsageDashboard(
+      {
+        ...dashboard,
+        tools: [
+          {
+            ...dashboard.tools[0],
+            topModels: [],
+            topProjects: [],
+            sessions: [],
+          },
+        ],
+      },
+      0,
+      { width: 120 },
+    );
+    expect(output).toContain("No usage found");
+    expect(output).toContain("No sessions found");
+  });
+
+  it("handles billions in compact numbers", () => {
+    const output = renderLocalUsageDashboard(
+      {
+        ...dashboard,
+        totals: {
+          ...dashboard.totals,
+          inputTokens: 1_500_000_000,
+          totalTokens: 1_500_000_000,
+        },
+        tools: [
+          {
+            ...dashboard.tools[0],
+            totals: {
+              ...dashboard.tools[0].totals,
+              inputTokens: 1_500_000_000,
+              totalTokens: 1_500_000_000,
+            },
+          },
+        ],
+      },
+      0,
+      { width: 120 },
+    );
+    expect(output).toContain("1.5B");
+  });
+
+  it("handles long session durations", () => {
+    const output = renderLocalUsageDashboard(
+      {
+        ...dashboard,
+        tools: [
+          {
+            ...dashboard.tools[0],
+            sessions: [
+              {
+                ...dashboard.tools[0].sessions[0],
+                activeSeconds: 7200,
+              },
+            ],
+          },
+        ],
+      },
+      0,
+      { width: 120 },
+    );
+    expect(output).toContain("2h");
+  });
 });
