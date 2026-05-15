@@ -85,7 +85,7 @@ describe("xdg", () => {
     it("falls back to state home when not set", () => {
       delete process.env.XDG_RUNTIME_DIR;
       delete process.env.XDG_STATE_HOME;
-      expect(getRuntimeDir()).toMatch(/[\/\\]\.local[\/\\]state$/);
+      expect(getRuntimeDir()).toMatch(/[/\\]\.local[/\\]state$/);
     });
   });
 });
