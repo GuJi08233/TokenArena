@@ -2,7 +2,7 @@
 
 import { Key, Shield, SlidersHorizontal, User } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { Suspense, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, usePathname } from "@/i18n/navigation";
 import type { LoginProvider } from "@/lib/auth-providers";
 import {
@@ -270,16 +270,14 @@ export function SettingsBody({
             ) : null}
 
             {section === "cliKeys" ? (
-              <Suspense fallback={null}>
-                <KeyManager
-                  initialKeys={initialKeys}
-                  variant={keyManagerVariant}
-                  sectionHeading={{
-                    title: activePanel.title,
-                    description: activePanel.description,
-                  }}
-                />
-              </Suspense>
+              <KeyManager
+                initialKeys={initialKeys}
+                variant={keyManagerVariant}
+                sectionHeading={{
+                  title: activePanel.title,
+                  description: activePanel.description,
+                }}
+              />
             ) : null}
           </div>
         </div>
