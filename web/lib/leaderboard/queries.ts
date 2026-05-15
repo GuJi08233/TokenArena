@@ -826,7 +826,7 @@ async function getGlobalViewerRankSummary(input: {
   return summary ? { summary, window } : null;
 }
 
-export async function getGlobalLeaderboard(input: {
+async function getGlobalLeaderboard(input: {
   period: LeaderboardPeriod;
   metric: LeaderboardMetric;
   viewerUserId?: string | null;
@@ -863,7 +863,7 @@ export async function getGlobalLeaderboard(input: {
   });
 }
 
-export async function getFollowingLeaderboard(input: {
+async function getFollowingLeaderboard(input: {
   period: LeaderboardPeriod;
   metric: LeaderboardMetric;
   viewerUserId: string;

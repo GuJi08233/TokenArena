@@ -286,5 +286,3 @@ export function SettingsBody({
     </div>
   );
 }
-
-export type { SettingsPageHeaderViewer } from "./settings-page-header";

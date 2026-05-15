@@ -3,7 +3,7 @@ import {
   formatPercentage,
   formatTokenCount,
 } from "@/lib/usage/format";
-import type { AchievementProgressUnit, AchievementTier } from "./types";
+import type { AchievementProgressUnit } from "./types";
 
 const currencyFormatterCache = new Map<
   string,
@@ -29,24 +29,7 @@ function getCurrencyFormatter(locale: string, maximumFractionDigits: number) {
   return formatter;
 }
 
-const achievementDateFormatterCache = new Map<string, Intl.DateTimeFormat>();
-
-function getAchievementDateFormatter(locale: string, timezone: string) {
-  const cacheKey = `${locale}:${timezone}`;
-  let formatter = achievementDateFormatterCache.get(cacheKey);
-  if (!formatter) {
-    formatter = Intl.DateTimeFormat(locale, {
-      timeZone: timezone,
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
-    achievementDateFormatterCache.set(cacheKey, formatter);
-  }
-  return formatter;
-}
-
-export function formatAchievementMetric(input: {
+function formatAchievementMetric(input: {
   value: number;
   unit: AchievementProgressUnit;
   locale: string;
@@ -83,27 +66,4 @@ export function formatAchievementProgress(input: {
     unit: input.unit,
     locale: input.locale,
   })}`;
-}
-
-export function formatAchievementDate(input: {
-  value: string;
-  locale: string;
-  timezone: string;
-}) {
-  return getAchievementDateFormatter(input.locale, input.timezone).format(
-    new Date(input.value),
-  );
-}
-
-export function getTierTone(tier: AchievementTier) {
-  switch (tier) {
-    case "special":
-      return "bg-violet-500/12 text-violet-700 dark:text-violet-300";
-    case "gold":
-      return "bg-amber-500/12 text-amber-700 dark:text-amber-300";
-    case "silver":
-      return "bg-slate-500/12 text-slate-700 dark:text-slate-300";
-    default:
-      return "bg-orange-500/12 text-orange-700 dark:text-orange-300";
-  }
 }

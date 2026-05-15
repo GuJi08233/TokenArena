@@ -51,7 +51,7 @@ export async function ensureUsagePreferenceWithDb(
   }
 }
 
-export async function ensureUsagePreference(userId: string) {
+async function ensureUsagePreference(userId: string) {
   return ensureUsagePreferenceWithDb(prisma, userId);
 }
 

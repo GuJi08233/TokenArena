@@ -9,7 +9,7 @@ import { prisma } from "@/lib/prisma";
 import { tokenCountToNumber } from "@/lib/token-counts";
 import { formatDateInput } from "@/lib/usage/format";
 
-export const publicBadgeMetrics = [
+const publicBadgeMetrics = [
   "streak",
   "tokens",
   "active_time",
@@ -18,7 +18,7 @@ export const publicBadgeMetrics = [
 ] as const;
 
 export type PublicBadgeMetric = (typeof publicBadgeMetrics)[number];
-export type PublicBadgeTheme = "light" | "dark";
+type PublicBadgeTheme = "light" | "dark";
 export type PublicBadgeStyle =
   | "flat"
   | "flat-square"

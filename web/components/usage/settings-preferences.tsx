@@ -1,7 +1,7 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Label } from "@/components/ui/label";
 import {
@@ -81,7 +81,7 @@ export function SettingsPreferences({
   );
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const savePreferences = useCallback(
+  const savePreferencesStable = useEffectEvent(
     async (
       nextTimezone: string,
       nextProjectMode: ProjectMode,
@@ -124,7 +124,6 @@ export function SettingsPreferences({
         );
       }
     },
-    [t],
   );
 
   useEffect(() => {
@@ -144,7 +143,7 @@ export function SettingsPreferences({
     }
 
     saveTimeoutRef.current = setTimeout(() => {
-      void savePreferences(timezone, projectMode, publicProfileEnabled);
+      void savePreferencesStable(timezone, projectMode, publicProfileEnabled);
       saveTimeoutRef.current = null;
     }, 500);
 
@@ -154,13 +153,7 @@ export function SettingsPreferences({
         saveTimeoutRef.current = null;
       }
     };
-  }, [
-    hasChanges,
-    projectMode,
-    publicProfileEnabled,
-    savePreferences,
-    timezone,
-  ]);
+  }, [hasChanges, projectMode, publicProfileEnabled, timezone]);
 
   useEffect(() => {
     return () => {

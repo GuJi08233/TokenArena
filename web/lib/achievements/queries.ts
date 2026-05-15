@@ -51,6 +51,24 @@ function latestIso(values: Array<string | null | undefined>) {
   return new Date(Math.max(...timestamps)).toISOString();
 }
 
+function earliestIso(values: Array<string | null | undefined>) {
+  const timestamps: number[] = [];
+
+  for (const value of values) {
+    if (!value) continue;
+    const parsed = Date.parse(value);
+    if (!Number.isNaN(parsed)) {
+      timestamps.push(parsed);
+    }
+  }
+
+  if (timestamps.length === 0) {
+    return null;
+  }
+
+  return new Date(Math.min(...timestamps)).toISOString();
+}
+
 function sortIsoAsc<T extends { at: string }>(values: T[]) {
   return values.toSorted(
     (left, right) => Date.parse(left.at) - Date.parse(right.at),
@@ -360,13 +378,7 @@ function buildAllTimeMetrics(input: {
       tokenTimeline[0]?.at ?? null,
       sessionTimeline[0]?.at ?? null,
     ])
-      ? ([tokenTimeline[0]?.at, sessionTimeline[0]?.at]
-          .reduce<string[]>((acc, value) => {
-            if (value) acc.push(value);
-            return acc;
-          }, [])
-          .sort((left, right) => Date.parse(left) - Date.parse(right))[0] ??
-        null)
+      ? earliestIso([tokenTimeline[0]?.at, sessionTimeline[0]?.at])
       : null,
     publicProfileEnabled: input.publicProfileEnabled,
     publicProfileUpdatedAt: input.publicProfileUpdatedAt?.toISOString() ?? null,

@@ -15,7 +15,7 @@ export const usageShareCardTemplates = [
 ] as const;
 export type UsageShareCardTemplate = (typeof usageShareCardTemplates)[number];
 
-export const usageShareCardPersonas = [
+const usageShareCardPersonas = [
   "reasoning_master",
   "cache_guardian",
   "project_deep_diver",
@@ -25,15 +25,15 @@ export const usageShareCardPersonas = [
 ] as const;
 export type UsageShareCardPersona = (typeof usageShareCardPersonas)[number];
 
-export type UsageShareCardPeriod = "day" | "week" | "month" | "custom";
+type UsageShareCardPeriod = "day" | "week" | "month" | "custom";
 
-export type UsageShareCardLeader = {
+type UsageShareCardLeader = {
   label: string;
   share: number;
   totalTokens: number;
 } | null;
 
-export type UsageShareCardInsight =
+type UsageShareCardInsight =
   | {
       kind: "reasoning_share";
       share: number;

@@ -1157,47 +1157,6 @@ function ReceiptTemplate({
   );
 }
 
-export function buildUsageShareCardCaption(input: {
-  data: UsageShareCardData;
-  template: UsageShareCardTemplate;
-  privacy: UsageShareCardPrivacy;
-  locale: string;
-  t: TranslationFn;
-}) {
-  const user = getDisplayUser(input.data, input.privacy, input.t);
-  const period = getRangeLabel(input.data, input.locale, input.t).toLowerCase();
-  const insight = getInsightText(
-    input.data,
-    input.privacy,
-    input.locale,
-    input.t,
-  );
-
-  if (input.template === "persona") {
-    return input.t("captions.persona", {
-      user,
-      persona: input.t(getPersonaBadgeKey(input.data.persona)),
-      insight,
-      period,
-    });
-  }
-
-  if (input.template === "receipt") {
-    return input.t("captions.receipt", {
-      user,
-      totalTokens: formatTokenCount(input.data.totalTokens),
-      period,
-    });
-  }
-
-  return input.t("captions.summary", {
-    user,
-    totalTokens: formatTokenCount(input.data.totalTokens),
-    period,
-    insight,
-  });
-}
-
 export function UsageShareCardPreview({
   data,
   template,

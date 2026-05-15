@@ -89,98 +89,18 @@ export function buildLeaderboardBadgeAwards(input: {
 export async function finalizePendingLeaderboardPeriods(now = new Date()) {
   const periods: LeaderboardPeriod[] = ["day", "week", "month"];
 
-  for (const period of periods) {
-    const window = resolveLatestFinalizableLeaderboardWindow(period, now);
+  await Promise.all(
+    periods.map(async (period) => {
+      const window = resolveLatestFinalizableLeaderboardWindow(period, now);
 
-    if (!window?.start || !window.end) {
-      continue;
-    }
-
-    const windowStart = window.start;
-    const windowEnd = window.end;
-
-    const existing = await prisma.leaderboardPeriodResult.findUnique({
-      where: {
-        period_windowStart_windowEnd: {
-          period,
-          windowStart,
-          windowEnd,
-        },
-      },
-      select: {
-        id: true,
-        badgesIssuedAt: true,
-      },
-    });
-
-    if (existing?.badgesIssuedAt) {
-      continue;
-    }
-
-    const rows = await prisma.leaderboardUserDay.groupBy({
-      by: ["userId"],
-      where: {
-        statDate: {
-          gte: windowStart,
-          lt: windowEnd,
-        },
-        user: {
-          usagePreference: {
-            is: {
-              publicProfileEnabled: true,
-            },
-          },
-        },
-      },
-      _sum: {
-        inputTokens: true,
-        outputTokens: true,
-        reasoningTokens: true,
-        cachedTokens: true,
-        totalTokens: true,
-        activeSeconds: true,
-        sessions: true,
-      },
-      orderBy: [
-        {
-          _sum: {
-            totalTokens: "desc",
-          },
-        },
-        {
-          userId: "asc",
-        },
-      ],
-      take: 100,
-    });
-
-    const entries = rows.reduce<RankedLeaderboardEntry[]>((acc, row, index) => {
-      const totalTokens = tokenCountToNumber(row._sum.totalTokens);
-      if (totalTokens > 0) {
-        acc.push({
-          userId: row.userId,
-          rank: index + 1,
-          inputTokens: tokenCountToNumber(row._sum.inputTokens),
-          outputTokens: tokenCountToNumber(row._sum.outputTokens),
-          reasoningTokens: tokenCountToNumber(row._sum.reasoningTokens),
-          cachedTokens: tokenCountToNumber(row._sum.cachedTokens),
-          totalTokens,
-          activeSeconds: row._sum.activeSeconds ?? 0,
-          sessions: row._sum.sessions ?? 0,
-        });
+      if (!window?.start || !window.end) {
+        return;
       }
-      return acc;
-    }, []);
-    const awards = buildLeaderboardBadgeAwards({
-      period,
-      windowStart,
-      windowEnd,
-      finalizedAt: now,
-      entries,
-    });
 
-    await prisma.$transaction(async (tx) => {
-      const result = await tx.leaderboardPeriodResult.upsert({
+      const windowStart = window.start;
+      const windowEnd = window.end;
+
+      const existing = await prisma.leaderboardPeriodResult.findUnique({
         where: {
           period_windowStart_windowEnd: {
             period,
@@ -188,112 +108,197 @@ export async function finalizePendingLeaderboardPeriods(now = new Date()) {
             windowEnd,
           },
         },
-        update: {
-          finalizedAt: now,
-          timezone: "Asia/Shanghai",
-        },
-        create: {
-          period,
-          timezone: "Asia/Shanghai",
-          windowStart,
-          windowEnd,
-          finalizedAt: now,
+        select: {
+          id: true,
+          badgesIssuedAt: true,
         },
       });
 
-      await tx.leaderboardPeriodEntry.deleteMany({
-        where: {
-          resultId: result.id,
-        },
-      });
-
-      if (entries.length > 0) {
-        await tx.leaderboardPeriodEntry.createMany({
-          data: entries.map((entry) => ({
-            resultId: result.id,
-            userId: entry.userId,
-            rank: entry.rank,
-            inputTokens: tokenCountToBigInt(entry.inputTokens),
-            outputTokens: tokenCountToBigInt(entry.outputTokens),
-            reasoningTokens: tokenCountToBigInt(entry.reasoningTokens),
-            cachedTokens: tokenCountToBigInt(entry.cachedTokens),
-            totalTokens: tokenCountToBigInt(entry.totalTokens),
-            activeSeconds: entry.activeSeconds,
-            sessions: entry.sessions,
-          })),
-        });
+      if (existing?.badgesIssuedAt) {
+        return;
       }
 
-      if (awards.length > 0) {
-        const existingAwards = await tx.achievementAward.findMany({
-          where: {
-            dedupeKey: {
-              in: awards.map((award) => award.dedupeKey),
+      const rows = await prisma.leaderboardUserDay.groupBy({
+        by: ["userId"],
+        where: {
+          statDate: {
+            gte: windowStart,
+            lt: windowEnd,
+          },
+          user: {
+            usagePreference: {
+              is: {
+                publicProfileEnabled: true,
+              },
             },
           },
-          select: {
-            dedupeKey: true,
+        },
+        _sum: {
+          inputTokens: true,
+          outputTokens: true,
+          reasoningTokens: true,
+          cachedTokens: true,
+          totalTokens: true,
+          activeSeconds: true,
+          sessions: true,
+        },
+        orderBy: [
+          {
+            _sum: {
+              totalTokens: "desc",
+            },
+          },
+          {
+            userId: "asc",
+          },
+        ],
+        take: 100,
+      });
+
+      const entries = rows.reduce<RankedLeaderboardEntry[]>(
+        (acc, row, index) => {
+          const totalTokens = tokenCountToNumber(row._sum.totalTokens);
+          if (totalTokens > 0) {
+            acc.push({
+              userId: row.userId,
+              rank: index + 1,
+              inputTokens: tokenCountToNumber(row._sum.inputTokens),
+              outputTokens: tokenCountToNumber(row._sum.outputTokens),
+              reasoningTokens: tokenCountToNumber(row._sum.reasoningTokens),
+              cachedTokens: tokenCountToNumber(row._sum.cachedTokens),
+              totalTokens,
+              activeSeconds: row._sum.activeSeconds ?? 0,
+              sessions: row._sum.sessions ?? 0,
+            });
+          }
+          return acc;
+        },
+        [],
+      );
+      const awards = buildLeaderboardBadgeAwards({
+        period,
+        windowStart,
+        windowEnd,
+        finalizedAt: now,
+        entries,
+      });
+
+      await prisma.$transaction(async (tx) => {
+        const result = await tx.leaderboardPeriodResult.upsert({
+          where: {
+            period_windowStart_windowEnd: {
+              period,
+              windowStart,
+              windowEnd,
+            },
+          },
+          update: {
+            finalizedAt: now,
+            timezone: "Asia/Shanghai",
+          },
+          create: {
+            period,
+            timezone: "Asia/Shanghai",
+            windowStart,
+            windowEnd,
+            finalizedAt: now,
           },
         });
-        const existingKeys = new Set(
-          existingAwards.map((award) => award.dedupeKey),
-        );
-        const nextAwards = awards.filter(
-          (award) => !existingKeys.has(award.dedupeKey),
-        );
 
-        if (nextAwards.length > 0) {
-          await tx.achievementAward.createMany({
-            data: nextAwards.map((award) => ({
-              userId: award.userId,
-              code: award.code,
-              awardedAt: award.awardedAt,
-              source: "leaderboard",
-              sourceRef: award.sourceRef,
-              dedupeKey: award.dedupeKey,
-              pointsAwarded: award.pointsAwarded,
-              progressValue: award.progressValue,
-              thresholdValue: award.thresholdValue,
-              context: award.context,
+        await tx.leaderboardPeriodEntry.deleteMany({
+          where: {
+            resultId: result.id,
+          },
+        });
+
+        if (entries.length > 0) {
+          await tx.leaderboardPeriodEntry.createMany({
+            data: entries.map((entry) => ({
+              resultId: result.id,
+              userId: entry.userId,
+              rank: entry.rank,
+              inputTokens: tokenCountToBigInt(entry.inputTokens),
+              outputTokens: tokenCountToBigInt(entry.outputTokens),
+              reasoningTokens: tokenCountToBigInt(entry.reasoningTokens),
+              cachedTokens: tokenCountToBigInt(entry.cachedTokens),
+              totalTokens: tokenCountToBigInt(entry.totalTokens),
+              activeSeconds: entry.activeSeconds,
+              sessions: entry.sessions,
             })),
           });
+        }
 
-          await Promise.all(
-            nextAwards.map(async (award) => {
-              await tx.userAchievement.upsert({
-                where: {
-                  userId_code: {
+        if (awards.length > 0) {
+          const existingAwards = await tx.achievementAward.findMany({
+            where: {
+              dedupeKey: {
+                in: awards.map((award) => award.dedupeKey),
+              },
+            },
+            select: {
+              dedupeKey: true,
+            },
+          });
+          const existingKeys = new Set(
+            existingAwards.map((award) => award.dedupeKey),
+          );
+          const nextAwards = awards.filter(
+            (award) => !existingKeys.has(award.dedupeKey),
+          );
+
+          if (nextAwards.length > 0) {
+            await tx.achievementAward.createMany({
+              data: nextAwards.map((award) => ({
+                userId: award.userId,
+                code: award.code,
+                awardedAt: award.awardedAt,
+                source: "leaderboard",
+                sourceRef: award.sourceRef,
+                dedupeKey: award.dedupeKey,
+                pointsAwarded: award.pointsAwarded,
+                progressValue: award.progressValue,
+                thresholdValue: award.thresholdValue,
+                context: award.context,
+              })),
+            });
+
+            await Promise.all(
+              nextAwards.map(async (award) => {
+                await tx.userAchievement.upsert({
+                  where: {
+                    userId_code: {
+                      userId: award.userId,
+                      code: award.code,
+                    },
+                  },
+                  update: {
+                    awardCount: {
+                      increment: 1,
+                    },
+                    lastAwardedAt: award.awardedAt,
+                  },
+                  create: {
                     userId: award.userId,
                     code: award.code,
+                    awardCount: 1,
+                    firstAwardedAt: award.awardedAt,
+                    lastAwardedAt: award.awardedAt,
                   },
-                },
-                update: {
-                  awardCount: {
-                    increment: 1,
-                  },
-                  lastAwardedAt: award.awardedAt,
-                },
-                create: {
-                  userId: award.userId,
-                  code: award.code,
-                  awardCount: 1,
-                  firstAwardedAt: award.awardedAt,
-                  lastAwardedAt: award.awardedAt,
-                },
-              });
-            }),
-          );
+                });
+              }),
+            );
+          }
         }
-      }
 
-      await tx.leaderboardPeriodResult.update({
-        where: {
-          id: result.id,
-        },
-        data: {
-          badgesIssuedAt: now,
-        },
+        await tx.leaderboardPeriodResult.update({
+          where: {
+            id: result.id,
+          },
+          data: {
+            badgesIssuedAt: now,
+          },
+        });
       });
-    });
-  }
+    }),
+  );
 }

@@ -10,7 +10,7 @@ export const achievementCategories = [
   "craft",
   "exploration",
 ] as const;
-export type AchievementCategory = (typeof achievementCategories)[number];
+type AchievementCategory = (typeof achievementCategories)[number];
 
 export const achievementTiers = [
   "bronze",

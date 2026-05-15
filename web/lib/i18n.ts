@@ -47,7 +47,7 @@ export function getPreferredLocale(input: {
   return defaultLocale;
 }
 
-export function extractLocaleFromPathname(pathname: string) {
+function extractLocaleFromPathname(pathname: string) {
   const segments = pathname.split("/").filter(Boolean);
   const candidate = segments[0];
 
