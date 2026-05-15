@@ -59,8 +59,7 @@ export function KeyDialog({
 
         <form
           className="space-y-4"
-          onSubmit={async (event) => {
-            event.preventDefault();
+          action={async () => {
             await onSubmit(name);
           }}
         >
