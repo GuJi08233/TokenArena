@@ -5,6 +5,47 @@ import {
 } from "@/lib/usage/format";
 import type { AchievementProgressUnit, AchievementTier } from "./types";
 
+const currencyFormatterCache = new Map<
+  string,
+  Map<string, Intl.NumberFormat>
+>();
+
+function getCurrencyFormatter(locale: string, maximumFractionDigits: number) {
+  let byDigits = currencyFormatterCache.get(locale);
+  if (!byDigits) {
+    byDigits = new Map();
+    currencyFormatterCache.set(locale, byDigits);
+  }
+  const cacheKey = String(maximumFractionDigits);
+  let formatter = byDigits.get(cacheKey);
+  if (!formatter) {
+    formatter = new Intl.NumberFormat(locale, {
+      style: "currency",
+      currency: "USD",
+      maximumFractionDigits,
+    });
+    byDigits.set(cacheKey, formatter);
+  }
+  return formatter;
+}
+
+const achievementDateFormatterCache = new Map<string, Intl.DateTimeFormat>();
+
+function getAchievementDateFormatter(locale: string, timezone: string) {
+  const cacheKey = `${locale}:${timezone}`;
+  let formatter = achievementDateFormatterCache.get(cacheKey);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat(locale, {
+      timeZone: timezone,
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+    achievementDateFormatterCache.set(cacheKey, formatter);
+  }
+  return formatter;
+}
+
 export function formatAchievementMetric(input: {
   value: number;
   unit: AchievementProgressUnit;
@@ -18,11 +59,10 @@ export function formatAchievementMetric(input: {
     case "percent":
       return formatPercentage(input.value, input.locale);
     case "usd":
-      return new Intl.NumberFormat(input.locale, {
-        style: "currency",
-        currency: "USD",
-        maximumFractionDigits: input.value >= 1000 ? 0 : 2,
-      }).format(input.value);
+      return getCurrencyFormatter(
+        input.locale,
+        input.value >= 1000 ? 0 : 2,
+      ).format(input.value);
     default:
       return Math.floor(input.value).toLocaleString(input.locale);
   }
@@ -50,12 +90,9 @@ export function formatAchievementDate(input: {
   locale: string;
   timezone: string;
 }) {
-  return new Intl.DateTimeFormat(input.locale, {
-    timeZone: input.timezone,
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  }).format(new Date(input.value));
+  return getAchievementDateFormatter(input.locale, input.timezone).format(
+    new Date(input.value),
+  );
 }
 
 export function getTierTone(tier: AchievementTier) {

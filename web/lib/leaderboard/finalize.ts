@@ -63,24 +63,27 @@ export function buildLeaderboardBadgeAwards(input: {
   const windowStart = input.windowStart;
   const windowEnd = input.windowEnd;
 
-  return input.entries
-    .filter((entry) => entry.rank <= 50)
-    .map((entry) => ({
-      userId: entry.userId,
-      code,
-      awardedAt: input.finalizedAt,
-      dedupeKey: `leaderboard:${input.period}:${windowStart.toISOString()}:${entry.userId}:${code}`,
-      pointsAwarded: badgePoints(code),
-      progressValue: entry.rank,
-      thresholdValue: 50,
-      sourceRef: `${input.period}:${windowStart.toISOString()}`,
-      context: {
-        rank: entry.rank,
-        totalTokens: entry.totalTokens,
-        windowStart: windowStart.toISOString(),
-        windowEnd: windowEnd.toISOString(),
-      },
-    }));
+  return input.entries.reduce<LeaderboardBadgeAward[]>((acc, entry) => {
+    if (entry.rank <= 50) {
+      acc.push({
+        userId: entry.userId,
+        code,
+        awardedAt: input.finalizedAt,
+        dedupeKey: `leaderboard:${input.period}:${windowStart.toISOString()}:${entry.userId}:${code}`,
+        pointsAwarded: badgePoints(code),
+        progressValue: entry.rank,
+        thresholdValue: 50,
+        sourceRef: `${input.period}:${windowStart.toISOString()}`,
+        context: {
+          rank: entry.rank,
+          totalTokens: entry.totalTokens,
+          windowStart: windowStart.toISOString(),
+          windowEnd: windowEnd.toISOString(),
+        },
+      });
+    }
+    return acc;
+  }, []);
 }
 
 export async function finalizePendingLeaderboardPeriods(now = new Date()) {
@@ -151,21 +154,23 @@ export async function finalizePendingLeaderboardPeriods(now = new Date()) {
       take: 100,
     });
 
-    const entries = rows
-      .map(
-        (row, index): RankedLeaderboardEntry => ({
+    const entries = rows.reduce<RankedLeaderboardEntry[]>((acc, row, index) => {
+      const totalTokens = tokenCountToNumber(row._sum.totalTokens);
+      if (totalTokens > 0) {
+        acc.push({
           userId: row.userId,
           rank: index + 1,
           inputTokens: tokenCountToNumber(row._sum.inputTokens),
           outputTokens: tokenCountToNumber(row._sum.outputTokens),
           reasoningTokens: tokenCountToNumber(row._sum.reasoningTokens),
           cachedTokens: tokenCountToNumber(row._sum.cachedTokens),
-          totalTokens: tokenCountToNumber(row._sum.totalTokens),
+          totalTokens,
           activeSeconds: row._sum.activeSeconds ?? 0,
           sessions: row._sum.sessions ?? 0,
-        }),
-      )
-      .filter((entry) => entry.totalTokens > 0);
+        });
+      }
+      return acc;
+    }, []);
     const awards = buildLeaderboardBadgeAwards({
       period,
       windowStart,
@@ -253,29 +258,31 @@ export async function finalizePendingLeaderboardPeriods(now = new Date()) {
             })),
           });
 
-          for (const award of nextAwards) {
-            await tx.userAchievement.upsert({
-              where: {
-                userId_code: {
+          await Promise.all(
+            nextAwards.map(async (award) => {
+              await tx.userAchievement.upsert({
+                where: {
+                  userId_code: {
+                    userId: award.userId,
+                    code: award.code,
+                  },
+                },
+                update: {
+                  awardCount: {
+                    increment: 1,
+                  },
+                  lastAwardedAt: award.awardedAt,
+                },
+                create: {
                   userId: award.userId,
                   code: award.code,
+                  awardCount: 1,
+                  firstAwardedAt: award.awardedAt,
+                  lastAwardedAt: award.awardedAt,
                 },
-              },
-              update: {
-                awardCount: {
-                  increment: 1,
-                },
-                lastAwardedAt: award.awardedAt,
-              },
-              create: {
-                userId: award.userId,
-                code: award.code,
-                awardCount: 1,
-                firstAwardedAt: award.awardedAt,
-                lastAwardedAt: award.awardedAt,
-              },
-            });
-          }
+              });
+            }),
+          );
         }
       }
 
