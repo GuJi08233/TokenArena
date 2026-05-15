@@ -12,15 +12,10 @@ export const achievementCategories = [
 ] as const;
 type AchievementCategory = (typeof achievementCategories)[number];
 
-export const achievementTiers = [
-  "bronze",
-  "silver",
-  "gold",
-  "special",
-] as const;
+const achievementTiers = ["bronze", "silver", "gold", "special"] as const;
 export type AchievementTier = (typeof achievementTiers)[number];
 
-export const achievementIconKeys = [
+const achievementIconKeys = [
   "rocket",
   "flame",
   "calendar-check",
