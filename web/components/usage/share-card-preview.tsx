@@ -914,6 +914,7 @@ function ReceiptBarcode({
       )}
     >
       {bars.slice(0, 96).map((width, index) => (
+        // react-doctor-disable-next-line react-doctor/no-array-index-as-key -- bars are deterministically derived from value, order never changes
         <span
           key={`bar-${index}`}
           className="h-full bg-current"
