@@ -100,6 +100,8 @@ export default function CountUp({
     [formatProp, maxDecimals, separator],
   );
 
+  const formatValueStable = useEffectEvent(formatValue);
+
   const initialText = formatValue(direction === "down" ? to : from);
   const [display, setDisplay] = useState(() => initialText);
 
@@ -127,11 +129,11 @@ export default function CountUp({
 
   useEffect(() => {
     const unsubscribe = springValue.on("change", (latest: number) => {
-      setDisplay(formatValue(latest));
+      setDisplay(formatValueStable(latest));
     });
 
     return () => unsubscribe();
-  }, [springValue, formatValue]);
+  }, [springValue]);
 
   return (
     <span className={className} ref={ref}>
