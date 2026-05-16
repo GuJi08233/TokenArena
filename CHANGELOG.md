@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.3](https://github.com/poco-ai/TokenArena/compare/v0.4.2...v0.4.3) (2026-05-16)
+
+
+### Bug Fixes
+
+* update DATABASE_URL in docker-compose.yml for token_arena service ([61be4b7](https://github.com/poco-ai/TokenArena/commit/61be4b7af7e634aa2d723cca2db1f9e0e34f2712))
+
 ## [0.4.2](https://github.com/poco-ai/TokenArena/compare/v0.4.1...v0.4.2) (2026-05-16)
 
 
