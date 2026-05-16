@@ -60,9 +60,12 @@ export function SettingsPreferences({
   initialPublicProfileEnabled,
 }: SettingsPreferencesProps) {
   const t = useTranslations("usage.settings");
+  // react-doctor-disable-next-line react-doctor/no-derived-useState -- controlled select, initial value from prop
   const [timezone, setTimezone] = useState(initialTimezone);
+  // react-doctor-disable-next-line react-doctor/no-derived-useState -- controlled select, initial value from prop
   const [projectMode, setProjectMode] =
     useState<ProjectMode>(initialProjectMode);
+  // react-doctor-disable-next-line react-doctor/no-derived-useState -- controlled select, initial value from prop
   const [publicProfileEnabled, setPublicProfileEnabled] = useState(
     initialPublicProfileEnabled,
   );

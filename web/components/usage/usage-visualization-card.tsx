@@ -313,7 +313,9 @@ export function UsageVisualizationCard({
   const locale = useLocale();
   const tTrend = useTranslations("usage.trend");
   const tHeatmap = useTranslations("usage.hourlyHeatmap");
+  // react-doctor-disable-next-line react-doctor/no-derived-useState -- mode toggle button, initial value from prop
   const [mode, setMode] = useState<VisualizationMode>(defaultMode);
+  // react-doctor-disable-next-line react-doctor/no-derived-useState -- metricView toggle button, initial value from prop
   const [metricView, setMetricView] =
     useState<VisualizationMetricView>(defaultMetricView);
 

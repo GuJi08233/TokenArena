@@ -156,6 +156,7 @@ export function HourlyActivityHeatmapCard({
 }: HourlyActivityHeatmapCardProps) {
   const locale = useLocale();
   const t = useTranslations("usage.hourlyHeatmap");
+  // react-doctor-disable-next-line react-doctor/no-derived-useState -- metric toggle button, initial value from prop
   const [metric, setMetric] =
     useState<HourlyActivityHeatmapMetric>(defaultMetric);
   const showEmptyCostState =

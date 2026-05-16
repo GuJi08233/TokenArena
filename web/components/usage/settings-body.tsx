@@ -91,6 +91,7 @@ export function SettingsBody({
   const t = useTranslations("usage.settings");
   const pathname = usePathname();
   // KEPT: section is independently updated via setSection in the button onClick handler
+  // react-doctor-disable-next-line react-doctor/no-derived-useState -- navigation button toggles section independently
   const [section, setSection] = useState<SettingsSectionId>(initialSection);
 
   const [preferences, setPreferences] = useState<SettingsPreferenceState>({

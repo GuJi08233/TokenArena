@@ -144,6 +144,7 @@ function KeyManagerInner({
   const { replace } = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  // react-doctor-disable-next-line react-doctor/no-derived-useState -- CRUD operations manage keys, initial value from prop
   const [keys, setKeys] = useState(initialKeys);
   const [error, setError] = useState<string | null>(null);
   const [rawKey, setRawKey] = useState<string | null>(null);

@@ -211,6 +211,7 @@ export function TokenTrendCard({
 }: TokenTrendCardProps) {
   const locale = useLocale();
   const t = useTranslations("usage.trend");
+  // react-doctor-disable-next-line react-doctor/no-derived-useState -- metricView toggle button, initial value from prop
   const [metricView, setMetricView] =
     useState<TrendMetricView>(defaultMetricView);
   const hasCostData = data.some((point) => point.estimatedCostUsd > 0);

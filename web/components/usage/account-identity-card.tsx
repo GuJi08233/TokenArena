@@ -101,7 +101,9 @@ export function AccountIdentityCard({
 }: AccountIdentityCardProps) {
   const { push, refresh } = useRouter();
   const t = useTranslations("usage.settings");
+  // react-doctor-disable-next-line react-doctor/no-derived-useState -- form input, initial value from prop
   const [name, setName] = useState(initialName);
+  // react-doctor-disable-next-line react-doctor/no-derived-useState -- form input, initial value from prop
   const [username, setUsername] = useState(initialUsername);
   const savedName = useRef(initialName);
   const savedUsername = useRef(initialUsername);
