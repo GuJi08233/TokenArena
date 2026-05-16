@@ -10,12 +10,7 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
-permissions:
-  contents: write
-  pull-requests: write
-  issues: write
-  packages: write
-  security-events: write
+permissions: {}
 
 env:
   REGISTRY: ghcr.io
@@ -24,6 +19,10 @@ env:
 jobs:
   release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
@@ -37,6 +36,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: release
     if: ${{ needs.release.outputs.release_created == 'true' }}
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v6
 
@@ -109,6 +110,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: release
     if: ${{ needs.release.outputs.release_created == 'true' }}
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
