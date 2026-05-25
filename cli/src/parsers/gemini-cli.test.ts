@@ -115,7 +115,7 @@ describe("GeminiCliParser", () => {
       model: "gemini-pro",
       project: "unknown",
       inputTokens: 90, // 100 - 10 cached
-      outputTokens: 50,
+      outputTokens: 45, // 50 - 5 thoughts
       reasoningTokens: 5,
       cachedTokens: 10,
     });
@@ -163,7 +163,7 @@ describe("GeminiCliParser", () => {
       model: "gemini-2.5-flash",
       project: "unknown",
       inputTokens: 180, // 200 - 20 cached
-      outputTokens: 80,
+      outputTokens: 70, // 80 - 10 thoughts
       reasoningTokens: 10,
       cachedTokens: 20,
     });
@@ -259,6 +259,85 @@ describe("GeminiCliParser", () => {
       model: "gemini-pro",
       inputTokens: 30,
       outputTokens: 15,
+    });
+  });
+
+  it("parses .jsonl with type:'gemini' and project from directories", async () => {
+    const subDir = join(DATA_DIR, "mno345");
+    const chatsDir = join(subDir, "chats");
+    const sessionFile = join(chatsDir, "session-aaa-bbb.jsonl");
+
+    addPath(DATA_DIR);
+    addDir(DATA_DIR, [{ name: "mno345", isDirectory: () => true }]);
+    addPath(chatsDir);
+    addDir(chatsDir, [
+      { name: "session-aaa-bbb.jsonl", isDirectory: () => false },
+    ]);
+    const lines = [
+      JSON.stringify({
+        sessionId: "aaa-bbb",
+        directories: ["/Users/me/01-Develop/MyProject"],
+        createTime: "2026-01-05T00:00:00Z",
+      }),
+      JSON.stringify({ type: "user", timestamp: "2026-01-05T00:00:00Z" }),
+      JSON.stringify({
+        type: "gemini",
+        timestamp: "2026-01-05T00:00:01Z",
+        model: "gemini-2.5-pro",
+        tokens: { input: 120, output: 60, cached: 15, thoughts: 8 },
+      }),
+    ];
+    addFile(sessionFile, lines.join("\n"));
+
+    const parser = await getParser();
+    const result = await parser.parse();
+
+    const bucket = result.buckets.find((b) => b.model === "gemini-2.5-pro");
+    expect(bucket).toMatchObject({
+      source: "gemini-cli",
+      model: "gemini-2.5-pro",
+      project: "MyProject",
+      inputTokens: 105, // 120 - 15 cached
+      outputTokens: 52, // 60 - 8 thoughts
+      reasoningTokens: 8,
+      cachedTokens: 15,
+    });
+    expect(result.sessions.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("recurses into subagent chats/<parent>/<sub>.jsonl files", async () => {
+    const subDir = join(DATA_DIR, "pqr678");
+    const chatsDir = join(subDir, "chats");
+    const parentDir = join(chatsDir, "parent-1");
+    const subFile = join(parentDir, "sub-a.jsonl");
+
+    addPath(DATA_DIR);
+    addDir(DATA_DIR, [{ name: "pqr678", isDirectory: () => true }]);
+    addPath(chatsDir);
+    addDir(chatsDir, [{ name: "parent-1", isDirectory: () => true }]);
+    addPath(parentDir);
+    addDir(parentDir, [{ name: "sub-a.jsonl", isDirectory: () => false }]);
+    const lines = [
+      JSON.stringify({ directories: ["/proj/SubAgentRoot"] }),
+      JSON.stringify({
+        type: "gemini",
+        timestamp: "2026-01-06T00:00:00Z",
+        model: "gemini-pro",
+        tokens: { input: 10, output: 5 },
+      }),
+    ];
+    addFile(subFile, lines.join("\n"));
+
+    const parser = await getParser();
+    const result = await parser.parse();
+
+    const bucket = result.buckets.find((b) => b.project === "SubAgentRoot");
+    expect(bucket).toMatchObject({
+      source: "gemini-cli",
+      model: "gemini-pro",
+      project: "SubAgentRoot",
+      inputTokens: 10,
+      outputTokens: 5,
     });
   });
 });
