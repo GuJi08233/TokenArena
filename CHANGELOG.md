@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.6.0](https://github.com/poco-ai/TokenArena/compare/v0.5.0...v0.6.0) (2026-06-08)
+
+
+### Features
+
+* **web:** add delete account dialog to account identity card ([78c80e5](https://github.com/poco-ai/TokenArena/commit/78c80e5df170de685179835eb7992eca154fc7b2))
+* **web:** enable deleteUser plugin and add delete account i18n strings ([fb738e8](https://github.com/poco-ai/TokenArena/commit/fb738e8e4d5a9e51151f1c5ce38a2500e2583b5d))
+* **web:** improve connected accounts card with provider ordering and last-provider guard ([611cf1d](https://github.com/poco-ai/TokenArena/commit/611cf1d9ee79f0bbed0518d0159e64993b577746))
+
+
+### Bug Fixes
+
+* **ci:** switch Docker build cache from GHA to registry type ([7e83b8e](https://github.com/poco-ai/TokenArena/commit/7e83b8ed448f0e7666db502a83713a9bdfb41c75))
+
 ## [0.5.0](https://github.com/poco-ai/TokenArena/compare/v0.4.3...v0.5.0) (2026-05-25)
 
 
