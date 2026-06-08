@@ -4,6 +4,14 @@ import { useTranslations } from "next-intl";
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useRouter } from "@/i18n/navigation";
@@ -110,6 +118,10 @@ export function AccountIdentityCard({
   const [bio, setBio] = useState(initialBio ?? "");
   const savedBio = useRef(initialBio ?? "");
   const [status, dispatch] = useReducer(formStatusReducer, initialFormStatus);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     setName(initialName);
@@ -298,6 +310,45 @@ export function AccountIdentityCard({
     }
   };
 
+  const confirmationValue = savedUsername.current || normalizedUsername;
+  const canDeleteAccount =
+    confirmationValue.length > 0 && deleteConfirmation === confirmationValue;
+
+  const handleDeleteAccount = async () => {
+    if (!canDeleteAccount) {
+      return;
+    }
+
+    setIsDeleting(true);
+    setDeleteError(null);
+
+    try {
+      const response = await fetch("/api/auth/delete-user", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ callbackURL: "/login?deleted=1" }),
+      });
+      const payload = (await response.json().catch(() => null)) as {
+        message?: string;
+        error?: { message?: string };
+      } | null;
+
+      if (!response.ok) {
+        throw payload ?? new Error(t("deleteAccount.error"));
+      }
+
+      setIsDeleteDialogOpen(false);
+      refresh();
+      push("/login?deleted=1");
+    } catch (error) {
+      setDeleteError(getAuthErrorMessage(error, t("deleteAccount.error")));
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   return (
     <div className="space-y-3">
       {requireUsernameSetup ? (
@@ -401,6 +452,97 @@ export function AccountIdentityCard({
           </Button>
         </div>
       </form>
+
+      {!requireUsernameSetup ? (
+        <div className="rounded-lg border border-destructive/25 bg-destructive/5 p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="space-y-1">
+              <div className="font-medium text-destructive">
+                {t("deleteAccount.title")}
+              </div>
+              <p className="text-sm text-muted-foreground">
+                {t("deleteAccount.description")}
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => {
+                setDeleteConfirmation("");
+                setDeleteError(null);
+                setIsDeleteDialogOpen(true);
+              }}
+            >
+              {t("deleteAccount.trigger")}
+            </Button>
+          </div>
+
+          <Dialog
+            open={isDeleteDialogOpen}
+            onOpenChange={(open) => {
+              setIsDeleteDialogOpen(open);
+              if (!open) {
+                setDeleteConfirmation("");
+                setDeleteError(null);
+              }
+            }}
+          >
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>{t("deleteAccount.dialogTitle")}</DialogTitle>
+                <DialogDescription>
+                  {t("deleteAccount.dialogDescription")}
+                </DialogDescription>
+              </DialogHeader>
+
+              {deleteError ? (
+                <Alert variant="destructive">
+                  <AlertDescription>{deleteError}</AlertDescription>
+                </Alert>
+              ) : null}
+
+              <div className="space-y-1.5">
+                <Label htmlFor="delete-account-confirmation">
+                  {t("deleteAccount.confirmLabel", {
+                    value: confirmationValue,
+                  })}
+                </Label>
+                <Input
+                  id="delete-account-confirmation"
+                  type="text"
+                  autoComplete="off"
+                  value={deleteConfirmation}
+                  placeholder={confirmationValue}
+                  onChange={(event) =>
+                    setDeleteConfirmation(event.target.value)
+                  }
+                />
+              </div>
+
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsDeleteDialogOpen(false)}
+                  disabled={isDeleting}
+                >
+                  {t("deleteAccount.cancel")}
+                </Button>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  onClick={handleDeleteAccount}
+                  disabled={!canDeleteAccount || isDeleting}
+                >
+                  {isDeleting
+                    ? t("deleteAccount.deleting")
+                    : t("deleteAccount.confirm")}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
+      ) : null}
     </div>
   );
 }
