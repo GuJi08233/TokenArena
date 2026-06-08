@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/poco-ai/TokenArena/compare/v0.6.0...v0.6.1) (2026-06-08)
+
+
+### Bug Fixes
+
+* **ci:** lowercase IMAGE_NAME for registry cache ref ([b2a302a](https://github.com/poco-ai/TokenArena/commit/b2a302a471cb51edff86aa38d4f6cf71088b187e))
+
 ## [0.6.0](https://github.com/poco-ai/TokenArena/compare/v0.5.0...v0.6.0) (2026-06-08)
 
 
