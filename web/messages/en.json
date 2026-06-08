@@ -129,6 +129,19 @@
           "usernameTaken": "This username is already taken."
         }
       },
+      "deleteAccount": {
+        "title": "Delete account",
+        "description": "Permanently delete your account, CLI keys, usage data, profile, leaderboard entries, achievements, and connected providers.",
+        "trigger": "Delete account",
+        "dialogTitle": "Delete account?",
+        "dialogDescription": "This permanently deletes your Token Arena account and cannot be undone.",
+        "confirmLabel": "Type {value} to confirm.",
+        "confirmPlaceholder": "{value}",
+        "cancel": "Cancel",
+        "confirm": "Delete account",
+        "deleting": "Deleting...",
+        "error": "Unable to delete your account right now."
+      },
       "connectedAccounts": {
         "title": "Connected providers",
         "description": "View which providers are already linked to this account and add another sign-in method when needed.",
@@ -143,6 +156,7 @@
         "connecting": "Connecting...",
         "disconnect": "Disconnect",
         "disconnecting": "Disconnecting...",
+        "lastProviderHelp": "At least one sign-in method must remain connected.",
         "errors": {
           "connect": "Unable to connect this provider right now.",
           "disconnect": "Unable to disconnect this provider right now."

@@ -129,6 +129,19 @@
           "usernameTaken": "该用户名已被占用。"
         }
       },
+      "deleteAccount": {
+        "title": "删除账户",
+        "description": "永久删除你的账户、CLI Key、用量数据、个人主页、排行榜记录、成就和已绑定的登录方式。",
+        "trigger": "删除账户",
+        "dialogTitle": "确认删除账户",
+        "dialogDescription": "这会永久删除你的 Token Arena 账户，删除后无法恢复。",
+        "confirmLabel": "输入 {value} 以确认。",
+        "confirmPlaceholder": "{value}",
+        "cancel": "取消",
+        "confirm": "删除账户",
+        "deleting": "删除中...",
+        "error": "暂时无法删除你的账户。"
+      },
       "connectedAccounts": {
         "title": "已连接的登录方式",
         "description": "查看当前账户已经绑定了哪些 provider，并在需要时继续添加新的登录方式。",
@@ -143,6 +156,7 @@
         "connecting": "绑定中...",
         "disconnect": "解除绑定",
         "disconnecting": "解除中...",
+        "lastProviderHelp": "至少需要保留一种可登录方式。",
         "errors": {
           "connect": "暂时无法绑定这个 provider。",
           "disconnect": "暂时无法解除这个 provider。"

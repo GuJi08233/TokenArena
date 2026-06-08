@@ -65,6 +65,9 @@ export const auth = betterAuth({
         defaultValue: false,
       },
     },
+    deleteUser: {
+      enabled: true,
+    },
   },
   databaseHooks: {
     user: {
