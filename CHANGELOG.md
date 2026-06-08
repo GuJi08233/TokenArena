@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.2](https://github.com/poco-ai/TokenArena/compare/v0.6.1...v0.6.2) (2026-06-08)
+
+
+### Bug Fixes
+
+* **web:** downgrade Node base image from 26-alpine to 22-alpine ([5ff6587](https://github.com/poco-ai/TokenArena/commit/5ff658754e21a1583eaf9719855109a92b1bfe59))
+
 ## [0.6.1](https://github.com/poco-ai/TokenArena/compare/v0.6.0...v0.6.1) (2026-06-08)
 
 
