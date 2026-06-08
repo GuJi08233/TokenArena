@@ -26,6 +26,15 @@ type ConnectedAccountsCardProps = {
   availableProviders?: LoginProvider[];
 };
 
+type OAuthProviderRow = {
+  kind: "oauth";
+  key: string;
+  providerId: string;
+  label: string;
+  provider?: LoginProvider;
+  account?: ConnectedAccountRecord;
+};
+
 async function postAuthAction(
   path: string,
   body: Record<string, unknown>,
@@ -49,11 +58,7 @@ async function postAuthAction(
   return payload ?? {};
 }
 
-function ProviderIcon({
-  providerId,
-}: {
-  providerId: "credential" | LoginProvider["id"];
-}): ReactNode {
+function ProviderIcon({ providerId }: { providerId: string }): ReactNode {
   if (providerId === "credential") {
     return <Mail className="size-5" aria-hidden />;
   }
@@ -92,6 +97,19 @@ function ProviderIcon({
   }
 }
 
+const providerLabels: Record<string, string> = {
+  discord: "Discord",
+  github: "GitHub",
+  gitlab: "GitLab",
+  google: "Google",
+  linuxdo: "Linux.do",
+  watcha: "Watcha",
+};
+
+function getProviderLabel(providerId: string) {
+  return providerLabels[providerId] ?? providerId;
+}
+
 const EMPTY_ACCOUNTS: ConnectedAccountRecord[] = [];
 const EMPTY_PROVIDERS: LoginProvider[] = [];
 
@@ -115,17 +133,44 @@ export function ConnectedAccountsCard({
       account,
     }));
 
-    const oauthRows = availableProviders.map((provider) => {
-      const account = accounts.find((a) => a.providerId === provider.id);
-      return {
-        kind: "oauth" as const,
-        key: `oauth:${provider.id}`,
-        provider,
-        account,
-      };
-    });
+    const providerById = new Map<string, LoginProvider>(
+      availableProviders.map((provider) => [provider.id, provider]),
+    );
+    const connectedOAuthRows = accounts
+      .filter((account) => account.providerId !== "credential")
+      .map<OAuthProviderRow>((account) => {
+        const provider = providerById.get(account.providerId);
+        return {
+          kind: "oauth",
+          key: `oauth:${account.id}`,
+          providerId: account.providerId,
+          label: provider?.label ?? getProviderLabel(account.providerId),
+          provider,
+          account,
+        };
+      });
+    const connectedProviderIds = new Set(
+      connectedOAuthRows.map((row) => row.providerId),
+    );
+    const availableOAuthRows = availableProviders.flatMap<OAuthProviderRow>(
+      (provider) => {
+        if (connectedProviderIds.has(provider.id)) {
+          return [];
+        }
 
-    return [...credentialRows, ...oauthRows];
+        return [
+          {
+            kind: "oauth",
+            key: `oauth:${provider.id}`,
+            providerId: provider.id,
+            label: provider.label,
+            provider,
+          },
+        ];
+      },
+    );
+
+    return [...credentialRows, ...connectedOAuthRows, ...availableOAuthRows];
   }, [accounts, availableProviders]);
 
   const handleConnect = async (provider: LoginProvider) => {
@@ -221,7 +266,7 @@ export function ConnectedAccountsCard({
           }
 
           const { provider, account } = row;
-          const connectKey = `connect:${provider.id}`;
+          const connectKey = provider ? `connect:${provider.id}` : null;
           const disconnectKey = account ? `disconnect:${account.id}` : null;
           const canDisconnect =
             account &&
@@ -232,41 +277,40 @@ export function ConnectedAccountsCard({
             return (
               <div key={row.key} className="flex items-center gap-4 p-4">
                 <div className="flex size-10 shrink-0 items-center justify-center text-foreground">
-                  <ProviderIcon providerId={provider.id} />
+                  <ProviderIcon providerId={row.providerId} />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="font-medium text-foreground">
-                    {provider.label}
-                  </div>
+                  <div className="font-medium text-foreground">{row.label}</div>
                 </div>
                 <div className="flex shrink-0 justify-end">
-                  {canDisconnect ? (
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => handleDisconnect(account)}
-                      disabled={busyKey === disconnectKey}
-                    >
-                      {busyKey === disconnectKey
-                        ? t("disconnecting")
-                        : t("disconnect")}
-                    </Button>
-                  ) : null}
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => handleDisconnect(account)}
+                    disabled={!canDisconnect || busyKey === disconnectKey}
+                    title={!canDisconnect ? t("lastProviderHelp") : undefined}
+                  >
+                    {busyKey === disconnectKey
+                      ? t("disconnecting")
+                      : t("disconnect")}
+                  </Button>
                 </div>
               </div>
             );
           }
 
+          if (!provider) {
+            return null;
+          }
+
           return (
             <div key={row.key} className="flex items-center gap-4 p-4">
               <div className="flex size-10 shrink-0 items-center justify-center text-foreground">
-                <ProviderIcon providerId={provider.id} />
+                <ProviderIcon providerId={row.providerId} />
               </div>
               <div className="min-w-0 flex-1">
-                <div className="font-medium text-foreground">
-                  {provider.label}
-                </div>
+                <div className="font-medium text-foreground">{row.label}</div>
               </div>
               <div className="flex shrink-0 justify-end">
                 <Button
