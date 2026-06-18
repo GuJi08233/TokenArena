@@ -361,58 +361,63 @@ export async function ingestUsagePayload(input: IngestUsagePayloadInput) {
   const seenAt = new Date();
   const catalog = await getPricingCatalog();
 
-  const result = await prisma.$transaction(async (tx) => {
-    await upsertDevice(tx, {
-      userId: input.userId,
-      apiKeyId: input.apiKeyId,
-      device: input.payload.device,
-      seenAt,
-    });
+  const transactionTimeout = Number(process.env.TRANSACTION_TIMEOUT) || 5000;
 
-    if (input.apiKeyId) {
-      await tx.usageApiKey.update({
-        where: { id: input.apiKeyId },
-        data: { lastUsedAt: seenAt },
-      });
-    }
-
-    const existingSessionStarts = await findExistingSessionStartDates(tx, {
-      userId: input.userId,
-      deviceId: input.payload.device.deviceId,
-      sessions: input.payload.sessions.map((session) => ({
-        source: session.source,
-        sessionHash: session.sessionHash,
-      })),
-    });
-
-    await Promise.all([
-      upsertBuckets(tx, input),
-      upsertSessions(tx, input, catalog),
-    ]);
-
-    const affectedDates = collectAffectedLeaderboardDates({
-      bucketStarts: input.payload.buckets.map((bucket) => bucket.bucketStart),
-      sessionStarts: input.payload.sessions.map(
-        (session) => session.firstMessageAt,
-      ),
-      existingSessionStarts,
-    });
-
-    if (affectedDates.length > 0) {
-      await recomputeLeaderboardUserDays(tx, {
+  const result = await prisma.$transaction(
+    async (tx) => {
+      await upsertDevice(tx, {
         userId: input.userId,
-        dates: affectedDates,
+        apiKeyId: input.apiKeyId,
+        device: input.payload.device,
+        seenAt,
       });
-      await invalidateLeaderboardSnapshots(tx);
-    }
 
-    return {
-      ok: true,
-      bucketCount: input.payload.buckets.length,
-      sessionCount: input.payload.sessions.length,
-      deviceId: input.payload.device.deviceId,
-    };
-  });
+      if (input.apiKeyId) {
+        await tx.usageApiKey.update({
+          where: { id: input.apiKeyId },
+          data: { lastUsedAt: seenAt },
+        });
+      }
+
+      const existingSessionStarts = await findExistingSessionStartDates(tx, {
+        userId: input.userId,
+        deviceId: input.payload.device.deviceId,
+        sessions: input.payload.sessions.map((session) => ({
+          source: session.source,
+          sessionHash: session.sessionHash,
+        })),
+      });
+
+      await Promise.all([
+        upsertBuckets(tx, input),
+        upsertSessions(tx, input, catalog),
+      ]);
+
+      const affectedDates = collectAffectedLeaderboardDates({
+        bucketStarts: input.payload.buckets.map((bucket) => bucket.bucketStart),
+        sessionStarts: input.payload.sessions.map(
+          (session) => session.firstMessageAt,
+        ),
+        existingSessionStarts,
+      });
+
+      if (affectedDates.length > 0) {
+        await recomputeLeaderboardUserDays(tx, {
+          userId: input.userId,
+          dates: affectedDates,
+        });
+        await invalidateLeaderboardSnapshots(tx);
+      }
+
+      return {
+        ok: true,
+        bucketCount: input.payload.buckets.length,
+        sessionCount: input.payload.sessions.length,
+        deviceId: input.payload.device.deviceId,
+      };
+    },
+    { timeout: transactionTimeout },
+  );
 
   await synchronizeAchievementsForUser(input.userId, "ingest");
 
