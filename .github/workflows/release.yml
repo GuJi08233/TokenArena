@@ -14,7 +14,7 @@ permissions: {}
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: poco-ai/tokenarena
+  IMAGE_NAME: guji08233/tokenarena
 
 jobs:
   release:
@@ -35,7 +35,7 @@ jobs:
   publish-cli:
     runs-on: ubuntu-latest
     needs: release
-    if: ${{ needs.release.outputs.release_created == 'true' }}
+    if: ${{ needs.release.outputs.release_created == 'true' && secrets.NPM_TOKEN != '' }}
     permissions:
       contents: read
     steps:
