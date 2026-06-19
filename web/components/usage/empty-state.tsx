@@ -1,13 +1,25 @@
+import { headers } from "next/headers";
 import { getTranslations } from "next-intl/server";
 import type { ReactNode } from "react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  USAGE_EMPTY_INIT_COMMAND,
   USAGE_EMPTY_INSTALL_COMMAND,
+  getApiUrl,
+  getDetailedInitGuide,
 } from "@/lib/usage/usage-empty-guide";
 
 import { UsageEmptyCopyableCommand } from "./usage-empty-copyable-command";
+
+/** Get the current origin from request headers (server-side). */
+async function getRequestOrigin(): Promise<string | undefined> {
+  const headersList = await headers();
+  const host = headersList.get("host");
+  if (!host) return undefined;
+
+  const protocol = headersList.get("x-forwarded-proto") || "https";
+  return `${protocol}://${host}`;
+}
 
 type EmptyStateProps = {
   /** Placed after step 1 copy (e.g. create API key CTA). */
@@ -16,6 +28,9 @@ type EmptyStateProps = {
 
 export async function EmptyState({ step1Action }: EmptyStateProps) {
   const t = await getTranslations("usage.emptyState");
+  const origin = await getRequestOrigin();
+  const apiUrl = getApiUrl(origin);
+  const initGuide = getDetailedInitGuide(apiUrl);
 
   return (
     <Card>
@@ -39,7 +54,7 @@ export async function EmptyState({ step1Action }: EmptyStateProps) {
             {t("step3")}
             <br />
           </li>
-          <UsageEmptyCopyableCommand command={USAGE_EMPTY_INIT_COMMAND} />
+          <UsageEmptyCopyableCommand command={initGuide} />
         </ol>
       </CardContent>
     </Card>
