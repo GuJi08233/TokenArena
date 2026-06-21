@@ -1,4 +1,3 @@
-import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
@@ -9,6 +8,7 @@ import type {
   SessionEvent,
   TokenUsageEntry,
 } from "../domain/types";
+import { readSqliteRows, type SqliteQueryRows } from "../infrastructure/sqlite";
 import { registerParser } from "./registry";
 import type { IParser, ToolDefinition } from "./types";
 
@@ -54,8 +54,6 @@ interface HermesMessageRow {
   timestamp?: unknown;
 }
 
-type SqliteQueryRows = <TRow>(dbPath: string, query: string) => Promise<TRow[]>;
-
 export interface HermesParserOptions {
   dbPath?: string;
   queryRows?: SqliteQueryRows;
@@ -82,128 +80,6 @@ function parseUnixTimestamp(value: unknown): Date | null {
 
   const timestamp = new Date(numberValue * 1000);
   return Number.isNaN(timestamp.getTime()) ? null : timestamp;
-}
-
-function withSuppressedSqliteWarning<T>(fn: () => Promise<T>): Promise<T> {
-  const originalEmitWarning = process.emitWarning;
-
-  process.emitWarning = ((
-    warning: string | Error,
-    ...args: unknown[]
-  ): void => {
-    const warningName =
-      typeof warning === "string"
-        ? typeof args[0] === "string"
-          ? args[0]
-          : ""
-        : warning.name;
-    const warningMessage =
-      typeof warning === "string" ? warning : warning.message;
-
-    if (
-      warningName === "ExperimentalWarning" &&
-      warningMessage.includes("SQLite")
-    ) {
-      return;
-    }
-
-    (
-      originalEmitWarning as (
-        warning: string | Error,
-        ...warningArgs: unknown[]
-      ) => void
-    ).call(process, warning, ...args);
-  }) as typeof process.emitWarning;
-
-  return fn().finally(() => {
-    process.emitWarning = originalEmitWarning;
-  });
-}
-
-async function readSqliteRowsWithBuiltin<TRow>(
-  dbPath: string,
-  query: string,
-): Promise<TRow[] | null> {
-  try {
-    return await withSuppressedSqliteWarning(async () => {
-      const sqliteModuleId = "node:sqlite";
-      const sqlite = (await import(sqliteModuleId)) as {
-        DatabaseSync: new (
-          location: string,
-        ) => {
-          close(): void;
-          prepare(sql: string): {
-            all(): TRow[];
-          };
-        };
-      };
-      const db = new sqlite.DatabaseSync(dbPath);
-
-      try {
-        return db.prepare(query).all() as TRow[];
-      } finally {
-        db.close();
-      }
-    });
-  } catch (err) {
-    const error = err as NodeJS.ErrnoException;
-    const message = (err as Error).message;
-    if (
-      error.code === "ERR_UNKNOWN_BUILTIN_MODULE" ||
-      message.includes("node:sqlite")
-    ) {
-      return null;
-    }
-
-    throw err;
-  }
-}
-
-function readSqliteRowsWithCli<TRow>(dbPath: string, query: string): TRow[] {
-  const candidates = [
-    process.env.TOKEN_ARENA_SQLITE3,
-    "sqlite3",
-    "sqlite3.exe",
-  ].filter((value): value is string => Boolean(value));
-
-  let lastError: Error | null = null;
-
-  for (const command of candidates) {
-    try {
-      const output = execFileSync(command, ["-json", dbPath, query], {
-        encoding: "utf-8",
-        maxBuffer: 100 * 1024 * 1024,
-        timeout: 30000,
-        windowsHide: true,
-      }).trim();
-
-      if (!output || output === "[]") {
-        return [];
-      }
-
-      return JSON.parse(output) as TRow[];
-    } catch (err) {
-      lastError = err as Error;
-      const nodeError = err as NodeJS.ErrnoException & { status?: number };
-      if (nodeError.status === 127 || nodeError.message?.includes("ENOENT")) {
-        continue;
-      }
-
-      throw err;
-    }
-  }
-
-  throw new Error(
-    `sqlite3 CLI not found. Install sqlite3 or set TOKEN_ARENA_SQLITE3 to its full path. Last error: ${lastError?.message || "not found"}`,
-  );
-}
-
-async function readSqliteRows<TRow>(
-  dbPath: string,
-  query: string,
-): Promise<TRow[]> {
-  const builtinRows = await readSqliteRowsWithBuiltin<TRow>(dbPath, query);
-  return builtinRows ?? readSqliteRowsWithCli<TRow>(dbPath, query);
 }
 
 export class HermesParser implements IParser {
