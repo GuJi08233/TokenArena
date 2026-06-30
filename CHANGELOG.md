@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.8.0](https://github.com/GuJi08233/TokenArena/compare/v0.7.1...v0.8.0) (2026-06-30)
+
+
+### Features
+
+* **cli:** support zcode usage parsing ([36e7339](https://github.com/GuJi08233/TokenArena/commit/36e733957a7b761a161736b86968d7533087ae34))
+
+
+### Bug Fixes
+
+* **ci:** correct trivy-action version and fix docker-build digest reference ([a1f01e7](https://github.com/GuJi08233/TokenArena/commit/a1f01e7df59a4e1162be8f19b22778c1e5076a62))
+* **ci:** repair release workflow and deduplicate Docker builds ([3cd6c08](https://github.com/GuJi08233/TokenArena/commit/3cd6c08ad8c9365054495aa94ca7361e8462d942))
+
 ## [0.7.1](https://github.com/GuJi08233/TokenArena/compare/v0.7.0...v0.7.1) (2026-06-30)
 
 
