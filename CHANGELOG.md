@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/GuJi08233/TokenArena/compare/v0.7.0...v0.7.1) (2026-06-30)
+
+
+### Bug Fixes
+
+* **ci:** correct trivy-action version and fix docker-build digest reference ([a1f01e7](https://github.com/GuJi08233/TokenArena/commit/a1f01e7df59a4e1162be8f19b22778c1e5076a62))
+
 ## [0.7.0](https://github.com/GuJi08233/TokenArena/compare/v0.6.2...v0.7.0) (2026-06-30)
 
 
