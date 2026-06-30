@@ -1,6 +1,6 @@
 services:
   web:
-    image: ghcr.io/poco-ai/tokenarena:latest
+    image: ghcr.io/guji08233/tokenarena:latest
     ports:
       - "3000:3000"
     environment:

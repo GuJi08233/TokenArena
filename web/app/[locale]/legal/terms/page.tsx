@@ -178,7 +178,7 @@ export default async function TermsPage({ params }: PageProps) {
         <h2 className="text-xl font-medium">13. 联系我们</h2>
         <p>
           若你对本协议有任何疑问或请求，请通过{" "}
-          <Link href="https://github.com/poco-ai/tokenarena">
+          <Link href="https://github.com/GuJi08233/TokenArena">
             GitHub repository
           </Link>{" "}
           与我们取得联系。
@@ -370,7 +370,7 @@ export default async function TermsPage({ params }: PageProps) {
         <h2 className="text-xl font-medium">13. Contact</h2>
         <p>
           Legal inquiries: via{" "}
-          <Link href="https://github.com/poco-ai/tokenarena">
+          <Link href="https://github.com/GuJi08233/TokenArena">
             GitHub repository
           </Link>
           .

@@ -7,7 +7,7 @@ vi.mock("../infrastructure/config/manager", () => ({
   isValidConfigKey: vi.fn((key: string) =>
     ["apiKey", "apiUrl", "syncInterval", "logLevel", "deviceId"].includes(key),
   ),
-  getDefaultApiUrl: vi.fn(() => "https://token.poco-ai.com"),
+  getDefaultApiUrl: vi.fn(() => "https://token.guji.uno"),
 }));
 
 vi.mock("../infrastructure/ui/prompts", () => ({

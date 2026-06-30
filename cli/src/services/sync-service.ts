@@ -282,7 +282,7 @@ export async function runSync(
       }
     }
 
-    const apiUrl = config.apiUrl || "https://token.poco-ai.com";
+    const apiUrl = config.apiUrl || "https://token.guji.uno";
     const apiClient = new ApiClient(apiUrl, config.apiKey);
 
     let settings: ApiSettings | null;

@@ -19,7 +19,7 @@ import {
   resolveManagedDaemonCommand,
 } from "./utils";
 
-export const MACOS_LAUNCHD_LABEL = "com.poco-ai.tokenarena";
+export const MACOS_LAUNCHD_LABEL = "com.guji.tokenarena";
 
 export interface LaunchdPlistOptions {
   label: string;

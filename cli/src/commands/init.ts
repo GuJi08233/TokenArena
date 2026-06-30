@@ -243,7 +243,7 @@ export async function runInit(opts: InitOptions = {}): Promise<void> {
     logger.info(
       formatKeyValue(
         "当前 API 地址",
-        existing.apiUrl || "https://token.poco-ai.com",
+        existing.apiUrl || "https://token.guji.uno",
       ),
     );
 

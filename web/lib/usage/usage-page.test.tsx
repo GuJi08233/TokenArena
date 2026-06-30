@@ -153,7 +153,7 @@ vi.mock("@/lib/session", () => ({
 }));
 
 vi.mock("@/lib/site-url", () => ({
-  getAppOrigin: () => "https://token.poco-ai.com",
+  getAppOrigin: () => "https://token.guji.uno",
 }));
 
 vi.mock("@/lib/usage/dashboard.server", () => ({
@@ -298,7 +298,7 @@ describe("UsagePage", () => {
       expect.objectContaining({
         username: "test_user",
         publicProfileEnabled: true,
-        appUrl: "https://token.poco-ai.com",
+        appUrl: "https://token.guji.uno",
       }),
       undefined,
     );
@@ -323,7 +323,7 @@ describe("UsagePage", () => {
     expect(mocks.ProfileHeatmapMarkdownButton).toHaveBeenCalledWith(
       expect.objectContaining({
         markdown:
-          "![TokenArena Activity](https://token.poco-ai.com/en/u/test_user/activity.svg)",
+          "![TokenArena Activity](https://token.guji.uno/en/u/test_user/activity.svg)",
       }),
       undefined,
     );

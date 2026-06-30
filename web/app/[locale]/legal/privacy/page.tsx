@@ -149,7 +149,7 @@ export default async function PrivacyPage({ params }: PageProps) {
         </p>
         <p>
           你可以通过{" "}
-          <Link href="https://github.com/poco-ai/tokenarena">
+          <Link href="https://github.com/GuJi08233/TokenArena">
             GitHub repository
           </Link>{" "}
           与我们取得联系。
@@ -187,7 +187,7 @@ export default async function PrivacyPage({ params }: PageProps) {
         <h2 className="text-xl font-medium">16. 联系我们</h2>
         <p>
           隐私相关联系渠道：请通过{" "}
-          <Link href="https://github.com/poco-ai/tokenarena">
+          <Link href="https://github.com/GuJi08233/TokenArena">
             GitHub repository
           </Link>{" "}
           与我们取得联系。
@@ -339,7 +339,7 @@ export default async function PrivacyPage({ params }: PageProps) {
         </p>
         <p>
           To exercise your rights, contact us via{" "}
-          <Link href="https://github.com/poco-ai/tokenarena">
+          <Link href="https://github.com/GuJi08233/TokenArena">
             GitHub repository
           </Link>
           .
@@ -389,7 +389,7 @@ export default async function PrivacyPage({ params }: PageProps) {
         <h2 className="text-xl font-medium">16. Contact</h2>
         <p>
           Privacy contact: via{" "}
-          <Link href="https://github.com/poco-ai/tokenarena">
+          <Link href="https://github.com/GuJi08233/TokenArena">
             GitHub repository
           </Link>
           .

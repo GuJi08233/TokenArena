@@ -4,12 +4,12 @@
  * URL resolution priority:
  * 1. Environment variable `NEXT_PUBLIC_APP_ORIGIN` (via getAppOrigin)
  * 2. Dynamic detection from request headers (server-side)
- * 3. Fallback to default: https://token.poco-ai.com
+ * 3. Fallback to default: https://token.guji.uno
  */
 
 import { getAppOrigin } from "@/lib/site-url";
 
-const DEFAULT_API_URL = "https://token.poco-ai.com";
+const DEFAULT_API_URL = "https://token.guji.uno";
 
 /** Normalize URL by removing trailing slash. */
 function normalizeUrl(url: string): string {
@@ -28,7 +28,8 @@ export function getApiUrl(origin?: string): string {
 }
 
 /** npm install command */
-export const USAGE_EMPTY_INSTALL_COMMAND = "npm install -g @poco-ai/tokenarena";
+export const USAGE_EMPTY_INSTALL_COMMAND =
+  "npm install -g @yishiguji/tokenarena";
 
 /**
  * Generate init command with API URL.
@@ -52,4 +53,6 @@ tokenarena init`;
 }
 
 /** Default init command for backward compatibility. */
-export const USAGE_EMPTY_INIT_COMMAND = getInitCommand(getAppOrigin() || DEFAULT_API_URL);
+export const USAGE_EMPTY_INIT_COMMAND = getInitCommand(
+  getAppOrigin() || DEFAULT_API_URL,
+);

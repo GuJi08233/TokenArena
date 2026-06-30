@@ -1,6 +1,6 @@
-[![tokenarena](assets/banner.png)](https://token.poco-ai.com)
+[![tokenarena](assets/banner.png)](https://token.guji.uno)
 
-[![Docker Image](https://img.shields.io/badge/Docker%20Image-tokenarena%3Alatest-blue?logo=docker&logoColor=white)](https://github.com/poco-ai/tokenarena/pkgs/container/tokenarena) [![pnpm](https://img.shields.io/badge/pnpm-monorepo-blue?logo=pnpm)](https://pnpm.io/) [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square)](https://github.com/poco-ai/tokenarena/pulls) [![License](https://img.shields.io/github/license/poco-ai/tokenarena)](LICENSE) [![React Doctor](https://www.react.doctor/share/badge?p=web&s=93&e=0&w=21&f=18)](https://www.react.doctor/share?p=web&s=93&e=0&w=21&f=18)
+[![Docker Image](https://img.shields.io/badge/Docker%20Image-tokenarena%3Alatest-blue?logo=docker&logoColor=white)](https://github.com/GuJi08233/TokenArena/pkgs/container/tokenarena) [![pnpm](https://img.shields.io/badge/pnpm-monorepo-blue?logo=pnpm)](https://pnpm.io/) [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square)](https://github.com/GuJi08233/TokenArena/pulls) [![License](https://img.shields.io/github/license/GuJi08233/TokenArena)](LICENSE) [![React Doctor](https://www.react.doctor/share/badge?p=web&s=93&e=0&w=22&f=19)](https://www.react.doctor/share?p=web&s=93&e=0&w=22&f=19)
 
 你有没有好奇过：
 
@@ -27,14 +27,14 @@
 
 ## Quick Start
 
-1. **注册账号** — 访问 [Token Arena](https://token.poco-ai.com) 注册并登录
-2. **创建 API Key** — 在 [Settings](https://token.poco-ai.com/zh/settings/cli-keys) 中生成 API key
+1. **注册账号** — 访问 [Token Arena](https://token.guji.uno) 注册并登录
+2. **创建 API Key** — 在 [Settings](https://token.guji.uno/zh/settings/cli-keys) 中生成 API key
 3. **下载**
     ```shell
-    npm install -g @poco-ai/tokenarena
+    npm install -g @yishiguji/tokenarena
     ```
 4. **初始化 CLI** — 运行 `tokenarena init`，输入 API key
-5. **查看分析** — 打开 [Usage](https://token.poco-ai.com/zh/usage) 页面查看你的 token 用量分析
+5. **查看分析** — 打开 [Usage](https://token.guji.uno/zh/usage) 页面查看你的 token 用量分析
 
 > [!TIP]
 >
@@ -56,7 +56,7 @@ tokenarena service uninstall  # 卸载服务
 > [!NOTE]
 > `service` 仅在 Linux / macOS 上可用，无需 root 权限。
 > - Linux 使用用户级 `systemd` 单元：`~/.config/systemd/user/tokenarena.service`
-> - macOS 使用用户级 `launchd` Agent：`~/Library/LaunchAgents/com.poco-ai.tokenarena.plist`
+> - macOS 使用用户级 `launchd` Agent：`~/Library/LaunchAgents/com.guji.tokenarena.plist`
 > `tokenarena init` 在支持的环境中会自动询问是否设置此服务。
 
 ## 本地部署
@@ -64,14 +64,14 @@ tokenarena service uninstall  # 卸载服务
 ### Docker 部署（推荐）
 
 ```bash
-git clone https://github.com/poco-ai/tokenarena.git
+git clone https://github.com/GuJi08233/TokenArena.git
 cd tokenarena
 chmod +x start.sh
 ./start.sh
 ```
 
 ```powershell
-git clone https://github.com/poco-ai/tokenarena.git
+git clone https://github.com/GuJi08233/TokenArena.git
 cd tokenarena
 .\start.ps1
 # or: .\start.cmd
@@ -94,7 +94,7 @@ docker compose down -v           # 停止并删除数据
 
 ### 本地开发
 
-[![CI](https://github.com/poco-ai/tokenarena/actions/workflows/ci.yml/badge.svg)](https://github.com/poco-ai/tokenarena/actions/workflows/ci.yml) [![Release](https://github.com/poco-ai/tokenarena/actions/workflows/release.yml/badge.svg)](https://github.com/poco-ai/tokenarena/actions/workflows/release.yml) [![Coverage](https://codecov.io/gh/poco-ai/tokenarena/branch/main/graph/badge.svg)](https://codecov.io/gh/poco-ai/tokenarena) [![CodeQL](https://github.com/poco-ai/tokenarena/actions/workflows/codeql.yml/badge.svg)](https://github.com/poco-ai/tokenarena/actions/workflows/codeql.yml)
+[![CI](https://github.com/GuJi08233/TokenArena/actions/workflows/ci.yml/badge.svg)](https://github.com/GuJi08233/TokenArena/actions/workflows/ci.yml) [![Release](https://github.com/GuJi08233/TokenArena/actions/workflows/release.yml/badge.svg)](https://github.com/GuJi08233/TokenArena/actions/workflows/release.yml) [![Coverage](https://codecov.io/gh/GuJi08233/TokenArena/branch/main/graph/badge.svg)](https://codecov.io/gh/GuJi08233/TokenArena) [![CodeQL](https://github.com/GuJi08233/TokenArena/actions/workflows/codeql.yml/badge.svg)](https://github.com/GuJi08233/TokenArena/actions/workflows/codeql.yml)
 
 ```bash
 pnpm install

@@ -76,7 +76,7 @@ export async function runStatus(
     logger.info(formatKeyValue("配置文件", getConfigPath()));
     logger.info(formatKeyValue("API Key", maskSecret(config.apiKey)));
     logger.info(
-      formatKeyValue("API URL", config.apiUrl || "https://token.poco-ai.com"),
+      formatKeyValue("API URL", config.apiUrl || "https://token.guji.uno"),
     );
     if (config.syncInterval) {
       logger.info(

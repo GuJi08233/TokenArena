@@ -38,10 +38,10 @@ describe("buildLaunchdPlist", () => {
 describe("launchd path helpers", () => {
   it("builds the expected agent file and service target", () => {
     expect(getMacosLaunchAgentFile("/Users/tester")).toBe(
-      "/Users/tester/Library/LaunchAgents/com.poco-ai.tokenarena.plist",
+      "/Users/tester/Library/LaunchAgents/com.guji.tokenarena.plist",
     );
     expect(getMacosLaunchdServiceTarget(501)).toBe(
-      "gui/501/com.poco-ai.tokenarena",
+      "gui/501/com.guji.tokenarena",
     );
     expect(
       getMacosLaunchdLogPaths("/Users/tester/.local/state/tokenarena"),

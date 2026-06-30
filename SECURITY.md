@@ -15,7 +15,7 @@ TokenArena is in active beta. Security fixes are applied only to the `main` bran
 
 Instead, use one of the following methods:
 
-- **GitHub Security Advisories** (preferred): Go to [github.com/poco-ai/TokenArena/security/advisories/new](https://github.com/poco-ai/TokenArena/security/advisories/new) and submit a private security advisory.
+- **GitHub Security Advisories** (preferred): Go to [github.com/GuJi08233/TokenArena/security/advisories/new](https://github.com/GuJi08233/TokenArena/security/advisories/new) and submit a private security advisory.
 - **Email**: Send a report to the maintainers. Include a clear description of the vulnerability, affected versions, steps to reproduce, and potential impact.
 
 ### What to include

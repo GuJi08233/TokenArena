@@ -77,7 +77,7 @@ describe("config/manager", () => {
     it("returns default when env not set", async () => {
       delete process.env.TOKEN_ARENA_API_URL;
       const { getDefaultApiUrl } = await importManager();
-      expect(getDefaultApiUrl()).toBe("https://token.poco-ai.com");
+      expect(getDefaultApiUrl()).toBe("https://token.guji.uno");
     });
 
     it("returns env var when set", async () => {
@@ -119,7 +119,7 @@ describe("config/manager", () => {
       const { saveConfig, loadConfig } = await importManager();
       saveConfig({ apiKey: "ta_test", apiUrl: "" });
       const loaded = loadConfig();
-      expect(loaded?.apiUrl).toBe("https://token.poco-ai.com");
+      expect(loaded?.apiUrl).toBe("https://token.guji.uno");
     });
 
     it("loadConfig returns null on invalid JSON", async () => {

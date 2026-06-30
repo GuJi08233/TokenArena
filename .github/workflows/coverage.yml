@@ -106,7 +106,7 @@ jobs:
           flags: cli
           fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
-          slug: poco-ai/tokenarena
+          slug: GuJi08233/TokenArena
 
       - name: Upload web coverage to Codecov
         uses: codecov/codecov-action@v5
@@ -115,4 +115,4 @@ jobs:
           flags: web
           fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
-          slug: poco-ai/tokenarena
+          slug: GuJi08233/TokenArena

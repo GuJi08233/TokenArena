@@ -4,9 +4,9 @@ import type { ReactNode } from "react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  USAGE_EMPTY_INSTALL_COMMAND,
   getApiUrl,
   getDetailedInitGuide,
+  USAGE_EMPTY_INSTALL_COMMAND,
 } from "@/lib/usage/usage-empty-guide";
 
 import { UsageEmptyCopyableCommand } from "./usage-empty-copyable-command";

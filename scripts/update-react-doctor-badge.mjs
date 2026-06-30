@@ -8,6 +8,9 @@ function run(command, args, options = {}) {
   return spawnSync(command, args, {
     encoding: "utf8",
     stdio: options.stdio ?? "pipe",
+    // On Windows, executables like `pnpm` resolve to `pnpm.cmd`, which Node's
+    // spawnSync cannot launch without a shell (it returns ENOENT otherwise).
+    shell: process.platform === "win32",
     env: { ...process.env, NO_COLOR: "1", ...options.env },
   });
 }

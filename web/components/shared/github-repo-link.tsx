@@ -4,7 +4,7 @@ import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { FOOTER_ICON_BUTTON_CLASS } from "@/lib/utils";
 
-const REPO_URL = "https://github.com/poco-ai/tokenarena";
+const REPO_URL = "https://github.com/GuJi08233/TokenArena";
 
 /** GitHub mark — lucide-react@1.0.1 in this repo does not ship a `Github` export. */
 function GitHubIcon({ className }: { className?: string }) {
