@@ -16,6 +16,7 @@ import "./parsers/qwenpaw.js";
 import "./parsers/cline.js";
 import "./parsers/kiro.js";
 import "./parsers/roo-code.js";
+import "./parsers/snow.js";
 import "./parsers/cursor.js";
 import "./parsers/zcode.js";
 
