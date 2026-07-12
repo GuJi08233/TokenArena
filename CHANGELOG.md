@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.1](https://github.com/GuJi08233/TokenArena/compare/v0.8.0...v0.8.1) (2026-07-12)
+
+
+### Bug Fixes
+
+* **docker:** update node:22-alpine to 22.17 to fix Trivy CRITICAL vulnerabilities ([1302274](https://github.com/GuJi08233/TokenArena/commit/13022744a97f1b1d17cff79f6a06dae7a44b63e5))
+
 ## [0.8.0](https://github.com/GuJi08233/TokenArena/compare/v0.7.1...v0.8.0) (2026-07-12)
 
 
