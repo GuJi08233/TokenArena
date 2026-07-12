@@ -12,7 +12,7 @@ export function isCommandAvailable(command: string): boolean {
   try {
     const check =
       platform() === "win32" ? `where ${command}` : `command -v ${command}`;
-    execSync(check, { stdio: "ignore" });
+    execSync(check, { stdio: "ignore", timeout: 5000 });
     return true;
   } catch {
     return false;
