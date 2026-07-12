@@ -1,6 +1,6 @@
 [![tokenarena](assets/banner.png)](https://token.guji.uno)
 
-[![Docker Image](https://img.shields.io/badge/Docker%20Image-tokenarena%3Alatest-blue?logo=docker&logoColor=white)](https://github.com/GuJi08233/TokenArena/pkgs/container/tokenarena) [![pnpm](https://img.shields.io/badge/pnpm-monorepo-blue?logo=pnpm)](https://pnpm.io/) [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square)](https://github.com/GuJi08233/TokenArena/pulls) [![License](https://img.shields.io/github/license/GuJi08233/TokenArena)](LICENSE) [![React Doctor](https://www.react.doctor/share/badge?p=web&s=93&e=0&w=22&f=19)](https://www.react.doctor/share?p=web&s=93&e=0&w=22&f=19)
+[![Docker Image](https://img.shields.io/badge/Docker%20Image-tokenarena%3Alatest-blue?logo=docker&logoColor=white)](https://github.com/GuJi08233/TokenArena/pkgs/container/tokenarena) [![pnpm](https://img.shields.io/badge/pnpm-monorepo-blue?logo=pnpm)](https://pnpm.io/) [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square)](https://github.com/GuJi08233/TokenArena/pulls) [![License](https://img.shields.io/github/license/GuJi08233/TokenArena)](LICENSE) [![React Doctor](https://www.react.doctor/share/badge?p=web&s=92&e=0&w=24&f=20)](https://www.react.doctor/share?p=web&s=92&e=0&w=24&f=20)
 
 你有没有好奇过：
 
