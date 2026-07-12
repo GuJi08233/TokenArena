@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.5](https://github.com/GuJi08233/TokenArena/compare/v0.8.4...v0.8.5) (2026-07-12)
+
+
+### Bug Fixes
+
+* **ci:** change Trivy exit-code to 0 to allow publishing with upstream CVEs ([d3d098b](https://github.com/GuJi08233/TokenArena/commit/d3d098b2fbea3c81b20015fcd91c008c0d54e589))
+
 ## [0.8.4](https://github.com/GuJi08233/TokenArena/compare/v0.8.3...v0.8.4) (2026-07-12)
 
 
