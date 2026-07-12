@@ -1,0 +1,5 @@
+# Ignore known vulnerabilities in Alpine base image
+# These are upstream issues that cannot be fixed in our Dockerfile
+
+# Alpine 3.21/3.22 CVEs - upstream issues
+# Add specific CVE IDs here when known vulnerabilities are found
