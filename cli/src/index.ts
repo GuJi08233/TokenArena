@@ -4,6 +4,7 @@ import "./parsers/codex.js";
 import "./parsers/gsd.js";
 import "./parsers/gemini-cli.js";
 import "./parsers/hermes.js";
+import "./parsers/mimocode.js";
 import "./parsers/copilot-cli.js";
 import "./parsers/oh-my-pi.js";
 import "./parsers/opencode.js";
