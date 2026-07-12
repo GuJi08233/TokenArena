@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.3](https://github.com/GuJi08233/TokenArena/compare/v0.8.2...v0.8.3) (2026-07-12)
+
+
+### Bug Fixes
+
+* **docker:** revert to node:22-alpine and add .trivyignore for upstream CVEs ([6888bd1](https://github.com/GuJi08233/TokenArena/commit/6888bd139327a01c42bb3f27956866d75503d9e4))
+
 ## [0.8.2](https://github.com/GuJi08233/TokenArena/compare/v0.8.1...v0.8.2) (2026-07-12)
 
 
