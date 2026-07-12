@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.8.0](https://github.com/GuJi08233/TokenArena/compare/v0.7.1...v0.8.0) (2026-07-12)
+
+
+### Features
+
+* **cli:** add MiMoCode parser for token usage tracking ([df8cdba](https://github.com/GuJi08233/TokenArena/commit/df8cdba983fa941f7a4f3414a50c0e9774d058d0))
+* **cli:** add Snow CLI usage parser ([14ea9cc](https://github.com/GuJi08233/TokenArena/commit/14ea9cc7f5944cad3e56dd68994355caf484a647))
+* **cli:** support zcode usage parsing ([36e7339](https://github.com/GuJi08233/TokenArena/commit/36e733957a7b761a161736b86968d7533087ae34))
+
+
+### Bug Fixes
+
+* **ci:** correct trivy-action version and fix docker-build digest reference ([a1f01e7](https://github.com/GuJi08233/TokenArena/commit/a1f01e7df59a4e1162be8f19b22778c1e5076a62))
+* **ci:** only block on CRITICAL vulnerabilities in Trivy scan ([f1ed41b](https://github.com/GuJi08233/TokenArena/commit/f1ed41beba5c8213dd06423c13a78719e5b878ee))
+* **ci:** repair release workflow and deduplicate Docker builds ([3cd6c08](https://github.com/GuJi08233/TokenArena/commit/3cd6c08ad8c9365054495aa94ca7361e8462d942))
+* **cli:** use 'node' command in test to fix Windows CI timeout ([c03edd1](https://github.com/GuJi08233/TokenArena/commit/c03edd1bd890b9113388a5063fa7db8e96af88af))
+
 ## [0.7.1](https://github.com/GuJi08233/TokenArena/compare/v0.7.0...v0.7.1) (2026-06-30)
 
 
