@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.4](https://github.com/GuJi08233/TokenArena/compare/v0.8.3...v0.8.4) (2026-07-12)
+
+
+### Bug Fixes
+
+* **cli:** add timeout to isCommandAvailable to fix Windows CI timeout ([817d109](https://github.com/GuJi08233/TokenArena/commit/817d1096899aee310a6daa00098cdcb06234ba86))
+
 ## [0.8.3](https://github.com/GuJi08233/TokenArena/compare/v0.8.2...v0.8.3) (2026-07-12)
 
 
