@@ -178,7 +178,7 @@ function loadProjectMap(configPath: string): Map<string, string> {
       >;
       projects?: Record<
         string,
-        string | { root?: string; path?: string; dir?: string }
+        string | { root?: string; path?: string; dir?: string; name?: string }
       >;
     };
 
