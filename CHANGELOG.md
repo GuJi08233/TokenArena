@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.6](https://github.com/GuJi08233/TokenArena/compare/v0.8.5...v0.8.6) (2026-07-16)
+
+
+### Bug Fixes
+
+* **cli:** add name field to projects type in KimiCodeParser ([fc524ef](https://github.com/GuJi08233/TokenArena/commit/fc524ef440643aa78e26bfa4c7d5423e8ee649f5))
+* **cli:** update Kimi Code parser for new directory structure ([9bb68a2](https://github.com/GuJi08233/TokenArena/commit/9bb68a28ac6f7ca2b5b6ecea965c8f01659bf222))
+
 ## [0.8.5](https://github.com/GuJi08233/TokenArena/compare/v0.8.4...v0.8.5) (2026-07-12)
 
 
