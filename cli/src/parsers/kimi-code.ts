@@ -14,10 +14,15 @@ import type { IParser, ToolDefinition } from "./types";
 
 const TOOL_ID = "kimi-code";
 const TOOL_NAME = "Kimi Code";
-const DEFAULT_SESSIONS_DIR = join(homedir(), ".kimi", "sessions");
-const DEFAULT_CONFIG_PATH = join(homedir(), ".kimi", "kimi.json");
+const DEFAULT_SESSIONS_DIR = join(homedir(), ".kimi-code", "sessions");
+const DEFAULT_CONFIG_PATH = join(homedir(), ".kimi-code", "workspaces.json");
 
-const USER_EVENT_TYPES = new Set(["UserMessage", "user_message", "Input"]);
+const USER_EVENT_TYPES = new Set([
+  "UserMessage",
+  "user_message",
+  "Input",
+  "turn.prompt",
+]);
 const ASSISTANT_EVENT_TYPES = new Set([
   "AssistantMessage",
   "assistant_message",
@@ -31,6 +36,10 @@ interface KimiTokenUsage {
   output?: unknown;
   input_cache_read?: unknown;
   input_cache_creation?: unknown;
+  // New format field names
+  inputOther?: unknown;
+  inputCacheRead?: unknown;
+  inputCacheCreation?: unknown;
 }
 
 interface KimiPayload {
@@ -44,7 +53,12 @@ interface KimiPayload {
 interface KimiEvent {
   type?: string;
   timestamp?: string | number;
+  time?: number; // Unix timestamp in milliseconds for usage.record
   payload?: KimiPayload;
+  // New format fields for usage.record
+  model?: string;
+  usage?: KimiTokenUsage;
+  usageScope?: string;
 }
 
 export interface KimiCodeParserOptions {
@@ -88,9 +102,26 @@ function findWireFiles(
         })) {
           if (!session.isDirectory()) continue;
 
-          const wireFile = join(workDirPath, session.name, "wire.jsonl");
-          if (existsSync(wireFile)) {
-            results.push({ filePath: wireFile, workDirHash: workDir.name });
+          // New structure: agents/main/wire.jsonl
+          const newWireFile = join(
+            workDirPath,
+            session.name,
+            "agents",
+            "main",
+            "wire.jsonl",
+          );
+          if (existsSync(newWireFile)) {
+            results.push({ filePath: newWireFile, workDirHash: workDir.name });
+            continue;
+          }
+
+          // Legacy structure: wire.jsonl directly in session dir
+          const legacyWireFile = join(workDirPath, session.name, "wire.jsonl");
+          if (existsSync(legacyWireFile)) {
+            results.push({
+              filePath: legacyWireFile,
+              workDirHash: workDir.name,
+            });
           }
         }
       } catch {
@@ -140,17 +171,34 @@ function loadProjectMap(configPath: string): Map<string, string> {
 
   try {
     const config = JSON.parse(content) as {
-      workspaces?: Record<string, string | { path?: string; dir?: string }>;
-      projects?: Record<string, string | { path?: string; dir?: string }>;
+      version?: number;
+      workspaces?: Record<
+        string,
+        string | { root?: string; path?: string; dir?: string; name?: string }
+      >;
+      projects?: Record<
+        string,
+        string | { root?: string; path?: string; dir?: string }
+      >;
     };
 
+    // New format: workspaces.json with { root, name }
     const workspaces = config.workspaces || config.projects || {};
     for (const [hash, info] of Object.entries(workspaces)) {
-      const pathValue =
-        typeof info === "string" ? info : info.path || info.dir || undefined;
+      let pathValue: string | undefined;
+      if (typeof info === "string") {
+        pathValue = info;
+      } else {
+        pathValue = info.root || info.path || info.dir || undefined;
+      }
       if (!pathValue) continue;
 
-      projectMap.set(hash, getPathLeaf(pathValue));
+      // Use name field if available, otherwise extract from path
+      const name =
+        typeof info === "object" && info.name
+          ? info.name
+          : getPathLeaf(pathValue);
+      projectMap.set(hash, name);
     }
   } catch {
     // Ignore unreadable config and fall back to work-dir hashes.
@@ -200,6 +248,50 @@ export class KimiCodeParser implements IParser {
           continue;
         }
 
+        // Handle new format: usage.record (no payload, uses top-level time)
+        if (obj.type === "usage.record") {
+          const timestampValue = obj.time;
+          const timestamp = timestampValue ? new Date(timestampValue) : null;
+          if (!timestamp || Number.isNaN(timestamp.getTime())) continue;
+
+          const usage = obj.usage;
+          if (!usage) continue;
+
+          const inputTokens = toSafeNumber(
+            usage.input_other ?? usage.inputOther,
+          );
+          const outputTokens = toSafeNumber(usage.output);
+          const cachedTokens = toSafeNumber(
+            usage.input_cache_read ?? usage.inputCacheRead,
+          );
+
+          if (inputTokens === 0 && outputTokens === 0 && cachedTokens === 0) {
+            continue;
+          }
+
+          sessionEvents.push({
+            sessionId,
+            source: TOOL_ID,
+            project,
+            timestamp,
+            role: "assistant",
+          });
+
+          entries.push({
+            sessionId,
+            source: TOOL_ID,
+            model: obj.model || currentModel,
+            project,
+            timestamp,
+            inputTokens,
+            outputTokens,
+            reasoningTokens: 0,
+            cachedTokens,
+          });
+          continue;
+        }
+
+        // Handle legacy format with payload
         const payload = obj.payload;
         if (!payload) continue;
 
@@ -227,6 +319,7 @@ export class KimiCodeParser implements IParser {
           });
         }
 
+        // Handle legacy format: StatusUpdate
         if (obj.type !== "StatusUpdate") continue;
 
         const tokenUsage = payload.token_usage;
