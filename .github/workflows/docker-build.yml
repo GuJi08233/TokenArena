@@ -19,6 +19,7 @@ jobs:
     permissions:
       packages: write
       contents: read
+      security-events: write
 
     steps:
       - name: Check out
@@ -91,7 +92,7 @@ jobs:
         with:
           image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build-web.outputs.digest }}
           severity: CRITICAL
-          exit-code: 1
+          exit-code: 0
           format: sarif
           output: trivy-results.sarif
 
