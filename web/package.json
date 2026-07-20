@@ -6,7 +6,7 @@
     "predev": "prisma generate",
     "dev": "next dev",
     "prebuild": "prisma generate",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start",
     "pretest": "prisma generate",
     "test": "vitest run",
