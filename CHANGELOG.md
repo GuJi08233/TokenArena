@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.7](https://github.com/GuJi08233/TokenArena/compare/v0.8.6...v0.8.7) (2026-07-20)
+
+
+### Performance Improvements
+
+* **web:** reduce Docker image size and runtime memory usage ([7d14d7a](https://github.com/GuJi08233/TokenArena/commit/7d14d7a4c2e56a76e0dcb9c43e03cbf030d212fa))
+
 ## [0.8.6](https://github.com/GuJi08233/TokenArena/compare/v0.8.5...v0.8.6) (2026-07-16)
 
 
