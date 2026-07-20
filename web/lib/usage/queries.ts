@@ -76,6 +76,7 @@ async function loadBuckets(input: {
       input.filters,
     ),
     orderBy: { bucketStart: "asc" },
+    take: 10_000,
   });
 
   return rows.map((bucket) => ({
@@ -105,6 +106,7 @@ async function loadSessions(input: {
       input.filters,
     ),
     orderBy: { firstMessageAt: "asc" },
+    take: 5_000,
   });
 }
 

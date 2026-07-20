@@ -41,7 +41,24 @@ ENV DATABASE_URL=postgresql://build:build@localhost:5432/build
 WORKDIR /app/web
 RUN pnpm build
 
-# Stage 3: Production runner
+# Stage 3: Database migration runner (lightweight, only Prisma CLI)
+FROM node:22-alpine AS migrate
+WORKDIR /app
+
+RUN npm install -g pnpm@10.32.1
+
+# Copy only what Prisma migrate needs
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/web/node_modules ./web/node_modules
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY --from=builder /app/web/package.json ./web/package.json
+COPY --from=builder /app/web/prisma ./web/prisma
+COPY --from=builder /app/web/prisma.config.ts ./web/prisma.config.ts
+
+WORKDIR /app/web
+CMD ["npx", "prisma", "migrate", "deploy"]
+
+# Stage 4: Production runner (minimal, standalone only)
 FROM node:22-alpine AS runner
 WORKDIR /app
 
@@ -49,31 +66,17 @@ ARG NEXT_PUBLIC_APP_VERSION=dev
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NEXT_PUBLIC_APP_VERSION=$NEXT_PUBLIC_APP_VERSION
+ENV NODE_OPTIONS="--max-old-space-size=512"
 
 # Create non-root user
 RUN addgroup --system --gid 1001 nodejs \
     && adduser --system --uid 1001 nextjs
 
-# Copy pnpm-installed dependencies so Prisma CLI is available at runtime
-COPY --from=deps --chown=nextjs:nodejs /app/node_modules ./node_modules
-COPY --from=deps --chown=nextjs:nodejs /app/web/node_modules ./web/node_modules
-
-# Copy standalone server output
+# Copy standalone server output (includes minimal node_modules)
 COPY --from=builder --chown=nextjs:nodejs /app/web/.next/standalone ./
 # Next serves static assets relative to /app/web/server.js inside standalone
 COPY --from=builder --chown=nextjs:nodejs /app/web/.next/static ./web/.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/web/public ./web/public
-
-# Copy Prisma schema, migrations, and config for migrate deploy
-COPY --from=builder --chown=nextjs:nodejs /app/web/package.json ./web/package.json
-COPY --from=builder --chown=nextjs:nodejs /app/web/prisma ./web/prisma
-COPY --from=builder --chown=nextjs:nodejs /app/web/prisma.config.ts ./web/prisma.config.ts
-
-# Copy Prisma generated client
-COPY --from=builder --chown=nextjs:nodejs /app/web/generated ./generated
-
-COPY --chown=nextjs:nodejs web/docker-entrypoint.sh ./docker-entrypoint.sh
-RUN chmod +x ./docker-entrypoint.sh
 
 USER nextjs
 
@@ -81,6 +84,5 @@ EXPOSE 3000
 
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
-ENV RUN_DB_MIGRATIONS=1
 
-CMD ["./docker-entrypoint.sh"]
+CMD ["node", "web/server.js"]
