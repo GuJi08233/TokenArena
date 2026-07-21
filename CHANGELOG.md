@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.8.8](https://github.com/GuJi08233/TokenArena/compare/v0.8.7...v0.8.8) (2026-07-21)
+
+
+### Bug Fixes
+
+* **ci:** allow Trivy scan to pass with upstream CVEs and add security-events permission ([ca328a1](https://github.com/GuJi08233/TokenArena/commit/ca328a188b7e54db4010113650af31907467155b))
+
+
+### Performance Improvements
+
+* reduce runtime memory pressure ([ed24276](https://github.com/GuJi08233/TokenArena/commit/ed24276081846f30c19346d4544fb82464d34690))
+* **web:** use webpack for production build to reduce runtime memory ([1e3f769](https://github.com/GuJi08233/TokenArena/commit/1e3f769eb04b11d3366734e86be6fc22dc7725d2))
+
 ## [0.8.7](https://github.com/GuJi08233/TokenArena/compare/v0.8.6...v0.8.7) (2026-07-20)
 
 
