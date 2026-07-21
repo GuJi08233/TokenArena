@@ -14,6 +14,13 @@ const dashboardPresetSchema = z.enum(dashboardPresets);
 const localeSchema = z.enum(supportedLocales);
 const themeModeSchema = z.enum(themeModes);
 
+// Keep these limits aligned with the CLI upload batches. Apart from protecting
+// the database transaction, the bounds prevent a single request from creating
+// an unnecessarily large set of Prisma query objects in memory.
+export const INGEST_MAX_BUCKETS = 100;
+export const INGEST_MAX_SESSIONS = 500;
+export const INGEST_MAX_PAYLOAD_BYTES = 8 * 1024 * 1024;
+
 export function isValidTimezone(timezone: string): boolean {
   try {
     Intl.DateTimeFormat(undefined, { timeZone: timezone });
@@ -106,8 +113,21 @@ export const ingestRequestSchema = z.object({
     deviceId: z.string().min(8),
     hostname: z.string().min(1),
   }),
-  buckets: z.array(ingestBucketSchema),
-  sessions: z.array(ingestSessionSchema),
+  buckets: z
+    .array(ingestBucketSchema)
+    .max(
+      INGEST_MAX_BUCKETS,
+      `A maximum of ${INGEST_MAX_BUCKETS} buckets is allowed.`,
+    ),
+  sessions: z
+    .array(ingestSessionSchema)
+    .max(
+      INGEST_MAX_SESSIONS,
+      `A maximum of ${INGEST_MAX_SESSIONS} sessions is allowed.`,
+    ),
+  // Multi-batch clients can defer the expensive full-user achievement scan
+  // until their final batch. Direct API callers retain the old behavior.
+  syncAchievements: z.boolean().default(true),
 });
 
 export const dashboardQuerySchema = z

@@ -2,9 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   findUnique: vi.fn(),
-  findManyBuckets: vi.fn(),
+  groupByBuckets: vi.fn(),
   aggregateSessions: vi.fn(),
   findManySessions: vi.fn(),
+  findManyLeaderboardDays: vi.fn(),
   getPricingCatalog: vi.fn(),
   resolveOfficialPricingMatch: vi.fn(),
   estimateCostUsd: vi.fn(),
@@ -16,11 +17,14 @@ vi.mock("@/lib/prisma", () => ({
       findUnique: mocks.findUnique,
     },
     usageBucket: {
-      findMany: mocks.findManyBuckets,
+      groupBy: mocks.groupByBuckets,
     },
     usageSession: {
       aggregate: mocks.aggregateSessions,
       findMany: mocks.findManySessions,
+    },
+    leaderboardUserDay: {
+      findMany: mocks.findManyLeaderboardDays,
     },
   },
 }));
@@ -59,26 +63,35 @@ describe("social badges", () => {
       },
     });
     mocks.getPricingCatalog.mockResolvedValue({});
-    mocks.findManyBuckets.mockResolvedValue([
-      {
-        bucketStart: new Date("2026-04-01T12:00:00.000Z"),
-        totalTokens: BigInt(1000),
-        model: "gpt-x",
-        inputTokens: BigInt(600),
-        outputTokens: BigInt(300),
-        reasoningTokens: BigInt(50),
-        cachedTokens: BigInt(50),
-      },
-      {
-        bucketStart: new Date("2026-04-02T12:00:00.000Z"),
-        totalTokens: BigInt(500),
-        model: "gpt-x",
-        inputTokens: BigInt(250),
-        outputTokens: BigInt(200),
-        reasoningTokens: BigInt(25),
-        cachedTokens: BigInt(25),
-      },
-    ]);
+    mocks.groupByBuckets.mockImplementation(({ by }: { by: string[] }) =>
+      by[0] === "model"
+        ? Promise.resolve([
+            {
+              model: "gpt-x",
+              _sum: {
+                totalTokens: BigInt(1000),
+                inputTokens: BigInt(600),
+                outputTokens: BigInt(300),
+                reasoningTokens: BigInt(50),
+                cachedTokens: BigInt(50),
+              },
+            },
+            {
+              model: "gpt-y",
+              _sum: {
+                totalTokens: BigInt(500),
+                inputTokens: BigInt(250),
+                outputTokens: BigInt(200),
+                reasoningTokens: BigInt(25),
+                cachedTokens: BigInt(25),
+              },
+            },
+          ])
+        : Promise.resolve([
+            { bucketStart: new Date("2026-04-01T12:00:00.000Z") },
+            { bucketStart: new Date("2026-04-02T12:00:00.000Z") },
+          ]),
+    );
     mocks.aggregateSessions.mockResolvedValue({
       _sum: {
         activeSeconds: 7200,
@@ -130,7 +143,7 @@ describe("social badges", () => {
         timezone: "UTC",
       },
     });
-    mocks.findManyBuckets.mockClear();
+    mocks.groupByBuckets.mockClear();
 
     const { getPublicBadgeData } = await import("@/lib/social/badges");
     const result = await getPublicBadgeData({ username: "private_user" });
@@ -139,7 +152,57 @@ describe("social badges", () => {
       kind: "private",
       username: "private_user",
     });
-    expect(mocks.findManyBuckets).not.toHaveBeenCalled();
+    expect(mocks.groupByBuckets).not.toHaveBeenCalled();
+  });
+
+  it("uses daily leaderboard rows for Shanghai streaks", async () => {
+    mocks.findManySessions.mockClear();
+    mocks.findManyLeaderboardDays.mockClear();
+    mocks.findUnique.mockResolvedValue({
+      id: "user_3",
+      username: "shanghai_user",
+      usagePreference: {
+        publicProfileEnabled: true,
+        timezone: "Asia/Shanghai",
+      },
+    });
+    mocks.getPricingCatalog.mockResolvedValue({});
+    mocks.groupByBuckets.mockResolvedValue([
+      {
+        model: "gpt-x",
+        _sum: {
+          totalTokens: 100n,
+          inputTokens: 100n,
+          outputTokens: 0n,
+          reasoningTokens: 0n,
+          cachedTokens: 0n,
+        },
+      },
+    ]);
+    mocks.findManyLeaderboardDays.mockResolvedValue([
+      { statDate: new Date("2026-04-01T16:00:00.000Z") },
+      { statDate: new Date("2026-04-02T16:00:00.000Z") },
+      { statDate: new Date("2026-04-03T16:00:00.000Z") },
+    ]);
+    mocks.aggregateSessions.mockResolvedValue({
+      _sum: { activeSeconds: 60, durationSeconds: 120 },
+      _count: { _all: 1 },
+    });
+    mocks.resolveOfficialPricingMatch.mockReturnValue(null);
+    mocks.estimateCostUsd.mockReturnValue(null);
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-04T02:00:00.000Z"));
+
+    const { getPublicBadgeData } = await import("./badges");
+    const result = await getPublicBadgeData({ username: "shanghai_user" });
+
+    expect(result).toMatchObject({
+      kind: "ok",
+      data: { currentStreakDays: 3 },
+    });
+    expect(mocks.findManyLeaderboardDays).toHaveBeenCalledOnce();
+    expect(mocks.findManySessions).not.toHaveBeenCalled();
+    vi.useRealTimers();
   });
 
   it("renders svg badge output", async () => {

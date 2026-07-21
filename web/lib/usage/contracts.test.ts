@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   dashboardQuerySchema,
+  INGEST_MAX_BUCKETS,
+  INGEST_MAX_SESSIONS,
   ingestRequestSchema,
   isValidTimezone,
   usageDeleteQuerySchema,
@@ -96,11 +98,89 @@ describe("ingestRequestSchema", () => {
 
     expect(result.success).toBe(true);
     if (result.success) {
+      expect(result.data.syncAchievements).toBe(true);
       expect(result.data.buckets[0]?.reasoningTokens).toBe(10);
       expect(result.data.sessions[0]?.reasoningTokens).toBe(10);
       expect(result.data.sessions[0]?.primaryModel).toBe("gpt-5.4");
       expect(result.data.sessions[0]?.modelUsages?.[0]?.totalTokens).toBe(195);
     }
+  });
+
+  it("allows multi-batch clients to defer achievement synchronization", () => {
+    const result = ingestRequestSchema.safeParse({
+      schemaVersion: 2,
+      device: {
+        deviceId: "device-1234",
+        hostname: "macbook-pro",
+      },
+      buckets: [],
+      sessions: [],
+      syncAchievements: false,
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.syncAchievements).toBe(false);
+    }
+  });
+
+  it("enforces the CLI bucket and session batch limits", () => {
+    const bucket = {
+      source: "codex",
+      model: "gpt-5.4",
+      projectKey: "abc123",
+      projectLabel: "Project abc123",
+      bucketStart: "2026-03-26T10:00:00.000Z",
+      inputTokens: 100,
+      outputTokens: 60,
+      reasoningTokens: 10,
+      cachedTokens: 25,
+      totalTokens: 195,
+    };
+    const session = {
+      source: "codex",
+      projectKey: "abc123",
+      projectLabel: "Project abc123",
+      sessionHash: "session-hash",
+      firstMessageAt: "2026-03-26T10:00:00.000Z",
+      lastMessageAt: "2026-03-26T10:10:00.000Z",
+      durationSeconds: 600,
+      activeSeconds: 420,
+      messageCount: 8,
+      userMessageCount: 3,
+    };
+    const basePayload = {
+      schemaVersion: 2,
+      device: {
+        deviceId: "device-1234",
+        hostname: "macbook-pro",
+      },
+    };
+
+    expect(
+      ingestRequestSchema.safeParse({
+        ...basePayload,
+        buckets: Array.from({ length: INGEST_MAX_BUCKETS }, () => bucket),
+        sessions: Array.from({ length: INGEST_MAX_SESSIONS }, () => session),
+      }).success,
+    ).toBe(true);
+    expect(
+      ingestRequestSchema.safeParse({
+        ...basePayload,
+        buckets: Array.from({ length: INGEST_MAX_BUCKETS + 1 }, () => bucket),
+        sessions: [],
+      }).success,
+    ).toBe(false);
+    expect(
+      ingestRequestSchema.safeParse({
+        ...basePayload,
+        buckets: [],
+        sessions: Array.from(
+          { length: INGEST_MAX_SESSIONS + 1 },
+          () => session,
+        ),
+      }).success,
+    ).toBe(false);
   });
 
   it("accepts locale and theme updates in usage preferences", () => {

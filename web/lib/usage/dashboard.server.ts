@@ -5,14 +5,8 @@ import type { dashboardQuerySchema } from "@/lib/usage/contracts";
 import { resolveDashboardRange } from "@/lib/usage/date-range";
 import { getUsagePreference } from "@/lib/usage/preferences";
 import {
-  getActivityTrend,
-  getBreakdowns,
-  getHourlyActivityHeatmap,
   getLastSyncedAt,
-  getOverviewMetrics,
-  getPricingSummaryAndRows,
-  getSessionRows,
-  getTokenTrend,
+  getUsageDashboardSnapshot,
 } from "@/lib/usage/queries";
 import type {
   ActivityTrendPoint,
@@ -63,22 +57,19 @@ export async function getUsageDashboardData(input: {
   };
 
   const [
-    overview,
-    tokenTrend,
-    activityTrend,
-    hourlyActivityHeatmap,
-    breakdowns,
-    pricing,
-    sessions,
+    {
+      overview,
+      tokenTrend,
+      activityTrend,
+      hourlyActivityHeatmap,
+      breakdowns,
+      pricingSummary,
+      modelPricingRows,
+      sessions,
+    },
     lastSyncedAt,
   ] = await Promise.all([
-    getOverviewMetrics({ userId: input.userId, range, filters }),
-    getTokenTrend({ userId: input.userId, range, filters }),
-    getActivityTrend({ userId: input.userId, range, filters }),
-    getHourlyActivityHeatmap({ userId: input.userId, range, filters }),
-    getBreakdowns({ userId: input.userId, range, filters }),
-    getPricingSummaryAndRows({ userId: input.userId, range, filters }),
-    getSessionRows({ userId: input.userId, range, filters }),
+    getUsageDashboardSnapshot({ userId: input.userId, range, filters }),
     getLastSyncedAt(input.userId),
   ]);
 
@@ -90,8 +81,8 @@ export async function getUsageDashboardData(input: {
     activityTrend,
     hourlyActivityHeatmap,
     breakdowns,
-    pricingSummary: pricing.summary,
-    modelPricingRows: pricing.modelPricingRows,
+    pricingSummary,
+    modelPricingRows,
     sessions,
     lastSyncedAt,
   };

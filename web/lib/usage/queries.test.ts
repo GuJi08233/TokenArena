@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   usageBucketFindMany: vi.fn(),
+  usageBucketGroupBy: vi.fn(),
   usageBucketFindFirst: vi.fn(),
   usageSessionFindMany: vi.fn(),
   usageSessionFindFirst: vi.fn(),
@@ -21,6 +22,7 @@ vi.mock("@/lib/prisma", () => ({
   prisma: {
     usageBucket: {
       findMany: mocks.usageBucketFindMany,
+      groupBy: mocks.usageBucketGroupBy,
       findFirst: mocks.usageBucketFindFirst,
     },
     usageSession: {
@@ -61,6 +63,7 @@ import {
   getPricingSummaryAndRows,
   getSessionRows,
   getTokenTrend,
+  getUsageDashboardSnapshot,
 } from "./queries";
 
 const range = {
@@ -75,6 +78,7 @@ describe("getBreakdowns", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.usageBucketFindMany.mockResolvedValue([]);
+    mocks.usageBucketGroupBy.mockResolvedValue([]);
     mocks.usageSessionFindMany.mockResolvedValue([]);
     mocks.deviceFindMany.mockResolvedValue([]);
     mocks.usageApiKeyFindMany.mockResolvedValue([]);
@@ -139,6 +143,7 @@ describe("getFilterOptions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.usageBucketFindMany.mockResolvedValue([]);
+    mocks.usageBucketGroupBy.mockResolvedValue([]);
     mocks.usageSessionFindMany.mockResolvedValue([]);
     mocks.deviceFindMany.mockResolvedValue([]);
     mocks.usageApiKeyFindMany.mockResolvedValue([]);
@@ -148,6 +153,13 @@ describe("getFilterOptions", () => {
   });
 
   it("disambiguates duplicate device hostnames in filter options", async () => {
+    mocks.usageBucketGroupBy.mockImplementation(({ by }: { by: string[] }) => {
+      if (by[0] === "source") return Promise.resolve([{ source: "codex" }]);
+      if (by[0] === "model") return Promise.resolve([{ model: "gpt-5.4" }]);
+      return Promise.resolve([
+        { projectKey: "project-a", projectLabel: "Project A" },
+      ]);
+    });
     mocks.deviceFindMany.mockResolvedValue([
       {
         deviceId: "11111111-alpha",
@@ -171,6 +183,12 @@ describe("getFilterOptions", () => {
         label: "Huawei-Matebook-Pro · 22222222",
       },
     ]);
+    expect(options.sources).toEqual([{ value: "codex", label: "codex" }]);
+    expect(options.models).toEqual([{ value: "gpt-5.4", label: "gpt-5.4" }]);
+    expect(options.projects).toEqual([
+      { value: "project-a", label: "Project A" },
+    ]);
+    expect(mocks.usageBucketGroupBy).toHaveBeenCalledTimes(3);
   });
 });
 
@@ -227,6 +245,10 @@ describe("getSessionRows", () => {
       filters: {},
     });
 
+    expect(mocks.usageSessionFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ take: 50 }),
+    );
+
     expect(sessions).toEqual([
       {
         id: "session_2",
@@ -251,6 +273,46 @@ describe("getSessionRows", () => {
         primaryModel: "claude-sonnet-4-20250514",
       },
     ]);
+  });
+});
+
+describe("getUsageDashboardSnapshot", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.usageBucketFindMany.mockResolvedValue([]);
+    mocks.usageSessionFindMany.mockResolvedValue([]);
+    mocks.deviceFindMany.mockResolvedValue([]);
+    mocks.getPricingCatalog.mockResolvedValue(new Map());
+    mocks.resolveOfficialPricingMatch.mockReturnValue(null);
+    mocks.resolveOfficialPricingProvider.mockReturnValue(null);
+    mocks.estimateCostUsd.mockReturnValue(null);
+  });
+
+  it("reuses one current and one previous dataset for every dashboard panel", async () => {
+    const snapshot = await getUsageDashboardSnapshot({
+      userId: "user_123",
+      range,
+      filters: {},
+    });
+
+    expect(mocks.usageBucketFindMany).toHaveBeenCalledTimes(2);
+    expect(mocks.usageSessionFindMany).toHaveBeenCalledTimes(3);
+    expect(mocks.usageSessionFindMany).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ take: 5_000 }),
+    );
+    expect(mocks.usageSessionFindMany).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ take: 5_000 }),
+    );
+    expect(mocks.usageSessionFindMany).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({ take: 50 }),
+    );
+    expect(mocks.deviceFindMany).toHaveBeenCalledTimes(1);
+    expect(snapshot.sessions).toEqual([]);
+    expect(snapshot.tokenTrend).toHaveLength(7);
+    expect(snapshot.hourlyActivityHeatmap).toHaveLength(7 * 24);
   });
 });
 

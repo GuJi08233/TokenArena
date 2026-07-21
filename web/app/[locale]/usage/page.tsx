@@ -92,21 +92,20 @@ export default async function UsagePage({
   ]);
   const resolvedSearchParams = (searchParams ? await searchParams : {}) ?? {};
   const query = resolveQueryParams(resolvedSearchParams, locale);
-  const dashboardDataPromise = getUsageDashboardData({
+  const { dashboard, preference } = await getUsageDashboardData({
     userId: session.user.id,
     query,
   });
-  const [{ dashboard, preference }, filterOptions, activityHeatmap] =
-    await Promise.all([
-      dashboardDataPromise,
-      getFilterOptions(session.user.id),
-      dashboardDataPromise.then(({ preference: usagePreference }) =>
-        getActivityHeatmap365({
-          userId: session.user.id,
-          timezone: usagePreference.timezone,
-        }),
-      ),
-    ]);
+  // Run the secondary all-history queries after the dashboard snapshot has
+  // been reduced. Keeping these phases separate avoids retaining several
+  // large Prisma result sets at the same time.
+  const [filterOptions, activityHeatmap] = await Promise.all([
+    getFilterOptions(session.user.id),
+    getActivityHeatmap365({
+      userId: session.user.id,
+      timezone: preference.timezone,
+    }),
+  ]);
 
   const hasData =
     dashboard.overview.totalTokens.current > 0 ||

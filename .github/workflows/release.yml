@@ -40,6 +40,8 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.release.outputs.tag_name }}
 
       - uses: pnpm/action-setup@v6
 
@@ -56,9 +58,11 @@ jobs:
         env:
           RELEASE_TAG: ${{ needs.release.outputs.tag_name }}
           RELEASE_VERSION: ${{ needs.release.outputs.version }}
+          EXPECTED_SOURCE_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           test "$RELEASE_TAG" = "v$RELEASE_VERSION"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
           node <<'NODE'
           const fs = require("node:fs");
           const version = process.env.RELEASE_VERSION;
@@ -117,14 +121,44 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.release.outputs.tag_name }}
 
       - name: Verify release tag
         env:
           RELEASE_TAG: ${{ needs.release.outputs.tag_name }}
           RELEASE_VERSION: ${{ needs.release.outputs.version }}
+          EXPECTED_SOURCE_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           test "$RELEASE_TAG" = "v$RELEASE_VERSION"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+          node <<'NODE'
+          const fs = require("node:fs");
+          const version = process.env.RELEASE_VERSION;
+          const packages = [
+            "package.json",
+            "cli/package.json",
+            "web/package.json",
+          ];
+
+          for (const file of packages) {
+            const pkg = JSON.parse(fs.readFileSync(file, "utf8"));
+            if (pkg.version !== version) {
+              throw new Error(`${file} version ${pkg.version} does not match ${version}`);
+            }
+          }
+          NODE
+
+      - name: Resolve release source
+        id: source
+        run: |
+          set -euo pipefail
+          source_sha="$(git rev-parse HEAD)"
+          {
+            echo "sha=$source_sha"
+            echo "short_sha=${source_sha:0:7}"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -141,10 +175,44 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          context: git
+          flavor: latest=false
           tags: |
             type=raw,value=${{ needs.release.outputs.tag_name }}
-            type=sha,prefix=
+            type=raw,value=${{ steps.source.outputs.short_sha }}
             type=raw,value=latest
+          labels: |
+            org.opencontainers.image.revision=${{ steps.source.outputs.sha }}
+            org.opencontainers.image.version=${{ needs.release.outputs.tag_name }}
+
+      - name: Extract metadata for migrate image
+        id: meta-migrate
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          context: git
+          flavor: latest=false
+          tags: |
+            type=raw,value=${{ needs.release.outputs.tag_name }}-migrate
+            type=raw,value=${{ steps.source.outputs.short_sha }}-migrate
+            type=raw,value=migrate
+          labels: |
+            org.opencontainers.image.revision=${{ steps.source.outputs.sha }}
+            org.opencontainers.image.version=${{ needs.release.outputs.tag_name }}-migrate
+
+      - name: Build and push migrate Docker image
+        id: build-migrate
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./web/Dockerfile
+          target: migrate
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta-migrate.outputs.tags }}
+          labels: ${{ steps.meta-migrate.outputs.labels }}
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache,mode=max,compression=zstd,oci-mediatypes=true
 
       - name: Build and push Web Docker image
         id: build-web
@@ -152,6 +220,7 @@ jobs:
         with:
           context: .
           file: ./web/Dockerfile
+          target: runner
           platforms: linux/amd64
           push: true
           tags: ${{ steps.meta.outputs.tags }}

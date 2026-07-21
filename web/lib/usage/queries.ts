@@ -31,6 +31,16 @@ import type {
   UsageSessionRow,
 } from "./types";
 
+const MAX_BUCKET_ROWS = 10_000;
+const MAX_SESSION_ROWS = 5_000;
+const DASHBOARD_SESSION_PAGE_SIZE = 50;
+
+type UsageQueryInput = {
+  userId: string;
+  range: DashboardRange;
+  filters: UsageFilters;
+};
+
 function applyBucketFilters<T extends Record<string, unknown>>(
   input: T,
   filters: UsageFilters,
@@ -75,8 +85,21 @@ async function loadBuckets(input: {
       },
       input.filters,
     ),
+    select: {
+      deviceId: true,
+      source: true,
+      model: true,
+      projectKey: true,
+      projectLabel: true,
+      bucketStart: true,
+      totalTokens: true,
+      inputTokens: true,
+      outputTokens: true,
+      reasoningTokens: true,
+      cachedTokens: true,
+    },
     orderBy: { bucketStart: "asc" },
-    take: 10_000,
+    take: MAX_BUCKET_ROWS,
   });
 
   return rows.map((bucket) => ({
@@ -105,12 +128,62 @@ async function loadSessions(input: {
       },
       input.filters,
     ),
+    select: {
+      deviceId: true,
+      source: true,
+      projectKey: true,
+      projectLabel: true,
+      firstMessageAt: true,
+      durationSeconds: true,
+      activeSeconds: true,
+      messageCount: true,
+      userMessageCount: true,
+    },
     orderBy: { firstMessageAt: "asc" },
-    take: 5_000,
+    take: MAX_SESSION_ROWS,
+  });
+}
+
+async function loadRecentSessions(input: UsageQueryInput) {
+  return prisma.usageSession.findMany({
+    where: applySessionFilters(
+      {
+        userId: input.userId,
+        firstMessageAt: {
+          gte: input.range.from,
+          lte: input.range.to,
+        },
+      },
+      input.filters,
+    ),
+    orderBy: [{ firstMessageAt: "desc" }, { lastMessageAt: "desc" }],
+    take: DASHBOARD_SESSION_PAGE_SIZE,
+    select: {
+      id: true,
+      sessionHash: true,
+      source: true,
+      projectKey: true,
+      projectLabel: true,
+      deviceId: true,
+      firstMessageAt: true,
+      lastMessageAt: true,
+      durationSeconds: true,
+      activeSeconds: true,
+      inputTokens: true,
+      outputTokens: true,
+      reasoningTokens: true,
+      cachedTokens: true,
+      totalTokens: true,
+      primaryModel: true,
+      estimatedCostUsd: true,
+      messageCount: true,
+      userMessageCount: true,
+    },
   });
 }
 
 type UsageBucketRecord = Awaited<ReturnType<typeof loadBuckets>>[number];
+type UsageSessionRecord = Awaited<ReturnType<typeof loadSessions>>[number];
 
 function estimateBucketCostUsd(
   bucket: Pick<
@@ -153,8 +226,8 @@ function emptyTotals(): UsageMetricTotals {
 }
 
 function summarizeTotals(input: {
-  buckets: Awaited<ReturnType<typeof loadBuckets>>;
-  sessions: Awaited<ReturnType<typeof loadSessions>>;
+  buckets: UsageBucketRecord[];
+  sessions: UsageSessionRecord[];
 }): UsageMetricTotals {
   const totals = emptyTotals();
 
@@ -250,22 +323,48 @@ export async function getOverviewMetrics(input: {
       loadSessions({ ...input, range: previousRange }),
     ]);
 
+  return buildOverviewMetrics({
+    currentBuckets,
+    currentSessions,
+    previousBuckets,
+    previousSessions,
+  });
+}
+
+function buildOverviewMetrics(input: {
+  currentBuckets: UsageBucketRecord[];
+  currentSessions: UsageSessionRecord[];
+  previousBuckets: UsageBucketRecord[];
+  previousSessions: UsageSessionRecord[];
+}) {
   return toOverview(
-    summarizeTotals({ buckets: currentBuckets, sessions: currentSessions }),
-    summarizeTotals({ buckets: previousBuckets, sessions: previousSessions }),
+    summarizeTotals({
+      buckets: input.currentBuckets,
+      sessions: input.currentSessions,
+    }),
+    summarizeTotals({
+      buckets: input.previousBuckets,
+      sessions: input.previousSessions,
+    }),
   );
 }
 
-export async function getTokenTrend(input: {
-  userId: string;
-  range: DashboardRange;
-  filters: UsageFilters;
-}) {
+export async function getTokenTrend(input: UsageQueryInput) {
   const [catalog, buckets, sessions] = await Promise.all([
     getPricingCatalog(),
     loadBuckets(input),
     loadSessions(input),
   ]);
+
+  return buildTokenTrend(input, catalog, buckets, sessions);
+}
+
+function buildTokenTrend(
+  input: UsageQueryInput,
+  catalog: Awaited<ReturnType<typeof getPricingCatalog>>,
+  buckets: UsageBucketRecord[],
+  sessions: UsageSessionRecord[],
+) {
   const seeded = new Map<string, TokenTrendPoint>(
     listRangeBuckets(input.range).map((bucket) => [
       bucket.key,
@@ -313,12 +412,15 @@ export async function getTokenTrend(input: {
   return Array.from(seeded.values());
 }
 
-export async function getActivityTrend(input: {
-  userId: string;
-  range: DashboardRange;
-  filters: UsageFilters;
-}) {
+export async function getActivityTrend(input: UsageQueryInput) {
   const sessions = await loadSessions(input);
+  return buildActivityTrend(input, sessions);
+}
+
+function buildActivityTrend(
+  input: UsageQueryInput,
+  sessions: UsageSessionRecord[],
+) {
   const seeded = new Map<string, ActivityTrendPoint>(
     listRangeBuckets(input.range).map((bucket) => [
       bucket.key,
@@ -381,16 +483,21 @@ function getHourlyHeatmapCell(
   return cells[weekday * 24 + hour];
 }
 
-export async function getHourlyActivityHeatmap(input: {
-  userId: string;
-  range: DashboardRange;
-  filters: UsageFilters;
-}) {
+export async function getHourlyActivityHeatmap(input: UsageQueryInput) {
   const [catalog, buckets, sessions] = await Promise.all([
     getPricingCatalog(),
     loadBuckets(input),
     loadSessions(input),
   ]);
+  return buildHourlyActivityHeatmap(input, catalog, buckets, sessions);
+}
+
+function buildHourlyActivityHeatmap(
+  input: UsageQueryInput,
+  catalog: Awaited<ReturnType<typeof getPricingCatalog>>,
+  buckets: UsageBucketRecord[],
+  sessions: UsageSessionRecord[],
+) {
   const cells = createHourlyHeatmapCells();
 
   for (const bucket of buckets) {
@@ -496,11 +603,9 @@ function buildDeviceDisplayLabels(
   );
 }
 
-export async function getBreakdowns(input: {
-  userId: string;
-  range: DashboardRange;
-  filters: UsageFilters;
-}): Promise<UsageBreakdowns> {
+export async function getBreakdowns(
+  input: UsageQueryInput,
+): Promise<UsageBreakdowns> {
   const [catalog, buckets, sessions, devices] = await Promise.all([
     getPricingCatalog(),
     loadBuckets(input),
@@ -509,9 +614,22 @@ export async function getBreakdowns(input: {
       where: {
         userId: input.userId,
       },
+      select: {
+        deviceId: true,
+        hostname: true,
+      },
     }),
   ]);
 
+  return buildBreakdowns(catalog, buckets, sessions, devices);
+}
+
+function buildBreakdowns(
+  catalog: Awaited<ReturnType<typeof getPricingCatalog>>,
+  buckets: UsageBucketRecord[],
+  sessions: UsageSessionRecord[],
+  devices: UsageSessionDevice[],
+): UsageBreakdowns {
   const deviceLabels = buildDeviceDisplayLabels(devices);
   const byDevice = new Map<string, BreakdownRow>();
   const byTool = new Map<string, BreakdownRow>();
@@ -704,83 +822,23 @@ function summarizePricingRows(
   };
 }
 
-export async function getPricingSummaryAndRows(input: {
-  userId: string;
-  range: DashboardRange;
-  filters: UsageFilters;
-}): Promise<{
-  summary: UsagePricingSummary;
-  modelPricingRows: ModelPricingRow[];
-}> {
-  const previousRange = getPreviousRange(input.range);
-  const [catalog, currentBuckets, previousBuckets] = await Promise.all([
-    getPricingCatalog(),
-    loadBuckets(input),
-    loadBuckets({ ...input, range: previousRange }),
-  ]);
+type UsageSessionDevice = {
+  deviceId: string;
+  hostname: string;
+};
 
-  const modelPricingRows = buildModelPricingRows(currentBuckets, catalog);
-  const previousRows = buildModelPricingRows(previousBuckets, catalog);
+type UsageSessionDisplayRecord = Awaited<
+  ReturnType<typeof loadRecentSessions>
+>[number];
 
-  return {
-    summary: summarizePricingRows(modelPricingRows, previousRows),
-    modelPricingRows,
-  };
-}
-
-export async function getSessionRows(input: {
-  userId: string;
-  range: DashboardRange;
-  filters: UsageFilters;
-}): Promise<UsageSessionRow[]> {
-  const [sessions, devices] = await Promise.all([
-    prisma.usageSession.findMany({
-      where: applySessionFilters(
-        {
-          userId: input.userId,
-          firstMessageAt: {
-            gte: input.range.from,
-            lte: input.range.to,
-          },
-        },
-        input.filters,
-      ),
-      orderBy: [{ firstMessageAt: "desc" }, { lastMessageAt: "desc" }],
-      select: {
-        id: true,
-        sessionHash: true,
-        source: true,
-        projectKey: true,
-        projectLabel: true,
-        deviceId: true,
-        firstMessageAt: true,
-        lastMessageAt: true,
-        durationSeconds: true,
-        activeSeconds: true,
-        inputTokens: true,
-        outputTokens: true,
-        reasoningTokens: true,
-        cachedTokens: true,
-        totalTokens: true,
-        primaryModel: true,
-        estimatedCostUsd: true,
-        messageCount: true,
-        userMessageCount: true,
-      },
-    }),
-    prisma.device.findMany({
-      where: {
-        userId: input.userId,
-      },
-      select: {
-        deviceId: true,
-        hostname: true,
-      },
-    }),
-  ]);
+function mapSessionRows(
+  sessions: UsageSessionDisplayRecord[],
+  devices: UsageSessionDevice[],
+  limit = DASHBOARD_SESSION_PAGE_SIZE,
+): UsageSessionRow[] {
   const deviceLabels = buildDeviceDisplayLabels(devices);
 
-  return sessions.map((session) => ({
+  return sessions.slice(0, limit).map((session) => ({
     id: session.id,
     sessionHash: session.sessionHash,
     source: session.source,
@@ -804,42 +862,165 @@ export async function getSessionRows(input: {
   }));
 }
 
-export async function getFilterOptions(
-  userId: string,
-): Promise<UsageFilterOptions> {
-  const [apiKeys, devices, usageBuckets] = await Promise.all([
-    prisma.usageApiKey.findMany({
-      where: { userId },
-      orderBy: { createdAt: "desc" },
-      select: { id: true, name: true, status: true },
-    }),
+export async function getPricingSummaryAndRows(input: {
+  userId: string;
+  range: DashboardRange;
+  filters: UsageFilters;
+}): Promise<{
+  summary: UsagePricingSummary;
+  modelPricingRows: ModelPricingRow[];
+}> {
+  const previousRange = getPreviousRange(input.range);
+  const [catalog, currentBuckets, previousBuckets] = await Promise.all([
+    getPricingCatalog(),
+    loadBuckets(input),
+    loadBuckets({ ...input, range: previousRange }),
+  ]);
+
+  return buildPricingSummaryAndRows(catalog, currentBuckets, previousBuckets);
+}
+
+function buildPricingSummaryAndRows(
+  catalog: Awaited<ReturnType<typeof getPricingCatalog>>,
+  currentBuckets: UsageBucketRecord[],
+  previousBuckets: UsageBucketRecord[],
+): {
+  summary: UsagePricingSummary;
+  modelPricingRows: ModelPricingRow[];
+} {
+  const modelPricingRows = buildModelPricingRows(currentBuckets, catalog);
+  const previousRows = buildModelPricingRows(previousBuckets, catalog);
+
+  return {
+    summary: summarizePricingRows(modelPricingRows, previousRows),
+    modelPricingRows,
+  };
+}
+
+export async function getSessionRows(input: {
+  userId: string;
+  range: DashboardRange;
+  filters: UsageFilters;
+}): Promise<UsageSessionRow[]> {
+  const [sessions, devices] = await Promise.all([
+    loadRecentSessions(input),
     prisma.device.findMany({
-      where: { userId },
-      orderBy: { lastSeenAt: "desc" },
-      select: { deviceId: true, hostname: true },
-    }),
-    prisma.usageBucket.findMany({
-      where: { userId },
+      where: {
+        userId: input.userId,
+      },
       select: {
-        source: true,
-        model: true,
-        projectKey: true,
-        projectLabel: true,
+        deviceId: true,
+        hostname: true,
       },
     }),
   ]);
-  const deviceLabels = buildDeviceDisplayLabels(devices);
 
-  const sources = new Map<string, FilterOption>();
-  const models = new Map<string, FilterOption>();
+  return mapSessionRows(sessions, devices);
+}
+
+/**
+ * Load the bounded datasets shared by every dashboard panel once per request.
+ * The standalone query functions above remain useful for focused callers, but
+ * the full dashboard should not materialize the same buckets/sessions six
+ * times in parallel.
+ */
+export async function getUsageDashboardSnapshot(input: UsageQueryInput) {
+  const previousRange = getPreviousRange(input.range);
+  const [
+    catalog,
+    currentBuckets,
+    currentSessions,
+    previousBuckets,
+    previousSessions,
+    recentSessions,
+    devices,
+  ] = await Promise.all([
+    getPricingCatalog(),
+    loadBuckets(input),
+    loadSessions(input),
+    loadBuckets({ ...input, range: previousRange }),
+    loadSessions({ ...input, range: previousRange }),
+    loadRecentSessions(input),
+    prisma.device.findMany({
+      where: { userId: input.userId },
+      select: { deviceId: true, hostname: true },
+    }),
+  ]);
+
+  const pricing = buildPricingSummaryAndRows(
+    catalog,
+    currentBuckets,
+    previousBuckets,
+  );
+
+  return {
+    overview: buildOverviewMetrics({
+      currentBuckets,
+      currentSessions,
+      previousBuckets,
+      previousSessions,
+    }),
+    tokenTrend: buildTokenTrend(
+      input,
+      catalog,
+      currentBuckets,
+      currentSessions,
+    ),
+    activityTrend: buildActivityTrend(input, currentSessions),
+    hourlyActivityHeatmap: buildHourlyActivityHeatmap(
+      input,
+      catalog,
+      currentBuckets,
+      currentSessions,
+    ),
+    breakdowns: buildBreakdowns(
+      catalog,
+      currentBuckets,
+      currentSessions,
+      devices,
+    ),
+    pricingSummary: pricing.summary,
+    modelPricingRows: pricing.modelPricingRows,
+    // The table already paginates at 20 rows; keep its server payload bounded.
+    sessions: mapSessionRows(recentSessions, devices),
+  };
+}
+
+export async function getFilterOptions(
+  userId: string,
+): Promise<UsageFilterOptions> {
+  const [apiKeys, devices, sourceRows, modelRows, projectRows] =
+    await Promise.all([
+      prisma.usageApiKey.findMany({
+        where: { userId },
+        orderBy: { createdAt: "desc" },
+        select: { id: true, name: true, status: true },
+      }),
+      prisma.device.findMany({
+        where: { userId },
+        orderBy: { lastSeenAt: "desc" },
+        select: { deviceId: true, hostname: true },
+      }),
+      prisma.usageBucket.groupBy({
+        by: ["source"],
+        where: { userId },
+      }),
+      prisma.usageBucket.groupBy({
+        by: ["model"],
+        where: { userId },
+      }),
+      prisma.usageBucket.groupBy({
+        by: ["projectKey", "projectLabel"],
+        where: { userId },
+      }),
+    ]);
+  const deviceLabels = buildDeviceDisplayLabels(devices);
   const projects = new Map<string, FilterOption>();
 
-  for (const bucket of usageBuckets) {
-    sources.set(bucket.source, { value: bucket.source, label: bucket.source });
-    models.set(bucket.model, { value: bucket.model, label: bucket.model });
-    projects.set(bucket.projectKey, {
-      value: bucket.projectKey,
-      label: bucket.projectLabel,
+  for (const project of projectRows) {
+    projects.set(project.projectKey, {
+      value: project.projectKey,
+      label: project.projectLabel,
     });
   }
 
@@ -849,12 +1030,12 @@ export async function getFilterOptions(
       value: device.deviceId,
       label: deviceLabels.get(device.deviceId) ?? device.hostname,
     })),
-    sources: Array.from(sources.values()).sort((left, right) =>
-      left.label.localeCompare(right.label),
-    ),
-    models: Array.from(models.values()).sort((left, right) =>
-      left.label.localeCompare(right.label),
-    ),
+    sources: sourceRows
+      .map((row) => ({ value: row.source, label: row.source }))
+      .sort((left, right) => left.label.localeCompare(right.label)),
+    models: modelRows
+      .map((row) => ({ value: row.model, label: row.model }))
+      .sort((left, right) => left.label.localeCompare(right.label)),
     projects: Array.from(projects.values()).sort((left, right) =>
       left.label.localeCompare(right.label),
     ),

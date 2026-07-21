@@ -53,6 +53,26 @@ type NormalizedSessionUsage = {
   estimatedCostUsd: number | null;
 };
 
+// Prisma queues interactive-transaction queries on a single connection. A
+// large Promise.all therefore adds memory pressure without making the writes
+// meaningfully faster. Keep a small amount of concurrency while avoiding a
+// promise/query object for every item in a large upload at once.
+const INGEST_WRITE_CONCURRENCY = 24;
+
+async function runIngestWrites<T>(
+  items: T[],
+  write: (item: T) => Promise<unknown>,
+): Promise<void> {
+  for (
+    let offset = 0;
+    offset < items.length;
+    offset += INGEST_WRITE_CONCURRENCY
+  ) {
+    const chunk = items.slice(offset, offset + INGEST_WRITE_CONCURRENCY);
+    await Promise.all(chunk.map((item) => write(item)));
+  }
+}
+
 function buildUsageSessionWriteInput(input: NormalizedSessionUsage) {
   return {
     inputTokens: tokenCountToBigInt(input.inputTokens),
@@ -194,38 +214,36 @@ async function upsertBuckets(
   db: UsageWriteClient,
   input: IngestUsagePayloadInput,
 ) {
-  await Promise.all(
-    input.payload.buckets.map((bucket) => {
-      const bucketWrite = buildUsageBucketWriteInput(bucket);
+  await runIngestWrites(input.payload.buckets, (bucket) => {
+    const bucketWrite = buildUsageBucketWriteInput(bucket);
 
-      return db.usageBucket.upsert({
-        where: {
-          userId_deviceId_source_model_projectKey_bucketStart: {
-            userId: input.userId,
-            deviceId: input.payload.device.deviceId,
-            source: bucket.source,
-            model: bucket.model,
-            projectKey: bucket.projectKey,
-            bucketStart: new Date(bucket.bucketStart),
-          },
-        },
-        update: {
-          apiKeyId: input.apiKeyId ?? undefined,
-          ...bucketWrite,
-        },
-        create: {
+    return db.usageBucket.upsert({
+      where: {
+        userId_deviceId_source_model_projectKey_bucketStart: {
           userId: input.userId,
-          apiKeyId: input.apiKeyId ?? undefined,
           deviceId: input.payload.device.deviceId,
           source: bucket.source,
           model: bucket.model,
           projectKey: bucket.projectKey,
           bucketStart: new Date(bucket.bucketStart),
-          ...bucketWrite,
         },
-      });
-    }),
-  );
+      },
+      update: {
+        apiKeyId: input.apiKeyId ?? undefined,
+        ...bucketWrite,
+      },
+      create: {
+        userId: input.userId,
+        apiKeyId: input.apiKeyId ?? undefined,
+        deviceId: input.payload.device.deviceId,
+        source: bucket.source,
+        model: bucket.model,
+        projectKey: bucket.projectKey,
+        bucketStart: new Date(bucket.bucketStart),
+        ...bucketWrite,
+      },
+    });
+  });
 }
 
 async function upsertSessions(
@@ -233,62 +251,60 @@ async function upsertSessions(
   input: IngestUsagePayloadInput,
   catalog: Awaited<ReturnType<typeof getPricingCatalog>>,
 ) {
-  await Promise.all(
-    input.payload.sessions.map((session) => {
-      const normalizedUsage = normalizeSessionUsage(session, catalog);
-      const sessionUsageWrite =
-        normalizedUsage == null
-          ? null
-          : buildUsageSessionWriteInput(normalizedUsage);
+  await runIngestWrites(input.payload.sessions, (session) => {
+    const normalizedUsage = normalizeSessionUsage(session, catalog);
+    const sessionUsageWrite =
+      normalizedUsage == null
+        ? null
+        : buildUsageSessionWriteInput(normalizedUsage);
 
-      return db.usageSession.upsert({
-        where: {
-          userId_deviceId_source_sessionHash: {
-            userId: input.userId,
-            deviceId: input.payload.device.deviceId,
-            source: session.source,
-            sessionHash: session.sessionHash,
-          },
-        },
-        update: {
-          apiKeyId: input.apiKeyId ?? undefined,
-          projectKey: session.projectKey,
-          projectLabel: session.projectLabel,
-          firstMessageAt: new Date(session.firstMessageAt),
-          lastMessageAt: new Date(session.lastMessageAt),
-          durationSeconds: session.durationSeconds,
-          activeSeconds: session.activeSeconds,
-          messageCount: session.messageCount,
-          userMessageCount: session.userMessageCount,
-          ...(sessionUsageWrite ?? {}),
-        },
-        create: {
+    return db.usageSession.upsert({
+      where: {
+        userId_deviceId_source_sessionHash: {
           userId: input.userId,
-          apiKeyId: input.apiKeyId ?? undefined,
           deviceId: input.payload.device.deviceId,
           source: session.source,
-          projectKey: session.projectKey,
-          projectLabel: session.projectLabel,
           sessionHash: session.sessionHash,
-          firstMessageAt: new Date(session.firstMessageAt),
-          lastMessageAt: new Date(session.lastMessageAt),
-          durationSeconds: session.durationSeconds,
-          activeSeconds: session.activeSeconds,
-          messageCount: session.messageCount,
-          userMessageCount: session.userMessageCount,
-          ...(sessionUsageWrite ?? {
-            inputTokens: tokenCountToBigInt(0),
-            outputTokens: tokenCountToBigInt(0),
-            reasoningTokens: tokenCountToBigInt(0),
-            cachedTokens: tokenCountToBigInt(0),
-            totalTokens: tokenCountToBigInt(0),
-            primaryModel: "",
-            estimatedCostUsd: null,
-          }),
         },
-      });
-    }),
-  );
+      },
+      update: {
+        apiKeyId: input.apiKeyId ?? undefined,
+        projectKey: session.projectKey,
+        projectLabel: session.projectLabel,
+        firstMessageAt: new Date(session.firstMessageAt),
+        lastMessageAt: new Date(session.lastMessageAt),
+        durationSeconds: session.durationSeconds,
+        activeSeconds: session.activeSeconds,
+        messageCount: session.messageCount,
+        userMessageCount: session.userMessageCount,
+        ...(sessionUsageWrite ?? {}),
+      },
+      create: {
+        userId: input.userId,
+        apiKeyId: input.apiKeyId ?? undefined,
+        deviceId: input.payload.device.deviceId,
+        source: session.source,
+        projectKey: session.projectKey,
+        projectLabel: session.projectLabel,
+        sessionHash: session.sessionHash,
+        firstMessageAt: new Date(session.firstMessageAt),
+        lastMessageAt: new Date(session.lastMessageAt),
+        durationSeconds: session.durationSeconds,
+        activeSeconds: session.activeSeconds,
+        messageCount: session.messageCount,
+        userMessageCount: session.userMessageCount,
+        ...(sessionUsageWrite ?? {
+          inputTokens: tokenCountToBigInt(0),
+          outputTokens: tokenCountToBigInt(0),
+          reasoningTokens: tokenCountToBigInt(0),
+          cachedTokens: tokenCountToBigInt(0),
+          totalTokens: tokenCountToBigInt(0),
+          primaryModel: "",
+          estimatedCostUsd: null,
+        }),
+      },
+    });
+  });
 }
 
 export async function deleteUsageDeviceSnapshot(
@@ -388,10 +404,8 @@ export async function ingestUsagePayload(input: IngestUsagePayloadInput) {
         })),
       });
 
-      await Promise.all([
-        upsertBuckets(tx, input),
-        upsertSessions(tx, input, catalog),
-      ]);
+      await upsertBuckets(tx, input);
+      await upsertSessions(tx, input, catalog);
 
       const affectedDates = collectAffectedLeaderboardDates({
         bucketStarts: input.payload.buckets.map((bucket) => bucket.bucketStart),
@@ -419,7 +433,9 @@ export async function ingestUsagePayload(input: IngestUsagePayloadInput) {
     { timeout: transactionTimeout },
   );
 
-  await synchronizeAchievementsForUser(input.userId, "ingest");
+  if (input.payload.syncAchievements) {
+    await synchronizeAchievementsForUser(input.userId, "ingest");
+  }
 
   return result;
 }

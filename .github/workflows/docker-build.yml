@@ -4,9 +4,14 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Tag name to build (e.g., v0.6.3)'
+        description: "Git tag, branch, or SHA to build (e.g., v0.8.7 or main)"
         required: true
         type: string
+      publish_latest:
+        description: "Also update the latest and migrate aliases"
+        required: false
+        default: false
+        type: boolean
 
 env:
   REGISTRY: ghcr.io
@@ -25,15 +30,51 @@ jobs:
       - name: Check out
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.inputs.tag }}
+          ref: ${{ inputs.tag }}
 
-      - name: Resolve tag
-        id: version
+      - name: Resolve checked-out source
+        id: source
+        env:
+          REQUESTED_REF: ${{ inputs.tag }}
         run: |
-          TAG="${{ github.event.inputs.tag }}"
-          echo "TAG=${TAG}" >> $GITHUB_ENV
-          echo "tag=${TAG}" >> $GITHUB_OUTPUT
-          echo "Building tag: ${TAG}"
+          set -euo pipefail
+
+          if [[ ! "$REQUESTED_REF" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]{0,99}$ ]]; then
+            echo "Invalid Git ref for an image tag: $REQUESTED_REF" >&2
+            exit 1
+          fi
+
+          case "$REQUESTED_REF" in
+            latest|migrate|buildcache)
+              echo "Reserved container image tag: $REQUESTED_REF" >&2
+              exit 1
+              ;;
+          esac
+
+          if [[ "$REQUESTED_REF" =~ ^v([0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?)$ ]]; then
+            EXPECTED_VERSION="${BASH_REMATCH[1]}" node <<'NODE'
+          const fs = require("node:fs");
+          const expected = process.env.EXPECTED_VERSION;
+          const packages = ["package.json", "cli/package.json", "web/package.json"];
+
+          for (const file of packages) {
+            const version = JSON.parse(fs.readFileSync(file, "utf8")).version;
+            if (version !== expected) {
+              throw new Error(`${file} version ${version} does not match requested ref v${expected}`);
+            }
+          }
+          NODE
+          fi
+
+          source_sha="$(git rev-parse HEAD)"
+          short_sha="${source_sha:0:7}"
+          {
+            echo "version=$REQUESTED_REF"
+            echo "sha=$source_sha"
+            echo "short_sha=$short_sha"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "Building $REQUESTED_REF at $source_sha"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -50,10 +91,44 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          context: git
+          flavor: latest=false
           tags: |
-            type=raw,value=${{ env.TAG }}
-            type=sha,prefix=
-            type=raw,value=latest
+            type=raw,value=${{ steps.source.outputs.version }}
+            type=raw,value=${{ steps.source.outputs.short_sha }}
+            type=raw,value=latest,enable=${{ inputs.publish_latest }}
+          labels: |
+            org.opencontainers.image.revision=${{ steps.source.outputs.sha }}
+            org.opencontainers.image.version=${{ steps.source.outputs.version }}
+
+      - name: Extract migrate metadata
+        id: meta-migrate
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          context: git
+          flavor: latest=false
+          tags: |
+            type=raw,value=${{ steps.source.outputs.version }}-migrate
+            type=raw,value=${{ steps.source.outputs.short_sha }}-migrate
+            type=raw,value=migrate,enable=${{ inputs.publish_latest }}
+          labels: |
+            org.opencontainers.image.revision=${{ steps.source.outputs.sha }}
+            org.opencontainers.image.version=${{ steps.source.outputs.version }}-migrate
+
+      - name: Build and push Docker image (migrate)
+        id: build-migrate
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./web/Dockerfile
+          target: migrate
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta-migrate.outputs.tags }}
+          labels: ${{ steps.meta-migrate.outputs.labels }}
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache,mode=max,compression=zstd,oci-mediatypes=true
 
       - name: Build and push Docker image (web)
         id: build-web
@@ -67,23 +142,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            NEXT_PUBLIC_APP_VERSION=${{ env.TAG }}
-          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache
-          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache,mode=max,compression=zstd,oci-mediatypes=true
-
-      - name: Build and push Docker image (migrate)
-        id: build-migrate
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./web/Dockerfile
-          target: migrate
-          platforms: linux/amd64
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.TAG }}-migrate
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:migrate
-          labels: ${{ steps.meta.outputs.labels }}
+            NEXT_PUBLIC_APP_VERSION=${{ steps.source.outputs.version }}
           cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache
           cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache,mode=max,compression=zstd,oci-mediatypes=true
 

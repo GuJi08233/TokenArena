@@ -262,27 +262,60 @@ function getMetricValue(data: PublicBadgeData, metric: PublicBadgeMetric) {
   }
 }
 
-function estimateBucketCostUsd(bucket: {
-  model: string;
-  inputTokens: number;
-  outputTokens: number;
-  reasoningTokens: number;
-  cachedTokens: number;
-}) {
-  return async (catalog: Awaited<ReturnType<typeof getPricingCatalog>>) => {
-    const match = resolveOfficialPricingMatch(catalog, bucket.model);
-    const estimate = estimateCostUsd(
-      {
-        inputTokens: bucket.inputTokens,
-        outputTokens: bucket.outputTokens,
-        reasoningTokens: bucket.reasoningTokens,
-        cachedTokens: bucket.cachedTokens,
-      },
-      match?.cost,
-    );
+function estimateBucketCostUsd(
+  bucket: {
+    model: string;
+    inputTokens: number;
+    outputTokens: number;
+    reasoningTokens: number;
+    cachedTokens: number;
+  },
+  catalog: Awaited<ReturnType<typeof getPricingCatalog>>,
+) {
+  const match = resolveOfficialPricingMatch(catalog, bucket.model);
+  const estimate = estimateCostUsd(
+    {
+      inputTokens: bucket.inputTokens,
+      outputTokens: bucket.outputTokens,
+      reasoningTokens: bucket.reasoningTokens,
+      cachedTokens: bucket.cachedTokens,
+    },
+    match?.cost,
+  );
 
-    return estimate?.totalUsd ?? 0;
-  };
+  return estimate?.totalUsd ?? 0;
+}
+
+async function loadActiveUsageDates(input: {
+  userId: string;
+  timezone: string;
+}) {
+  if (input.timezone === "Asia/Shanghai") {
+    const rows = await prisma.leaderboardUserDay.findMany({
+      where: { userId: input.userId },
+      select: { statDate: true },
+      orderBy: { statDate: "asc" },
+    });
+
+    return rows.map((row) => row.statDate);
+  }
+
+  const [bucketRows, sessionRows] = await Promise.all([
+    prisma.usageBucket.groupBy({
+      by: ["bucketStart"],
+      where: { userId: input.userId },
+    }),
+    prisma.usageSession.findMany({
+      where: { userId: input.userId },
+      select: { firstMessageAt: true },
+      orderBy: { firstMessageAt: "asc" },
+    }),
+  ]);
+
+  return [
+    ...bucketRows.map((row) => row.bucketStart),
+    ...sessionRows.map((row) => row.firstMessageAt),
+  ];
 }
 
 export async function getPublicBadgeData(input: {
@@ -318,75 +351,61 @@ export async function getPublicBadgeData(input: {
   }
 
   const timezone = user.usagePreference?.timezone ?? "UTC";
-  const [catalog, buckets, sessionSummary, sessionDays] = await Promise.all([
-    getPricingCatalog(),
-    prisma.usageBucket.findMany({
-      where: { userId: user.id },
-      select: {
-        bucketStart: true,
-        totalTokens: true,
-        model: true,
-        inputTokens: true,
-        outputTokens: true,
-        reasoningTokens: true,
-        cachedTokens: true,
-      },
-      orderBy: { bucketStart: "asc" },
-    }),
-    prisma.usageSession.aggregate({
-      where: { userId: user.id },
-      _sum: {
-        activeSeconds: true,
-        durationSeconds: true,
-      },
-      _count: {
-        _all: true,
-      },
-    }),
-    prisma.usageSession.findMany({
-      where: { userId: user.id },
-      select: {
-        firstMessageAt: true,
-      },
-      orderBy: { firstMessageAt: "asc" },
-    }),
-  ]);
+  const [catalog, modelTotals, activeUsageDates, sessionSummary] =
+    await Promise.all([
+      getPricingCatalog(),
+      prisma.usageBucket.groupBy({
+        by: ["model"],
+        where: { userId: user.id },
+        _sum: {
+          totalTokens: true,
+          inputTokens: true,
+          outputTokens: true,
+          reasoningTokens: true,
+          cachedTokens: true,
+        },
+      }),
+      loadActiveUsageDates({ userId: user.id, timezone }),
+      prisma.usageSession.aggregate({
+        where: { userId: user.id },
+        _sum: {
+          activeSeconds: true,
+          durationSeconds: true,
+        },
+        _count: {
+          _all: true,
+        },
+      }),
+    ]);
 
   let totalTokens = 0;
   let estimatedCostUsd = 0;
   const activeDayKeys = new Set<string>();
 
-  const costs = await Promise.all(
-    buckets.map(async (bucket) => {
-      const normalized = {
-        totalTokens: tokenCountToNumber(bucket.totalTokens),
-        inputTokens: tokenCountToNumber(bucket.inputTokens),
-        outputTokens: tokenCountToNumber(bucket.outputTokens),
-        reasoningTokens: tokenCountToNumber(bucket.reasoningTokens),
-        cachedTokens: tokenCountToNumber(bucket.cachedTokens),
-      };
+  for (const row of modelTotals) {
+    const normalized = {
+      totalTokens: tokenCountToNumber(row._sum.totalTokens),
+      inputTokens: tokenCountToNumber(row._sum.inputTokens),
+      outputTokens: tokenCountToNumber(row._sum.outputTokens),
+      reasoningTokens: tokenCountToNumber(row._sum.reasoningTokens),
+      cachedTokens: tokenCountToNumber(row._sum.cachedTokens),
+    };
 
-      activeDayKeys.add(formatDateInput(bucket.bucketStart, timezone));
-      return {
-        normalized,
-        cost: await estimateBucketCostUsd({
-          model: bucket.model,
-          inputTokens: normalized.inputTokens,
-          outputTokens: normalized.outputTokens,
-          reasoningTokens: normalized.reasoningTokens,
-          cachedTokens: normalized.cachedTokens,
-        })(catalog),
-      };
-    }),
-  );
-
-  for (const { normalized, cost } of costs) {
     totalTokens += normalized.totalTokens;
-    estimatedCostUsd += cost;
+    estimatedCostUsd += estimateBucketCostUsd(
+      {
+        model: row.model,
+        inputTokens: normalized.inputTokens,
+        outputTokens: normalized.outputTokens,
+        reasoningTokens: normalized.reasoningTokens,
+        cachedTokens: normalized.cachedTokens,
+      },
+      catalog,
+    );
   }
 
-  for (const session of sessionDays) {
-    activeDayKeys.add(formatDateInput(session.firstMessageAt, timezone));
+  for (const timestamp of activeUsageDates) {
+    activeDayKeys.add(formatDateInput(timestamp, timezone));
   }
 
   const now = new Date();

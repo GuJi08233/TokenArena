@@ -38,6 +38,9 @@ import { runAllParsers } from "./parser-service";
 
 const BATCH_SIZE = 100;
 const SESSION_BATCH_SIZE = 500;
+// Keep this in sync with web/lib/usage/contracts.ts. The server rejects a
+// larger body before parsing it, so the CLI must split by serialized size too.
+export const MAX_INGEST_PAYLOAD_BYTES = 8 * 1024 * 1024;
 const PROGRESS_BAR_WIDTH = 28;
 
 export function formatBytes(bytes: number): string {
@@ -50,6 +53,13 @@ export function renderProgressBar(progress: number): string {
   const safeProgress = Math.max(0, Math.min(progress, 1));
   const filled = Math.round(safeProgress * PROGRESS_BAR_WIDTH);
   return `${"█".repeat(filled)}${"░".repeat(PROGRESS_BAR_WIDTH - filled)}`;
+}
+
+export function shouldSyncAchievementsForBatch(
+  batchIndex: number,
+  totalBatches: number,
+): boolean {
+  return batchIndex === totalBatches - 1;
 }
 
 function writeUploadProgress(
@@ -230,6 +240,89 @@ class SyncFailure extends Error {
   }
 }
 
+export type UploadBatch = {
+  buckets: UploadTokenBucket[];
+  sessions: UploadSessionMetadata[];
+};
+
+function splitOversizedUploadBatch(
+  device: DeviceMetadata,
+  buckets: UploadTokenBucket[],
+  sessions: UploadSessionMetadata[],
+): UploadBatch[] {
+  const payloadSize = getIngestPayloadSize(device, buckets, sessions, {
+    syncAchievements: true,
+  });
+
+  if (payloadSize <= MAX_INGEST_PAYLOAD_BYTES) {
+    return [{ buckets, sessions }];
+  }
+
+  if (buckets.length + sessions.length <= 1) {
+    throw new SyncFailure(
+      `A single usage record exceeds the ${formatBytes(MAX_INGEST_PAYLOAD_BYTES)} ingest payload limit. Reduce the record size before syncing.`,
+      "error",
+    );
+  }
+
+  // Split the larger dimension first. This keeps bucket-only and
+  // session-only uploads balanced while preserving source order.
+  if (sessions.length > 1 && sessions.length >= buckets.length) {
+    const midpoint = Math.ceil(sessions.length / 2);
+    return [
+      ...splitOversizedUploadBatch(
+        device,
+        buckets,
+        sessions.slice(0, midpoint),
+      ),
+      ...splitOversizedUploadBatch(device, [], sessions.slice(midpoint)),
+    ];
+  }
+
+  if (buckets.length > 1) {
+    const midpoint = Math.ceil(buckets.length / 2);
+    return [
+      ...splitOversizedUploadBatch(
+        device,
+        buckets.slice(0, midpoint),
+        sessions,
+      ),
+      ...splitOversizedUploadBatch(device, buckets.slice(midpoint), []),
+    ];
+  }
+
+  return [
+    ...splitOversizedUploadBatch(device, buckets, []),
+    ...splitOversizedUploadBatch(device, [], sessions),
+  ];
+}
+
+export function buildUploadBatches(
+  device: DeviceMetadata,
+  buckets: UploadTokenBucket[],
+  sessions: UploadSessionMetadata[],
+): UploadBatch[] {
+  const batches: UploadBatch[] = [];
+  let bucketOffset = 0;
+  let sessionOffset = 0;
+
+  while (bucketOffset < buckets.length || sessionOffset < sessions.length) {
+    const batchBuckets = buckets.slice(bucketOffset, bucketOffset + BATCH_SIZE);
+    const batchSessions = sessions.slice(
+      sessionOffset,
+      sessionOffset + SESSION_BATCH_SIZE,
+    );
+
+    batches.push(
+      ...splitOversizedUploadBatch(device, batchBuckets, batchSessions),
+    );
+    bucketOffset += batchBuckets.length;
+    sessionOffset += batchSessions.length;
+  }
+
+  return batches;
+}
+
 export async function runSync(
   config: Config,
   opts: SyncOptions = {},
@@ -402,25 +495,19 @@ export async function runSync(
       return { buckets: 0, sessions: 0 };
     }
 
-    const bucketBatches = Math.ceil(changedBuckets.length / BATCH_SIZE);
-    const sessionBatches = Math.ceil(
-      changedSessions.length / SESSION_BATCH_SIZE,
+    const uploadBatches = buildUploadBatches(
+      device,
+      changedBuckets,
+      changedSessions,
     );
-    const totalBatches = Math.max(bucketBatches, sessionBatches, 1);
-    const batchPayloadSizes = Array.from(
-      { length: totalBatches },
-      (_, batchIdx) =>
-        getIngestPayloadSize(
-          device,
-          changedBuckets.slice(
-            batchIdx * BATCH_SIZE,
-            (batchIdx + 1) * BATCH_SIZE,
-          ),
-          changedSessions.slice(
-            batchIdx * SESSION_BATCH_SIZE,
-            (batchIdx + 1) * SESSION_BATCH_SIZE,
-          ),
+    const totalBatches = uploadBatches.length;
+    const batchPayloadSizes = uploadBatches.map((batch, batchIdx) =>
+      getIngestPayloadSize(device, batch.buckets, batch.sessions, {
+        syncAchievements: shouldSyncAchievementsForBatch(
+          batchIdx,
+          totalBatches,
         ),
+      }),
     );
     const totalPayloadBytes = batchPayloadSizes.reduce(
       (sum, size) => sum + size,
@@ -449,14 +536,11 @@ export async function runSync(
     }
 
     for (let batchIdx = 0; batchIdx < totalBatches; batchIdx++) {
-      const batch = changedBuckets.slice(
-        batchIdx * BATCH_SIZE,
-        (batchIdx + 1) * BATCH_SIZE,
-      );
-      const batchSessions = changedSessions.slice(
-        batchIdx * SESSION_BATCH_SIZE,
-        (batchIdx + 1) * SESSION_BATCH_SIZE,
-      );
+      const uploadBatch = uploadBatches[batchIdx];
+      if (!uploadBatch) {
+        throw new SyncFailure("Upload batch planning failed.", "error");
+      }
+      const { buckets: batch, sessions: batchSessions } = uploadBatch;
       const batchNum = batchIdx + 1;
 
       const result = await apiClient.ingest(
@@ -473,6 +557,12 @@ export async function runSync(
                 totalBatches,
               );
             },
+        {
+          syncAchievements: shouldSyncAchievementsForBatch(
+            batchIdx,
+            totalBatches,
+          ),
+        },
       );
 
       totalIngested += result.ingested ?? batch.length;

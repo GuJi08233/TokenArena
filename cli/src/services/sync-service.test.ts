@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
+import type { UploadSessionMetadata, UploadTokenBucket } from "../domain/types";
+import { getIngestPayloadSize } from "../infrastructure/api/client";
 import {
+  buildUploadBatches,
   formatBytes,
+  MAX_INGEST_PAYLOAD_BYTES,
   renderProgressBar,
+  shouldSyncAchievementsForBatch,
   toUploadBuckets,
   toUploadSessions,
 } from "./sync-service";
@@ -47,6 +52,120 @@ describe("sync-service helpers", () => {
       const bar = renderProgressBar(2);
       expect(bar).toContain("█");
       expect(bar).not.toContain("░");
+    });
+  });
+
+  describe("shouldSyncAchievementsForBatch", () => {
+    it("defers intermediate batches and syncs the final batch", () => {
+      expect(shouldSyncAchievementsForBatch(0, 3)).toBe(false);
+      expect(shouldSyncAchievementsForBatch(1, 3)).toBe(false);
+      expect(shouldSyncAchievementsForBatch(2, 3)).toBe(true);
+    });
+
+    it("synchronizes a single-batch upload", () => {
+      expect(shouldSyncAchievementsForBatch(0, 1)).toBe(true);
+    });
+  });
+
+  describe("buildUploadBatches", () => {
+    const device = { deviceId: "device-1234", hostname: "test-host" };
+
+    function createSession(
+      sessionHash: string,
+      projectLabel: string,
+    ): UploadSessionMetadata {
+      return {
+        source: "codex",
+        projectKey: sessionHash,
+        projectLabel,
+        sessionHash,
+        deviceId: device.deviceId,
+        hostname: device.hostname,
+        firstMessageAt: "2026-01-01T00:00:00.000Z",
+        lastMessageAt: "2026-01-01T00:01:00.000Z",
+        durationSeconds: 60,
+        activeSeconds: 30,
+        messageCount: 2,
+        userMessageCount: 1,
+        inputTokens: 100,
+        outputTokens: 50,
+        reasoningTokens: 0,
+        cachedTokens: 0,
+        totalTokens: 150,
+        primaryModel: "gpt-5.4",
+        modelUsages: [],
+      };
+    }
+
+    it("splits a count-bounded batch that exceeds the byte limit", () => {
+      const largeLabel = "x".repeat(5 * 1024 * 1024);
+      const batches = buildUploadBatches(
+        device,
+        [],
+        [
+          createSession("session-a", largeLabel),
+          createSession("session-b", largeLabel),
+        ],
+      );
+
+      expect(
+        batches.map((batch) =>
+          batch.sessions.map((session) => session.sessionHash),
+        ),
+      ).toEqual([["session-a"], ["session-b"]]);
+      for (const batch of batches) {
+        expect(
+          getIngestPayloadSize(device, batch.buckets, batch.sessions, {
+            syncAchievements: true,
+          }),
+        ).toBeLessThanOrEqual(MAX_INGEST_PAYLOAD_BYTES);
+      }
+    });
+
+    it("rejects a single record that exceeds the byte limit", () => {
+      const oversizedLabel = "x".repeat(MAX_INGEST_PAYLOAD_BYTES);
+
+      expect(() =>
+        buildUploadBatches(
+          device,
+          [],
+          [createSession("oversized", oversizedLabel)],
+        ),
+      ).toThrow("A single usage record exceeds the 8.0MB ingest payload limit");
+    });
+
+    it("separates one large bucket from one large session", () => {
+      const largeLabel = "x".repeat(5 * 1024 * 1024);
+      const bucket: UploadTokenBucket = {
+        source: "codex",
+        model: "gpt-5.4",
+        projectKey: "project-a",
+        projectLabel: largeLabel,
+        bucketStart: "2026-01-01T00:00:00.000Z",
+        deviceId: device.deviceId,
+        hostname: device.hostname,
+        inputTokens: 100,
+        outputTokens: 50,
+        reasoningTokens: 0,
+        cachedTokens: 0,
+        totalTokens: 150,
+      };
+
+      const batches = buildUploadBatches(
+        device,
+        [bucket],
+        [createSession("session-a", largeLabel)],
+      );
+
+      expect(batches).toHaveLength(2);
+      expect(batches[0]).toMatchObject({
+        buckets: [{ projectKey: "project-a" }],
+        sessions: [],
+      });
+      expect(batches[1]).toMatchObject({
+        buckets: [],
+        sessions: [{ sessionHash: "session-a" }],
+      });
     });
   });
 

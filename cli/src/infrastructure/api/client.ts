@@ -13,19 +13,37 @@ const MAX_RETRIES = 3;
 const INITIAL_DELAY = 1000;
 const TIMEOUT_MS = 60_000;
 
-export function getIngestPayloadSize(
+export interface IngestOptions {
+  /** Defer the full achievement scan for intermediate upload batches. */
+  syncAchievements?: boolean;
+}
+
+function buildIngestPayload(
   device: DeviceMetadata,
   buckets: UploadTokenBucket[],
   sessions?: UploadSessionMetadata[],
-): number {
-  const payload = {
+  options?: IngestOptions,
+) {
+  return {
     schemaVersion: 2 as const,
     device,
     buckets,
     sessions: sessions ?? [],
+    ...(options?.syncAchievements === undefined
+      ? {}
+      : { syncAchievements: options.syncAchievements }),
   };
+}
 
-  return Buffer.byteLength(JSON.stringify(payload));
+export function getIngestPayloadSize(
+  device: DeviceMetadata,
+  buckets: UploadTokenBucket[],
+  sessions?: UploadSessionMetadata[],
+  options?: IngestOptions,
+): number {
+  return Buffer.byteLength(
+    JSON.stringify(buildIngestPayload(device, buckets, sessions, options)),
+  );
 }
 
 export class ApiClient {
@@ -42,11 +60,18 @@ export class ApiClient {
     buckets: UploadTokenBucket[],
     sessions?: UploadSessionMetadata[],
     onProgress?: (sent: number, total: number) => void,
+    options?: IngestOptions,
   ): Promise<{ ingested?: number; sessions?: number }> {
     let lastError: Error | undefined;
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       try {
-        return await this.sendIngest(device, buckets, sessions, onProgress);
+        return await this.sendIngest(
+          device,
+          buckets,
+          sessions,
+          onProgress,
+          options,
+        );
       } catch (err) {
         lastError = err as Error;
         const httpErr = err as { statusCode?: number; message: string };
@@ -73,16 +98,12 @@ export class ApiClient {
     buckets: UploadTokenBucket[],
     sessions?: UploadSessionMetadata[],
     onProgress?: (sent: number, total: number) => void,
+    options?: IngestOptions,
   ): Promise<{ ingested?: number; sessions?: number }> {
     return new Promise((resolve, reject) => {
       const url = new URL("/api/usage/ingest", this.apiUrl);
       const body = Buffer.from(
-        JSON.stringify({
-          schemaVersion: 2 as const,
-          device,
-          buckets,
-          sessions: sessions ?? [],
-        }),
+        JSON.stringify(buildIngestPayload(device, buckets, sessions, options)),
       );
       const totalBytes = body.length;
       const mod = url.protocol === "https:" ? https : http;

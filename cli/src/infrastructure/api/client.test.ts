@@ -59,5 +59,15 @@ describe("ApiClient helpers", () => {
       const withoutSessions = getIngestPayloadSize(device, []);
       expect(withSessions).toBeGreaterThan(withoutSessions);
     });
+
+    it("accounts for deferred achievement synchronization metadata", () => {
+      const device = { deviceId: "dev1", hostname: "test" };
+      const withoutOption = getIngestPayloadSize(device, []);
+      const deferred = getIngestPayloadSize(device, [], undefined, {
+        syncAchievements: false,
+      });
+
+      expect(deferred).toBeGreaterThan(withoutOption);
+    });
   });
 });

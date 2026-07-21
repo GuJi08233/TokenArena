@@ -43,6 +43,28 @@ const profileUserSelect = {
   },
 } as const;
 
+export async function getPublicProfileMetadata(input: { username: string }) {
+  const user = await prisma.user.findUnique({
+    where: {
+      username: normalizeUsername(input.username),
+    },
+    select: {
+      usagePreference: {
+        select: {
+          bio: true,
+          publicProfileEnabled: true,
+        },
+      },
+    },
+  });
+
+  if (!user?.usagePreference?.publicProfileEnabled) {
+    return null;
+  }
+
+  return { bio: user.usagePreference.bio };
+}
+
 type ProfileUserRecord = Awaited<{
   id: string;
   name: string;
@@ -304,11 +326,93 @@ function buildHeatmap(
   return values;
 }
 
+type DailyHeatmapAggregate = {
+  statDate: Date;
+  activeSeconds: number;
+  sessions: number;
+  totalTokens: number | bigint;
+};
+
+function buildHeatmapFromDailyAggregates(
+  timezone: string,
+  rows: DailyHeatmapAggregate[],
+) {
+  const range = createDailyRange(timezone, 365);
+  const seeded = new Map<string, ProfileHeatmapDay>(
+    listRangeBuckets(range).map((bucket) => [
+      bucket.key,
+      {
+        date: bucket.key,
+        activeSeconds: 0,
+        sessions: 0,
+        totalTokens: 0,
+        level: 0,
+      },
+    ]),
+  );
+
+  for (const row of rows) {
+    const key = groupByHourOrDay(range, row.statDate);
+    const day = seeded.get(key);
+
+    if (!day) {
+      continue;
+    }
+
+    day.activeSeconds += row.activeSeconds;
+    day.sessions += row.sessions;
+    day.totalTokens += tokenCountToNumber(row.totalTokens);
+  }
+
+  const values = Array.from(seeded.values());
+  const maxValue = Math.max(...values.map((day) => day.activeSeconds), 0);
+
+  for (const day of values) {
+    if (day.activeSeconds <= 0 || maxValue <= 0) {
+      day.level = 0;
+      continue;
+    }
+
+    day.level = Math.min(
+      4,
+      Math.max(1, Math.ceil((day.activeSeconds / maxValue) * 4)),
+    ) as ProfileHeatmapDay["level"];
+  }
+
+  return values;
+}
+
 export async function getActivityHeatmap365(input: {
   userId: string;
   timezone: string;
 }): Promise<ProfileHeatmapDay[]> {
   const range365 = createDailyRange(input.timezone, 365);
+
+  // The leaderboard aggregate is maintained on every ingest and is already
+  // keyed by Shanghai calendar day. Use it for the default timezone so a
+  // profile request transfers at most 365 rows instead of every raw session
+  // and bucket from the last year.
+  if (input.timezone === "Asia/Shanghai") {
+    const dailyRows = await prisma.leaderboardUserDay.findMany({
+      where: {
+        userId: input.userId,
+        statDate: {
+          gte: range365.from,
+          lte: range365.to,
+        },
+      },
+      select: {
+        statDate: true,
+        activeSeconds: true,
+        sessions: true,
+        totalTokens: true,
+      },
+      orderBy: { statDate: "asc" },
+    });
+
+    return buildHeatmapFromDailyAggregates(input.timezone, dailyRows);
+  }
+
   const [sessions365, buckets365] = await Promise.all([
     prisma.usageSession.findMany({
       where: {
@@ -345,6 +449,41 @@ export async function getActivityHeatmap365(input: {
     sessions365,
     buckets365.map(normalizeUsageBucketTokenFields),
   );
+}
+
+async function loadPublicProfileUsageSnapshot(input: {
+  userId: string;
+  timezone: string;
+}) {
+  const range30 = createDailyRange(input.timezone, 30);
+  const [activityHeatmap, rawBuckets30] = await Promise.all([
+    getActivityHeatmap365(input),
+    prisma.usageBucket.findMany({
+      where: {
+        userId: input.userId,
+        bucketStart: {
+          gte: range30.from,
+          lte: range30.to,
+        },
+      },
+      select: {
+        source: true,
+        model: true,
+        inputTokens: true,
+        outputTokens: true,
+        reasoningTokens: true,
+        cachedTokens: true,
+        totalTokens: true,
+      },
+    }),
+  ]);
+  const buckets30 = rawBuckets30.map(normalizeUsageBucketTokenFields);
+
+  return {
+    activityHeatmap,
+    topTools: buildTopTools(buckets30),
+    topModels: buildTopModels(buckets30),
+  };
 }
 
 function buildTopTools(
@@ -448,43 +587,10 @@ export async function getPublicProfileActivityShareData(input: {
   }
 
   const timezone = user.usagePreference?.timezone ?? "UTC";
-  const range365 = createDailyRange(timezone, 365);
-  const [sessions365, rawBuckets365] = await Promise.all([
-    prisma.usageSession.findMany({
-      where: {
-        userId: user.id,
-        firstMessageAt: {
-          gte: range365.from,
-          lte: range365.to,
-        },
-      },
-      select: {
-        firstMessageAt: true,
-        activeSeconds: true,
-      },
-      orderBy: { firstMessageAt: "asc" },
-    }),
-    prisma.usageBucket.findMany({
-      where: {
-        userId: user.id,
-        bucketStart: {
-          gte: range365.from,
-          lte: range365.to,
-        },
-      },
-      select: {
-        bucketStart: true,
-        totalTokens: true,
-      },
-      orderBy: { bucketStart: "asc" },
-    }),
-  ]);
-
-  const heatmap = buildHeatmap(
+  const heatmap = await getActivityHeatmap365({
+    userId: user.id,
     timezone,
-    sessions365,
-    rawBuckets365.map(normalizeUsageBucketTokenFields),
-  );
+  });
 
   return {
     username: user.username,
@@ -492,10 +598,7 @@ export async function getPublicProfileActivityShareData(input: {
     heatmap,
     summary: {
       activeDays: heatmap.filter((day) => day.activeSeconds > 0).length,
-      activeSeconds: sessions365.reduce(
-        (sum, session) => sum + session.activeSeconds,
-        0,
-      ),
+      activeSeconds: heatmap.reduce((sum, day) => sum + day.activeSeconds, 0),
     },
   };
 }
@@ -524,18 +627,7 @@ export async function getPublicProfilePageData(input: {
   }
 
   const timezone = user.usagePreference?.timezone ?? "UTC";
-  const range365 = createDailyRange(timezone, 365);
-  const range30 = createDailyRange(timezone, 30);
-
-  const [
-    relationFlags,
-    linkedAccounts,
-    sessions365,
-    rawBuckets365,
-    rawBuckets30,
-    arenaSummary,
-    achievementWall,
-  ] = await Promise.all([
+  const [relationFlags, linkedAccounts, usageSnapshot] = await Promise.all([
     getRelationFlags(input.viewerUserId, user.id),
     prisma.account.findMany({
       where: {
@@ -544,57 +636,16 @@ export async function getPublicProfilePageData(input: {
       },
       select: { providerId: true, accountId: true, accessToken: true },
     }),
-    prisma.usageSession.findMany({
-      where: {
-        userId: user.id,
-        firstMessageAt: {
-          gte: range365.from,
-          lte: range365.to,
-        },
-      },
-      select: {
-        firstMessageAt: true,
-        activeSeconds: true,
-      },
-      orderBy: { firstMessageAt: "asc" },
-    }),
-    prisma.usageBucket.findMany({
-      where: {
-        userId: user.id,
-        bucketStart: {
-          gte: range365.from,
-          lte: range365.to,
-        },
-      },
-      select: {
-        bucketStart: true,
-        totalTokens: true,
-      },
-      orderBy: { bucketStart: "asc" },
-    }),
-    prisma.usageBucket.findMany({
-      where: {
-        userId: user.id,
-        bucketStart: {
-          gte: range30.from,
-          lte: range30.to,
-        },
-      },
-      select: {
-        source: true,
-        model: true,
-        inputTokens: true,
-        outputTokens: true,
-        reasoningTokens: true,
-        cachedTokens: true,
-        totalTokens: true,
-      },
-    }),
+    loadPublicProfileUsageSnapshot({ userId: user.id, timezone }),
+  ]);
+
+  // Run the all-time achievement queries only after the raw 30-day rows have
+  // been reduced to the small top-list inputs above. This avoids retaining the
+  // profile's history and achievement metrics at the same time.
+  const [arenaSummary, achievementWall] = await Promise.all([
     getAchievementArenaSummary(user.id),
     getProfileAchievementWall(user.id, 5),
   ]);
-  const buckets365 = rawBuckets365.map(normalizeUsageBucketTokenFields);
-  const buckets30 = rawBuckets30.map(normalizeUsageBucketTokenFields);
 
   const pickedLinked = pickLinkedAccount(linkedAccounts);
   let linkedIdentity: PublicProfilePageData["linkedIdentity"] = null;
@@ -611,8 +662,6 @@ export async function getPublicProfilePageData(input: {
       };
     }
   }
-
-  const heatmap = buildHeatmap(timezone, sessions365, buckets365);
 
   return {
     id: user.id,
@@ -638,9 +687,9 @@ export async function getPublicProfilePageData(input: {
       sessions: arenaSummary.totalSessions,
       activeDays: arenaSummary.totalActiveDays,
     },
-    heatmap,
-    topTools: buildTopTools(buckets30),
-    topModels: buildTopModels(buckets30),
+    heatmap: usageSnapshot.activityHeatmap,
+    topTools: usageSnapshot.topTools,
+    topModels: usageSnapshot.topModels,
     achievementWall,
     linkedIdentity,
   };

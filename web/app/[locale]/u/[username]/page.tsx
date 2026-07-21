@@ -19,7 +19,10 @@ import { Link } from "@/i18n/navigation";
 import { getOptionalSession } from "@/lib/session";
 import { buildAbsoluteUrl, getAppOrigin } from "@/lib/site-url";
 import { buildActivitySvgUrl } from "@/lib/social/heatmap-svg";
-import { getPublicProfilePageData } from "@/lib/social/queries";
+import {
+  getPublicProfileMetadata,
+  getPublicProfilePageData,
+} from "@/lib/social/queries";
 import {
   formatDuration,
   formatTokenCount,
@@ -56,12 +59,12 @@ export async function generateMetadata({
   params,
 }: PublicProfilePageProps): Promise<Metadata> {
   const { locale, username } = await params;
-  const [t, profile] = await Promise.all([
+  const [t, profileMetadata] = await Promise.all([
     getTranslations({ locale, namespace: "social.profile" }),
-    getPublicProfilePageData({ username }),
+    getPublicProfileMetadata({ username }),
   ]);
   const description =
-    profile?.bio?.trim() ||
+    profileMetadata?.bio?.trim() ||
     (locale === "zh"
       ? "查看 ta 的 AI 使用数据与活跃记录"
       : "See their AI usage stats and activity on Token Arena.");

@@ -16,9 +16,7 @@ import { getUsagePreference } from "@/lib/usage/preferences";
 import type { UsageShareCardPersona } from "@/lib/usage/share-card";
 import type { AchievementAwardSource } from "../../generated/prisma/client";
 import {
-  type AchievementDistinctTimelinePoint,
   type AchievementInputMetrics,
-  type AchievementTimelinePoint,
   buildAchievementNotificationData,
   buildAchievementStatuses,
   buildAchievementsPageDataFromStatuses,
@@ -28,6 +26,12 @@ import {
   mergeAchievementRecords,
   type StoredAchievementRecord,
 } from "./records";
+import {
+  addTimelineValue,
+  finalizeDistinctTimeline,
+  finalizeTimeline,
+  recordDistinctTimelineKey,
+} from "./timeline";
 import type {
   AchievementNotificationData,
   AchievementsPageData,
@@ -67,12 +71,6 @@ function earliestIso(values: Array<string | null | undefined>) {
   }
 
   return new Date(Math.min(...timestamps)).toISOString();
-}
-
-function sortIsoAsc<T extends { at: string }>(values: T[]) {
-  return values.toSorted(
-    (left, right) => Date.parse(left.at) - Date.parse(right.at),
-  );
 }
 
 function estimateBucketCostUsd(
@@ -142,57 +140,15 @@ function resolveCurrentPersona(input: {
   return "steady_builder";
 }
 
-function buildDistinctTimeline(
-  rows: Array<{ at: string; key: string | null | undefined }>,
-): AchievementDistinctTimelinePoint[] {
-  return sortIsoAsc(
-    rows.reduce<AchievementDistinctTimelinePoint[]>((acc, row) => {
-      if (row.key) {
-        acc.push({ at: row.at, key: row.key });
-      }
-      return acc;
-    }, []),
-  );
-}
-
-function normalizeUsageBucketTokenFields<
-  T extends {
-    totalTokens?: number | bigint | null;
-    inputTokens?: number | bigint | null;
-    outputTokens?: number | bigint | null;
-    reasoningTokens?: number | bigint | null;
-    cachedTokens?: number | bigint | null;
-  },
->(bucket: T) {
-  return {
-    ...bucket,
-    ...(bucket.totalTokens === undefined
-      ? {}
-      : { totalTokens: tokenCountToNumber(bucket.totalTokens) }),
-    ...(bucket.inputTokens === undefined
-      ? {}
-      : { inputTokens: tokenCountToNumber(bucket.inputTokens) }),
-    ...(bucket.outputTokens === undefined
-      ? {}
-      : { outputTokens: tokenCountToNumber(bucket.outputTokens) }),
-    ...(bucket.reasoningTokens === undefined
-      ? {}
-      : { reasoningTokens: tokenCountToNumber(bucket.reasoningTokens) }),
-    ...(bucket.cachedTokens === undefined
-      ? {}
-      : { cachedTokens: tokenCountToNumber(bucket.cachedTokens) }),
-  };
-}
-
 function buildAllTimeMetrics(input: {
   timezone: string;
   buckets: Array<{
     bucketStart: Date;
-    totalTokens: number;
-    inputTokens: number;
-    outputTokens: number;
-    reasoningTokens: number;
-    cachedTokens: number;
+    totalTokens: number | bigint;
+    inputTokens: number | bigint;
+    outputTokens: number | bigint;
+    reasoningTokens: number | bigint;
+    cachedTokens: number | bigint;
     model: string;
     source: string;
     projectKey: string;
@@ -213,8 +169,7 @@ function buildAllTimeMetrics(input: {
     month: number | null;
     all_time: number | null;
   };
-  costTimeline: AchievementTimelinePoint[];
-  totalEstimatedCostUsd: number;
+  catalog: PricingCatalog | null;
 }): AchievementInputMetrics {
   const leaderboardRanks = input.leaderboardRanks ?? {
     day: null,
@@ -222,65 +177,78 @@ function buildAllTimeMetrics(input: {
     month: null,
     all_time: null,
   };
-  const tokenTimeline: AchievementTimelinePoint[] = sortIsoAsc(
-    input.buckets.map((bucket) => ({
-      at: bucket.bucketStart.toISOString(),
-      value: bucket.totalTokens,
-    })),
-  );
-  const costTimeline = input.costTimeline;
-  const sessionTimeline: AchievementTimelinePoint[] = sortIsoAsc(
-    input.sessions.map((session) => ({
-      at: session.firstMessageAt.toISOString(),
-      value: 1,
-    })),
-  );
-  const activeSecondsTimeline: AchievementTimelinePoint[] = sortIsoAsc(
-    input.sessions.map((session) => ({
-      at: session.firstMessageAt.toISOString(),
-      value: session.activeSeconds,
-    })),
-  );
-  const modelTimeline = buildDistinctTimeline(
-    input.buckets.map((bucket) => ({
-      at: bucket.bucketStart.toISOString(),
-      key: bucket.model,
-    })),
-  );
-  const toolTimeline = buildDistinctTimeline(
-    input.buckets.map((bucket) => ({
-      at: bucket.bucketStart.toISOString(),
-      key: bucket.source,
-    })),
-  );
-  const projectTimeline = buildDistinctTimeline(
-    input.buckets.map((bucket) => ({
-      at: bucket.bucketStart.toISOString(),
-      key: bucket.projectKey,
-    })),
-  );
-  const deviceTimeline = buildDistinctTimeline([
-    ...input.buckets.map((bucket) => ({
-      at: bucket.bucketStart.toISOString(),
-      key: bucket.deviceId,
-    })),
-    ...input.sessions.map((session) => ({
-      at: session.firstMessageAt.toISOString(),
-      key: session.deviceId,
-    })),
-  ]);
-
+  const tokenValuesByTimestamp = new Map<string, number>();
+  const costValuesByTimestamp = new Map<string, number>();
+  const sessionValuesByTimestamp = new Map<string, number>();
+  const activeSecondsByTimestamp = new Map<string, number>();
+  const firstModelTimestamp = new Map<string, string>();
+  const firstToolTimestamp = new Map<string, string>();
+  const firstProjectTimestamp = new Map<string, string>();
+  const firstDeviceTimestamp = new Map<string, string>();
   const activityDayKeys = new Set<string>();
+  let totalTokens = 0;
+  let totalActiveSeconds = 0;
+  let totalEstimatedCostUsd = 0;
 
   for (const bucket of input.buckets) {
+    const at = bucket.bucketStart.toISOString();
+    const normalized = {
+      totalTokens: tokenCountToNumber(bucket.totalTokens),
+      inputTokens: tokenCountToNumber(bucket.inputTokens),
+      outputTokens: tokenCountToNumber(bucket.outputTokens),
+      reasoningTokens: tokenCountToNumber(bucket.reasoningTokens),
+      cachedTokens: tokenCountToNumber(bucket.cachedTokens),
+    };
+    const estimatedCostUsd = estimateBucketCostUsd(
+      {
+        model: bucket.model,
+        inputTokens: normalized.inputTokens,
+        outputTokens: normalized.outputTokens,
+        reasoningTokens: normalized.reasoningTokens,
+        cachedTokens: normalized.cachedTokens,
+      },
+      input.catalog,
+    );
+
+    addTimelineValue(tokenValuesByTimestamp, at, normalized.totalTokens);
+    addTimelineValue(costValuesByTimestamp, at, estimatedCostUsd);
+    recordDistinctTimelineKey(firstModelTimestamp, bucket.model, at);
+    recordDistinctTimelineKey(firstToolTimestamp, bucket.source, at);
+    recordDistinctTimelineKey(firstProjectTimestamp, bucket.projectKey, at);
+    recordDistinctTimelineKey(firstDeviceTimestamp, bucket.deviceId, at);
     activityDayKeys.add(formatDateInput(bucket.bucketStart, input.timezone));
+    totalTokens += normalized.totalTokens;
+    totalEstimatedCostUsd += estimatedCostUsd;
   }
 
   for (const session of input.sessions) {
+    const at = session.firstMessageAt.toISOString();
+    addTimelineValue(sessionValuesByTimestamp, at, 1);
+    addTimelineValue(activeSecondsByTimestamp, at, session.activeSeconds);
+    recordDistinctTimelineKey(firstDeviceTimestamp, session.deviceId, at);
     activityDayKeys.add(
       formatDateInput(session.firstMessageAt, input.timezone),
     );
+    totalActiveSeconds += session.activeSeconds;
   }
+
+  const tokenTimeline = finalizeTimeline(tokenValuesByTimestamp);
+  const costTimeline = finalizeTimeline(costValuesByTimestamp);
+  const sessionTimeline = finalizeTimeline(sessionValuesByTimestamp);
+  const activeSecondsTimeline = finalizeTimeline(activeSecondsByTimestamp);
+  const modelTimeline = finalizeDistinctTimeline(firstModelTimestamp);
+  const toolTimeline = finalizeDistinctTimeline(firstToolTimestamp);
+  const projectTimeline = finalizeDistinctTimeline(firstProjectTimestamp);
+  const deviceTimeline = finalizeDistinctTimeline(firstDeviceTimestamp);
+
+  tokenValuesByTimestamp.clear();
+  costValuesByTimestamp.clear();
+  sessionValuesByTimestamp.clear();
+  activeSecondsByTimestamp.clear();
+  firstModelTimestamp.clear();
+  firstToolTimestamp.clear();
+  firstProjectTimestamp.clear();
+  firstDeviceTimestamp.clear();
 
   const sortedActivityDayKeys = Array.from(activityDayKeys).sort(
     (left, right) => left.localeCompare(right),
@@ -316,40 +284,53 @@ function buildAllTimeMetrics(input: {
     timezone: input.timezone,
     now,
   });
-  const recentBuckets = input.buckets.filter(
-    (bucket) =>
-      bucket.bucketStart.getTime() >= recentRange.from.getTime() &&
-      bucket.bucketStart.getTime() <= recentRange.to.getTime(),
-  );
-  const recentSessions = input.sessions.filter(
-    (session) =>
-      session.firstMessageAt.getTime() >= recentRange.from.getTime() &&
-      session.firstMessageAt.getTime() <= recentRange.to.getTime(),
-  );
+  const recentTotals = {
+    totalTokens: 0,
+    reasoningTokens: 0,
+    cachedTokens: 0,
+    byProject: new Map<string, number>(),
+    byModel: new Map<string, number>(),
+  };
+  let recentSessionCount = 0;
+  let lastRecentBucketAt: string | null = null;
+  let lastRecentSessionAt: string | null = null;
 
-  const recentTotals = recentBuckets.reduce(
-    (result, bucket) => {
-      result.totalTokens += bucket.totalTokens;
-      result.reasoningTokens += bucket.reasoningTokens;
-      result.cachedTokens += bucket.cachedTokens;
-      result.byProject.set(
-        bucket.projectKey,
-        (result.byProject.get(bucket.projectKey) ?? 0) + bucket.totalTokens,
-      );
-      result.byModel.set(
-        bucket.model,
-        (result.byModel.get(bucket.model) ?? 0) + bucket.totalTokens,
-      );
-      return result;
-    },
-    {
-      totalTokens: 0,
-      reasoningTokens: 0,
-      cachedTokens: 0,
-      byProject: new Map<string, number>(),
-      byModel: new Map<string, number>(),
-    },
-  );
+  for (const bucket of input.buckets) {
+    const timestamp = bucket.bucketStart.getTime();
+    if (
+      timestamp < recentRange.from.getTime() ||
+      timestamp > recentRange.to.getTime()
+    ) {
+      continue;
+    }
+
+    const bucketTotalTokens = tokenCountToNumber(bucket.totalTokens);
+    recentTotals.totalTokens += bucketTotalTokens;
+    recentTotals.reasoningTokens += tokenCountToNumber(bucket.reasoningTokens);
+    recentTotals.cachedTokens += tokenCountToNumber(bucket.cachedTokens);
+    recentTotals.byProject.set(
+      bucket.projectKey,
+      (recentTotals.byProject.get(bucket.projectKey) ?? 0) + bucketTotalTokens,
+    );
+    recentTotals.byModel.set(
+      bucket.model,
+      (recentTotals.byModel.get(bucket.model) ?? 0) + bucketTotalTokens,
+    );
+    lastRecentBucketAt = bucket.bucketStart.toISOString();
+  }
+
+  for (const session of input.sessions) {
+    const timestamp = session.firstMessageAt.getTime();
+    if (
+      timestamp < recentRange.from.getTime() ||
+      timestamp > recentRange.to.getTime()
+    ) {
+      continue;
+    }
+
+    recentSessionCount += 1;
+    lastRecentSessionAt = session.firstMessageAt.toISOString();
+  }
 
   const topProjectTokens = Math.max(0, ...recentTotals.byProject.values());
   const topModelTokens = Math.max(0, ...recentTotals.byModel.values());
@@ -364,7 +345,7 @@ function buildAllTimeMetrics(input: {
     totalTokens30d > 0 ? topModelTokens / totalTokens30d : 0;
   const currentPersona = resolveCurrentPersona({
     totalTokens: totalTokens30d,
-    totalSessions: recentSessions.length,
+    totalSessions: recentSessionCount,
     reasoningShare: reasoningShare30d,
     cacheShare: cacheShare30d,
     topProjectShare: topProjectShare30d,
@@ -385,18 +366,12 @@ function buildAllTimeMetrics(input: {
     activeDayKeys: sortedActivityDayKeys,
     todayKey: formatDateInput(now, input.timezone),
     yesterdayKey: formatDateInput(yesterday, input.timezone),
-    totalTokens: input.buckets.reduce(
-      (sum, bucket) => sum + bucket.totalTokens,
-      0,
-    ),
+    totalTokens,
     totalSessions: input.sessions.length,
-    totalActiveSeconds: input.sessions.reduce(
-      (sum, session) => sum + session.activeSeconds,
-      0,
-    ),
+    totalActiveSeconds,
     tokenTimeline,
     costTimeline,
-    totalEstimatedCostUsd: input.totalEstimatedCostUsd,
+    totalEstimatedCostUsd,
     sessionTimeline,
     activeSecondsTimeline,
     modelTimeline,
@@ -407,8 +382,8 @@ function buildAllTimeMetrics(input: {
     cacheShare30d,
     topProjectShare30d,
     recentWindowUnlockedAt: latestIso([
-      recentBuckets.at(-1)?.bucketStart.toISOString() ?? null,
-      recentSessions.at(-1)?.firstMessageAt.toISOString() ?? null,
+      lastRecentBucketAt,
+      lastRecentSessionAt,
     ]),
     followingCount: input.following.length,
     firstFollowingAt: input.following[0]?.createdAt.toISOString() ?? null,
@@ -508,19 +483,6 @@ async function loadAchievementMetrics(userId: string) {
       }),
       getPricingCatalog(),
     ]);
-  const normalizedBuckets = buckets.map(normalizeUsageBucketTokenFields);
-
-  const costTimeline = sortIsoAsc(
-    normalizedBuckets.map((bucket) => ({
-      at: bucket.bucketStart.toISOString(),
-      value: estimateBucketCostUsd(bucket, catalog),
-    })),
-  );
-  const totalEstimatedCostUsd = costTimeline.reduce(
-    (sum, point) => sum + point.value,
-    0,
-  );
-
   const publicProfileEnabled =
     user.usagePreference?.publicProfileEnabled ?? false;
   const leaderboardRanks =
@@ -528,15 +490,14 @@ async function loadAchievementMetrics(userId: string) {
 
   return buildAllTimeMetrics({
     timezone: preference.timezone,
-    buckets: normalizedBuckets,
+    buckets,
     sessions,
     following,
     followers,
     publicProfileEnabled,
     publicProfileUpdatedAt: user.usagePreference?.updatedAt ?? null,
     leaderboardRanks,
-    costTimeline,
-    totalEstimatedCostUsd,
+    catalog,
   });
 }
 
