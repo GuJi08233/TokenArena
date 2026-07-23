@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.9.0](https://github.com/GuJi08233/TokenArena/compare/v0.8.8...v0.9.0) (2026-07-23)
+
+
+### Features
+
+* **cli:** add LetCode usage parser ([14b8c37](https://github.com/GuJi08233/TokenArena/commit/14b8c37450a5478b842ac14bedc09278fd9fb86c))
+* **cli:** add LetCode usage parser ([df48990](https://github.com/GuJi08233/TokenArena/commit/df48990dc861337a45b04df21721343635b8bea7))
+
 ## [0.8.8](https://github.com/GuJi08233/TokenArena/compare/v0.8.7...v0.8.8) (2026-07-21)
 
 
