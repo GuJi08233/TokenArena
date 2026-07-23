@@ -11,6 +11,7 @@ import "./parsers/opencode.js";
 import "./parsers/openclaw.js";
 import "./parsers/qwen-code.js";
 import "./parsers/kimi-code.js";
+import "./parsers/letcode.js";
 import "./parsers/droid.js";
 import "./parsers/pi-coding-agent.js";
 import "./parsers/qwenpaw.js";
