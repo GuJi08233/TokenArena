@@ -21,6 +21,8 @@ import "./parsers/roo-code.js";
 import "./parsers/snow.js";
 import "./parsers/cursor.js";
 import "./parsers/zcode.js";
+import "./parsers/qodercli.js";
+import "./parsers/grok-build.js";
 
 import { createCli } from "./cli.js";
 import { isMainModule } from "./infrastructure/runtime/main-module.js";
