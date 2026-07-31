@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.10.0](https://github.com/GuJi08233/TokenArena/compare/v0.9.0...v0.10.0) (2026-07-31)
+
+
+### Features
+
+* **cli:** add qodercli credit and Grok Build usage parsers ([23ebaac](https://github.com/GuJi08233/TokenArena/commit/23ebaac0d647387602d9d8e7c1bb60888a8b9806))
+
+
+### Bug Fixes
+
+* **cli:** normalize paths in extractQoderProject for Windows CI ([0390075](https://github.com/GuJi08233/TokenArena/commit/03900753bf080d005958491e43563c5eff8c5290))
+
 ## [0.9.0](https://github.com/GuJi08233/TokenArena/compare/v0.8.8...v0.9.0) (2026-07-23)
 
 
