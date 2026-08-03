@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.11.0](https://github.com/GuJi08233/TokenArena/compare/v0.10.0...v0.11.0) (2026-08-03)
+
+
+### Features
+
+* **cli:** add AtomCode usage parser ([d7b7364](https://github.com/GuJi08233/TokenArena/commit/d7b7364451bf7cb1f5b6eca1f1fe517490a07838))
+
+
+### Bug Fixes
+
+* **cli:** make atomcode parser test path assertion cross-platform ([be0c83b](https://github.com/GuJi08233/TokenArena/commit/be0c83b8dccf7f4827a33ef310833852c2def81b))
+
 ## [0.10.0](https://github.com/GuJi08233/TokenArena/compare/v0.9.0...v0.10.0) (2026-07-31)
 
 
