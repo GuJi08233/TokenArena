@@ -226,6 +226,8 @@ describe("AtomCodeParser", () => {
     const parser = new AtomCodeParser();
     expect(parser.tool.id).toBe("atomcode");
     expect(parser.tool.name).toBe("AtomCode");
-    expect(parser.tool.dataDir.endsWith(".atomcode/sessions")).toBe(true);
+    expect(parser.tool.dataDir.endsWith(join(".atomcode", "sessions"))).toBe(
+      true,
+    );
   });
 });
