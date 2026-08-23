@@ -37,8 +37,10 @@ interface DshLine {
   id?: string;
   cwd?: string;
   data?: {
+    /** `user/message` rows carry the UserMessage inline: `data.source.kind`. */
+    source?: { kind?: string };
     message?: {
-      source?: { kind?: string };
+      source?: { kind?: string; model?: string };
     };
     usage?: DshTokenUsage;
     model?: string;
@@ -201,13 +203,16 @@ function decodeSegment(segment: string): string {
 /**
  * Recover a display project name from dsh's lossy project directory key
  * (`--{slug}--`, separators collapsed to `-`): the last dash-separated piece.
+ * `~XXXX` escapes are decoded afterwards, so non-ASCII and spaced directory
+ * names read as themselves instead of leaking the escape form.
  */
 function projectFromDirName(name: string): string {
   if (name === "_no-cwd") return "unknown";
   const slug = name.replace(/^-+/, "").replace(/-+$/, "");
   if (!slug) return "unknown";
   const parts = slug.split("-").filter(Boolean);
-  return parts[parts.length - 1] ?? "unknown";
+  const last = parts[parts.length - 1];
+  return last ? decodeSegment(last) || "unknown" : "unknown";
 }
 
 export class DshParser implements IParser {
@@ -267,7 +272,10 @@ export class DshParser implements IParser {
 
           if (row.type === "user/message") {
             // Plugin-source user rows are injected context, not human prompts.
-            if (row.data?.message?.source?.kind !== "user") continue;
+            // The UserMessage sits inline on `data`; older logs nested it.
+            const sourceKind =
+              row.data?.source?.kind ?? row.data?.message?.source?.kind;
+            if (sourceKind !== "user") continue;
             if (timestamp) {
               sessionEvents.push({
                 sessionId,
@@ -280,8 +288,11 @@ export class DshParser implements IParser {
             continue;
           }
 
-          if (row.type !== "assistant/message") continue;
-          if (timestamp) {
+          // Compaction summaries are their own billed model call, logged with
+          // the model that wrote them rather than the session's current route.
+          const isCompaction = row.type === "compaction/summary";
+          if (row.type !== "assistant/message" && !isCompaction) continue;
+          if (timestamp && !isCompaction) {
             sessionEvents.push({
               sessionId,
               source: TOOL_ID,
@@ -293,23 +304,34 @@ export class DshParser implements IParser {
 
           const usage = row.data?.usage;
           if (!usage || timestamp === null) continue;
+          const model =
+            (isCompaction && typeof row.data?.model === "string"
+              ? row.data.model
+              : "") || currentModel;
 
           const inputTokens = toNonNegativeNumber(usage.inputTokens);
-          const outputTokens = toNonNegativeNumber(usage.outputTokens);
           const cachedTokens =
             toNonNegativeNumber(usage.cacheReadTokens) +
             toNonNegativeNumber(usage.cacheWriteTokens);
           const reasoningTokens = toNonNegativeNumber(usage.reasoningTokens);
+          // dsh reports reasoning as a subset of outputTokens; the aggregator
+          // sums all four fields, so split it out to avoid double counting.
+          const outputTokens = Math.max(
+            0,
+            toNonNegativeNumber(usage.outputTokens) - reasoningTokens,
+          );
 
-          if (inputTokens + outputTokens + cachedTokens === 0) continue;
+          if (inputTokens + outputTokens + cachedTokens + reasoningTokens === 0)
+            continue;
 
           const entryKey = [
             sessionId,
             timestamp.toISOString(),
-            currentModel,
+            model,
             inputTokens,
             outputTokens,
             cachedTokens,
+            reasoningTokens,
           ].join("|");
           if (seenEntryKeys.has(entryKey)) continue;
           seenEntryKeys.add(entryKey);
@@ -317,7 +339,7 @@ export class DshParser implements IParser {
           entries.push({
             sessionId,
             source: TOOL_ID,
-            model: currentModel,
+            model,
             project,
             timestamp,
             inputTokens,

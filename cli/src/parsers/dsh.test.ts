@@ -82,7 +82,9 @@ describe("DshParser", () => {
         model: "deepseek-chat",
       }),
       event("user/message", 2, 1_785_739_543_281, {
-        message: { role: "user", content: [], source: { kind: "user" } },
+        role: "user",
+        content: [],
+        source: { kind: "user" },
       }),
       event("assistant/message", 3, 1_785_739_545_000, {
         turn: 1,
@@ -112,19 +114,81 @@ describe("DshParser", () => {
     expect(bucket.project).toBe("my-project");
     // dsh usage counts are disjoint: input excludes cached, cache = read + write
     expect(bucket.inputTokens).toBe(42);
-    expect(bucket.outputTokens).toBe(69);
+    // reasoning is a subset of dsh's outputTokens, so it is split out here
+    expect(bucket.outputTokens).toBe(57);
     expect(bucket.cachedTokens).toBe(14_728);
     expect(bucket.reasoningTokens).toBe(12);
+    expect(bucket.totalTokens).toBe(14_839);
 
     expect(result.sessions).toHaveLength(1);
     const session = result.sessions[0];
     expect(session.source).toBe("dsh");
     expect(session.primaryModel).toBe("deepseek-chat");
     expect(session.inputTokens).toBe(42);
-    expect(session.outputTokens).toBe(69);
+    expect(session.outputTokens).toBe(57);
     expect(session.cachedTokens).toBe(14_728);
     expect(session.messageCount).toBe(2);
     expect(session.userMessageCount).toBe(1);
+  });
+
+  it("counts a compaction summary as its own call under the summarizing model", async () => {
+    const sessionsDir = makeTempDir("tokenarena-dsh-");
+    writeSessionLog(sessionsDir, "--home-user-my-project--", "sess-6", [
+      header,
+      event("request/context", 1, 1_785_739_543_301, {
+        provider: "deepseek",
+        model: "deepseek-chat",
+      }),
+      event("assistant/message", 2, 1_785_739_545_000, {
+        turn: 1,
+        step: 1,
+        message: { role: "assistant", content: [], source: { kind: "model" } },
+        usage: { inputTokens: 10, outputTokens: 5 },
+      }),
+      event("compaction/summary", 3, 1_785_739_546_000, {
+        compactionId: "c-1",
+        summary: [],
+        provider: "deepseek",
+        model: "deepseek-summarizer",
+        usage: { inputTokens: 900, outputTokens: 40, cacheReadTokens: 64 },
+      }),
+    ]);
+
+    const parser = new DshParser(sessionsDir);
+    const result = await parser.parse();
+
+    const summaryBucket = result.buckets.find(
+      (candidate) => candidate.model === "deepseek-summarizer",
+    );
+    expect(summaryBucket?.inputTokens).toBe(900);
+    expect(summaryBucket?.outputTokens).toBe(40);
+    expect(summaryBucket?.cachedTokens).toBe(64);
+    // the summary is a billed call, not a conversation turn
+    expect(result.sessions[0].messageCount).toBe(1);
+  });
+
+  it("ignores duplicate usage carried on streaming assistant chunks", async () => {
+    const sessionsDir = makeTempDir("tokenarena-dsh-");
+    writeSessionLog(sessionsDir, "--home-user-my-project--", "sess-7", [
+      header,
+      event("assistant/chunk", 1, 1_785_739_544_000, {
+        turn: 1,
+        step: 1,
+        chunk: { usage: { inputTokens: 10, outputTokens: 5 } },
+      }),
+      event("assistant/message", 2, 1_785_739_545_000, {
+        turn: 1,
+        step: 1,
+        message: { role: "assistant", content: [], source: { kind: "model" } },
+        usage: { inputTokens: 10, outputTokens: 5 },
+      }),
+    ]);
+
+    const parser = new DshParser(sessionsDir);
+    const result = await parser.parse();
+
+    expect(result.buckets).toHaveLength(1);
+    expect(result.buckets[0].totalTokens).toBe(15);
   });
 
   it.runIf(hasZstd)(
@@ -198,14 +262,14 @@ describe("DshParser", () => {
     writeSessionLog(sessionsDir, "--home-user-my-project--", "sess-3", [
       header,
       event("user/message", 1, 1_785_739_543_281, {
-        message: {
-          role: "user",
-          content: [],
-          source: { kind: "plugin", plugin: "fs" },
-        },
+        role: "user",
+        content: [],
+        source: { kind: "plugin", plugin: "fs" },
       }),
       event("user/message", 2, 1_785_739_543_290, {
-        message: { role: "user", content: [], source: { kind: "user" } },
+        role: "user",
+        content: [],
+        source: { kind: "user" },
       }),
       event("text-chunks", 3, 1_785_739_544_000, {
         seq0: 3,
@@ -253,7 +317,9 @@ describe("DshParser", () => {
     writeSessionLog(sessionsDir, "--home-user-my-project--", "sess-5", [
       header,
       event("user/message", 1, 1_785_739_543_281, {
-        message: { role: "user", content: [], source: { kind: "user" } },
+        role: "user",
+        content: [],
+        source: { kind: "user" },
       }),
       event("assistant/message", 2, 1_785_739_545_000, {
         turn: 1,
@@ -268,6 +334,45 @@ describe("DshParser", () => {
     expect(result.buckets).toHaveLength(0);
     expect(result.sessions).toHaveLength(1);
     expect(result.sessions[0].messageCount).toBe(2);
+  });
+
+  it("keeps a prompt-only session with no assistant reply", async () => {
+    const sessionsDir = makeTempDir("tokenarena-dsh-");
+    writeSessionLog(sessionsDir, "--home-user-my-project--", "sess-8", [
+      header,
+      event("user/message", 1, 1_785_739_543_281, {
+        role: "user",
+        content: [],
+        source: { kind: "user" },
+      }),
+    ]);
+
+    const parser = new DshParser(sessionsDir);
+    const result = await parser.parse();
+
+    expect(result.buckets).toHaveLength(0);
+    expect(result.sessions).toHaveLength(1);
+    expect(result.sessions[0].userMessageCount).toBe(1);
+    expect(result.sessions[0].primaryModel).toBe("");
+  });
+
+  it("decodes escaped characters in the fallback project name", async () => {
+    const sessionsDir = makeTempDir("tokenarena-dsh-");
+    // projectKey("/home/u/my project") escapes the space as ~0020
+    writeSessionLog(sessionsDir, "--home-u-my~0020project--", "sess-9", [
+      { ...header, cwd: undefined },
+      event("assistant/message", 1, 1_785_739_545_000, {
+        turn: 1,
+        step: 1,
+        message: { role: "assistant", content: [], source: { kind: "model" } },
+        usage: { inputTokens: 1, outputTokens: 1 },
+      }),
+    ]);
+
+    const parser = new DshParser(sessionsDir);
+    const result = await parser.parse();
+
+    expect(result.buckets[0].project).toBe("my project");
   });
 
   it("reports not installed when dir is missing", () => {
