@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.12.0](https://github.com/GuJi08233/TokenArena/compare/v0.11.0...v0.12.0) (2026-08-23)
+
+
+### Features
+
+* **cli:** add DeepSeek Harness (dsh) session parser ([e4d3352](https://github.com/GuJi08233/TokenArena/commit/e4d335212a51bf368f9d24e6c40229e604dc249f))
+
+
+### Bug Fixes
+
+* **cli:** correct dsh parser token and prompt accounting ([ef59553](https://github.com/GuJi08233/TokenArena/commit/ef595535045dcb993cf009b27e9dbdb6e84f0889))
+
 ## [0.11.0](https://github.com/GuJi08233/TokenArena/compare/v0.10.0...v0.11.0) (2026-08-03)
 
 
