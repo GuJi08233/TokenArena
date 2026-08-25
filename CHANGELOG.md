@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.12.1](https://github.com/GuJi08233/TokenArena/compare/v0.12.0...v0.12.1) (2026-08-25)
+
+
+### Bug Fixes
+
+* **cli:** clamp zcode activeSeconds to session duration ([24a440a](https://github.com/GuJi08233/TokenArena/commit/24a440a2566a293f80a66498b08096a31d7b9604))
+* **cli:** deduplicate codex token_count events across rollout files ([628a5a4](https://github.com/GuJi08233/TokenArena/commit/628a5a41dd13f05824a9cfbed6811ec73876e858))
+
 ## [0.12.0](https://github.com/GuJi08233/TokenArena/compare/v0.11.0...v0.12.0) (2026-08-23)
 
 
