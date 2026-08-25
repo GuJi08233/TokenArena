@@ -359,7 +359,9 @@ function buildSessions(input: {
         firstMessageAt: firstMessageAt.toISOString(),
         lastMessageAt: lastMessageAt.toISOString(),
         durationSeconds,
-        activeSeconds: draft.activeSeconds,
+        // Turn durations can overlap (parallel tool calls), so the sum may
+        // exceed the wall-clock span of the session.
+        activeSeconds: Math.min(draft.activeSeconds, durationSeconds),
         messageCount: draft.messageCount,
         userMessageCount: draft.userMessageCount,
         userPromptHours: draft.userPromptHours,

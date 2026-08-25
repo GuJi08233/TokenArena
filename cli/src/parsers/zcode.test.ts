@@ -136,6 +136,71 @@ describe("ZCodeParser", () => {
     });
   });
 
+  it("clamps activeSeconds to the session duration when turn durations overlap", async () => {
+    const dataDir = makeTempDir("tokenarena-zcode-");
+    const dbPath = join(dataDir, "db.sqlite");
+    writeFileSync(dbPath, "", "utf-8");
+
+    const parser = new ZCodeParser({
+      dbPath,
+      queryRows: async <TRow>(_targetDbPath: string, query: string) => {
+        if (query.includes("FROM model_usage")) {
+          return [
+            {
+              sessionId: "sess-1",
+              directory: "C:\\work\\TokenArena",
+              model: "gpt-5.5",
+              startedAt: 1782022744909,
+              inputTokens: 100,
+              outputTokens: 40,
+              reasoningTokens: 0,
+              cacheReadInputTokens: 0,
+            },
+          ] as TRow[];
+        }
+
+        if (query.includes("FROM message")) {
+          return [
+            {
+              sessionId: "sess-1",
+              timeCreated: 1782022744898,
+              data: JSON.stringify({
+                role: "user",
+                time: { created: 1782022744898 },
+              }),
+            },
+            {
+              sessionId: "sess-1",
+              timeCreated: 1782022856080,
+              data: JSON.stringify({
+                role: "assistant",
+                time: { created: 1782022856080 },
+              }),
+            },
+          ] as TRow[];
+        }
+
+        if (query.includes("FROM turn_usage")) {
+          // 200s + 150s of overlapping turns inside a 111s session.
+          return [
+            { sessionId: "sess-1", durationMs: 200_000 },
+            { sessionId: "sess-1", durationMs: 150_000 },
+          ] as TRow[];
+        }
+
+        return [];
+      },
+    });
+
+    const result = await parser.parse();
+
+    expect(result.sessions).toHaveLength(1);
+    expect(result.sessions[0]).toMatchObject({
+      durationSeconds: 111,
+      activeSeconds: 111,
+    });
+  });
+
   it("returns buckets when session queries fail", async () => {
     const dataDir = makeTempDir("tokenarena-zcode-");
     const dbPath = join(dataDir, "db.sqlite");
