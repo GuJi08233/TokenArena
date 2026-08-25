@@ -102,6 +102,15 @@ export class CodexParser implements IParser {
       return { buckets: [], sessions: [] };
     }
 
+    // Codex writes the same usage more than once: token_count events are
+    // sometimes double-written, re-emitted between turns with an unchanged
+    // cumulative state, and resuming a session replays the whole history
+    // (with fresh timestamps) into the new rollout file. A cumulative
+    // total_token_usage state that was already seen therefore carries no new
+    // consumption, so it is deduplicated globally across files.
+    const seenTotalStates = new Set<string>();
+    const seenLastOnly = new Set<string>();
+
     for (const filePath of files) {
       const content = readFileSafe(filePath);
       if (!content) continue;
@@ -164,13 +173,31 @@ export class CodexParser implements IParser {
           const timestamp = obj.timestamp ? new Date(obj.timestamp) : null;
           if (!timestamp || Number.isNaN(timestamp.getTime())) continue;
 
-          sessionEvents.push({
-            sessionId: filePath,
-            source: TOOL_ID,
-            project: sessionProject,
-            timestamp,
-            role: "assistant",
-          });
+          const model =
+            info.model || payload.model || turnContextModel || sessionModel;
+
+          let isDuplicate = false;
+          if (info.total_token_usage) {
+            const curr = info.total_token_usage;
+            const stateKey = `${model}|${toSafeNumber(curr.input_tokens)}|${toSafeNumber(curr.output_tokens)}|${toSafeNumber(curr.cached_input_tokens)}|${toSafeNumber(curr.reasoning_output_tokens)}`;
+            isDuplicate = seenTotalStates.has(stateKey);
+            if (!isDuplicate) seenTotalStates.add(stateKey);
+          } else if (info.last_token_usage) {
+            const u = info.last_token_usage;
+            const lastKey = `${obj.timestamp}|${toSafeNumber(u.input_tokens)}|${toSafeNumber(u.output_tokens)}|${toSafeNumber(u.cached_input_tokens)}|${toSafeNumber(u.reasoning_output_tokens)}`;
+            isDuplicate = seenLastOnly.has(lastKey);
+            if (!isDuplicate) seenLastOnly.add(lastKey);
+          }
+
+          if (!isDuplicate) {
+            sessionEvents.push({
+              sessionId: filePath,
+              source: TOOL_ID,
+              project: sessionProject,
+              timestamp,
+              role: "assistant",
+            });
+          }
 
           let usage = info.last_token_usage;
           if (!usage && info.total_token_usage) {
@@ -199,12 +226,14 @@ export class CodexParser implements IParser {
             } else {
               usage = curr;
             }
+            // The delta baseline advances even for duplicated events so that
+            // the first genuinely new state after a replayed history yields
+            // its true increment instead of the full cumulative value.
             prevTotal.set(totalKey, { ...curr });
           }
           if (!usage) continue;
+          if (isDuplicate) continue;
 
-          const model =
-            info.model || payload.model || turnContextModel || sessionModel;
           const cachedInput = toSafeNumber(usage.cached_input_tokens);
           const reasoningTokens = toSafeNumber(usage.reasoning_output_tokens);
           const inputTokens = Math.max(

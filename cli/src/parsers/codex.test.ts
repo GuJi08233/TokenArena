@@ -210,4 +210,227 @@ describe("CodexParser", () => {
       },
     ]);
   });
+
+  it("counts a repeated cumulative state only once (double-writes and heartbeats)", async () => {
+    const sessionsDir = makeTempDir("tokenarena-codex-");
+    const sessionDir = join(sessionsDir, "2026", "04", "20");
+    mkdirSync(sessionDir, { recursive: true });
+
+    const usage = {
+      input_tokens: 100,
+      output_tokens: 80,
+      cached_input_tokens: 20,
+      reasoning_output_tokens: 30,
+    };
+    const tokenCount = (timestamp: string) =>
+      JSON.stringify({
+        type: "event_msg",
+        timestamp,
+        payload: {
+          type: "token_count",
+          info: {
+            model: "gpt-5-codex",
+            total_token_usage: usage,
+            last_token_usage: usage,
+          },
+        },
+      });
+
+    writeFileSync(
+      join(sessionDir, "rollout-1.jsonl"),
+      [
+        JSON.stringify({
+          type: "session_meta",
+          payload: { cwd: "/Users/dev/tokenarena" },
+        }),
+        JSON.stringify({
+          type: "turn_context",
+          timestamp: "2026-04-20T10:00:00.000Z",
+          payload: { model: "gpt-5-codex" },
+        }),
+        // Original event, a double-write 1ms later and a heartbeat re-emit
+        // 44s later all carry the identical cumulative state.
+        tokenCount("2026-04-20T10:00:05.000Z"),
+        tokenCount("2026-04-20T10:00:05.001Z"),
+        tokenCount("2026-04-20T10:00:49.000Z"),
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const parser = new CodexParser(sessionsDir);
+    const result = await parser.parse();
+
+    expect(result.buckets).toHaveLength(1);
+    expect(result.buckets[0]).toMatchObject({
+      inputTokens: 80,
+      outputTokens: 50,
+      reasoningTokens: 30,
+      cachedTokens: 20,
+      totalTokens: 180,
+    });
+
+    expect(result.sessions).toHaveLength(1);
+    expect(result.sessions[0]).toMatchObject({
+      messageCount: 2,
+      userMessageCount: 1,
+      totalTokens: 180,
+    });
+  });
+
+  it("does not double count history replayed into a resumed rollout file", async () => {
+    const sessionsDir = makeTempDir("tokenarena-codex-");
+    const sessionDir = join(sessionsDir, "2026", "04", "20");
+    mkdirSync(sessionDir, { recursive: true });
+
+    const meta = JSON.stringify({
+      type: "session_meta",
+      payload: { cwd: "/Users/dev/tokenarena" },
+    });
+    const turnContext = (timestamp: string) =>
+      JSON.stringify({
+        type: "turn_context",
+        timestamp,
+        payload: { model: "gpt-5-codex" },
+      });
+    const tokenCount = (
+      timestamp: string,
+      total: Record<string, number>,
+      last: Record<string, number>,
+    ) =>
+      JSON.stringify({
+        type: "event_msg",
+        timestamp,
+        payload: {
+          type: "token_count",
+          info: {
+            model: "gpt-5-codex",
+            total_token_usage: total,
+            last_token_usage: last,
+          },
+        },
+      });
+
+    const turn1Total = {
+      input_tokens: 100,
+      output_tokens: 50,
+      cached_input_tokens: 20,
+      reasoning_output_tokens: 10,
+    };
+    const turn2Total = {
+      input_tokens: 300,
+      output_tokens: 120,
+      cached_input_tokens: 80,
+      reasoning_output_tokens: 30,
+    };
+    const turn2Last = {
+      input_tokens: 200,
+      output_tokens: 70,
+      cached_input_tokens: 60,
+      reasoning_output_tokens: 20,
+    };
+
+    writeFileSync(
+      join(sessionDir, "rollout-1.jsonl"),
+      [
+        meta,
+        turnContext("2026-04-20T10:00:00.000Z"),
+        tokenCount("2026-04-20T10:00:05.000Z", turn1Total, turn1Total),
+        tokenCount("2026-04-20T10:05:00.000Z", turn2Total, turn2Last),
+      ].join("\n"),
+      "utf-8",
+    );
+
+    // Resuming replays the full history with fresh timestamps before the
+    // genuinely new turn is appended.
+    writeFileSync(
+      join(sessionDir, "rollout-2.jsonl"),
+      [
+        meta,
+        turnContext("2026-04-20T12:00:00.000Z"),
+        tokenCount("2026-04-20T12:00:00.100Z", turn1Total, turn1Total),
+        tokenCount("2026-04-20T12:00:00.101Z", turn2Total, turn2Last),
+        tokenCount(
+          "2026-04-20T12:10:00.000Z",
+          {
+            input_tokens: 600,
+            output_tokens: 220,
+            cached_input_tokens: 180,
+            reasoning_output_tokens: 60,
+          },
+          {
+            input_tokens: 300,
+            output_tokens: 100,
+            cached_input_tokens: 100,
+            reasoning_output_tokens: 30,
+          },
+        ),
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const parser = new CodexParser(sessionsDir);
+    const result = await parser.parse();
+
+    // turn1: 150, turn2: 270, resumed turn3: 400. The replayed copies of
+    // turn1/turn2 in rollout-2 must not be counted again.
+    const bucketTotal = result.buckets.reduce(
+      (sum, bucket) => sum + bucket.totalTokens,
+      0,
+    );
+    expect(bucketTotal).toBe(820);
+
+    expect(result.sessions).toHaveLength(2);
+    const sessionTotals = result.sessions
+      .map((session) => session.totalTokens)
+      .sort((a, b) => a - b);
+    expect(sessionTotals).toEqual([400, 420]);
+  });
+
+  it("deduplicates double-written events that only carry last_token_usage", async () => {
+    const sessionsDir = makeTempDir("tokenarena-codex-");
+    const sessionDir = join(sessionsDir, "2026", "04", "20");
+    mkdirSync(sessionDir, { recursive: true });
+
+    const line = JSON.stringify({
+      type: "event_msg",
+      timestamp: "2026-04-20T10:00:05.000Z",
+      payload: {
+        type: "token_count",
+        info: {
+          model: "gpt-5-codex",
+          last_token_usage: {
+            input_tokens: 100,
+            output_tokens: 80,
+            cached_input_tokens: 20,
+            reasoning_output_tokens: 30,
+          },
+        },
+      },
+    });
+
+    writeFileSync(
+      join(sessionDir, "rollout-1.jsonl"),
+      [
+        JSON.stringify({
+          type: "session_meta",
+          payload: { cwd: "/Users/dev/tokenarena" },
+        }),
+        line,
+        line,
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const parser = new CodexParser(sessionsDir);
+    const result = await parser.parse();
+
+    expect(result.buckets).toHaveLength(1);
+    expect(result.buckets[0]).toMatchObject({
+      inputTokens: 80,
+      outputTokens: 50,
+      reasoningTokens: 30,
+      cachedTokens: 20,
+      totalTokens: 180,
+    });
+  });
 });
