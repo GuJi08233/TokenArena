@@ -1,6 +1,6 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { CherryStudioParser, getCherryStudioDbPaths } from "./cherry-studio";
 
@@ -390,22 +390,25 @@ describe("CherryStudioParser", () => {
 
 describe("getCherryStudioDbPaths", () => {
   it("accepts an explicit sqlite file and keeps the platform default", () => {
-    const explicit = join("C:", "custom", "cherrystudio.sqlite");
+    // tmpdir() keeps the override absolute on every platform, which a
+    // hardcoded drive letter would not be on POSIX.
+    const explicit = join(tmpdir(), "custom", "cherrystudio.sqlite");
     const paths = getCherryStudioDbPaths({
       TOKEN_ARENA_CHERRY_STUDIO_DB: explicit,
     } as NodeJS.ProcessEnv);
 
-    expect(paths[0]).toBe(explicit);
+    expect(paths[0]).toBe(resolve(explicit));
     expect(paths).toHaveLength(2);
   });
 
   it("resolves an explicit data directory to the sqlite file inside it", () => {
+    const dataDir = join(tmpdir(), "custom", "CherryStudio");
     const paths = getCherryStudioDbPaths({
-      TOKEN_ARENA_CHERRY_STUDIO_DB: join("C:", "custom", "CherryStudio"),
+      TOKEN_ARENA_CHERRY_STUDIO_DB: dataDir,
     } as NodeJS.ProcessEnv);
 
     expect(paths[0]).toBe(
-      join("C:", "custom", "CherryStudio", "Data", "cherrystudio.sqlite"),
+      join(resolve(dataDir), "Data", "cherrystudio.sqlite"),
     );
   });
 
