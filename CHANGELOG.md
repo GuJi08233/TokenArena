@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.14.0](https://github.com/GuJi08233/TokenArena/compare/v0.13.0...v0.14.0) (2026-09-07)
+
+
+### Features
+
+* **cli:** add Cherry Studio usage parser ([b3df593](https://github.com/GuJi08233/TokenArena/commit/b3df593d95f9289eed762124744fda980d8a180e))
+
+
+### Bug Fixes
+
+* **cli:** make cherry-studio path assertions cross-platform ([f723985](https://github.com/GuJi08233/TokenArena/commit/f7239853243ee4e687d3a1f686cfb986b61df8f0))
+
 ## [0.13.0](https://github.com/GuJi08233/TokenArena/compare/v0.12.1...v0.13.0) (2026-09-07)
 
 
