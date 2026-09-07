@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.0](https://github.com/GuJi08233/TokenArena/compare/v0.12.1...v0.13.0) (2026-09-07)
+
+
+### Features
+
+* **cli:** add mirasim GUI sub-agent usage parser ([e939614](https://github.com/GuJi08233/TokenArena/commit/e939614e4add3f2db08ed4b67ebc2cc7bb3a1668))
+
 ## [0.12.1](https://github.com/GuJi08233/TokenArena/compare/v0.12.0...v0.12.1) (2026-08-25)
 
 
