@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.14.1](https://github.com/GuJi08233/TokenArena/compare/v0.14.0...v0.14.1) (2026-09-08)
+
+
+### Bug Fixes
+
+* **cli:** make the sqlite fallback test cross-platform ([21a1eb4](https://github.com/GuJi08233/TokenArena/commit/21a1eb48a5565b18033d42be84f7b5b105d047e2))
+* **cli:** warn when the sqlite immutable fallback skips WAL data ([0455930](https://github.com/GuJi08233/TokenArena/commit/045593057eae0083c0e5b653e579fe185c70bc06))
+
 ## [0.14.0](https://github.com/GuJi08233/TokenArena/compare/v0.13.0...v0.14.0) (2026-09-07)
 
 
