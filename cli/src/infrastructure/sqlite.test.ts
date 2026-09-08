@@ -1,13 +1,13 @@
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { readSqliteRows } from "./sqlite";
+import { readSqliteRows, warnWhenWalSkipped } from "./sqlite";
 
 // `node:sqlite` only exists on Node 22.5+, and the CLI matrix still covers
 // Node 20. There the builtin reader bails out to the sqlite3 CLI and the
-// fallback chain under test never runs, so these cases are skipped rather
-// than rewritten against an external binary that may not be installed.
+// paths below never run, so they are skipped rather than rewritten against an
+// external binary that may not be installed.
 let sqliteModule: typeof import("node:sqlite") | null = null;
 try {
   sqliteModule = await import("node:sqlite");
@@ -21,45 +21,6 @@ function makeTempDir(): string {
   const dir = mkdtempSync(join(tmpdir(), "tokenarena-sqlite-"));
   tempDirs.push(dir);
   return dir;
-}
-
-/**
- * Build a WAL database whose newest row is still only in the -wal file, then
- * copy the pair somewhere the -shm file cannot be created. Opening that copy
- * fails for read-write and succeeds only for the immutable fallback, which is
- * the exact situation the warning exists for.
- */
-function makeDatabaseThatOnlyOpensImmutable(options: { copyWal: boolean }): {
-  dbPath: string;
-} {
-  const DatabaseSync = sqliteModule?.DatabaseSync;
-  if (!DatabaseSync) throw new Error("node:sqlite unavailable");
-
-  const dir = makeTempDir();
-  const sourcePath = join(dir, "source.sqlite");
-
-  const setup = new DatabaseSync(sourcePath);
-  setup.exec("PRAGMA journal_mode=WAL");
-  setup.exec("CREATE TABLE usage(id TEXT)");
-  setup.exec("INSERT INTO usage VALUES ('checkpointed')");
-  setup.close();
-
-  // Holding this connection open keeps the row below out of the main file.
-  const holder = new DatabaseSync(sourcePath);
-  holder.exec("INSERT INTO usage VALUES ('pending-in-wal')");
-
-  const dbPath = join(dir, "target.sqlite");
-  copyFileSync(sourcePath, dbPath);
-  if (options.copyWal) {
-    copyFileSync(`${sourcePath}-wal`, `${dbPath}-wal`);
-  }
-  holder.close();
-
-  // A directory squatting on the -shm path is what makes the shared-memory
-  // index uncreatable, mirroring a read-only database directory.
-  mkdirSync(`${dbPath}-shm`);
-
-  return { dbPath };
 }
 
 function spyOnStderr() {
@@ -81,6 +42,52 @@ afterEach(() => {
   }
 });
 
+describe("warnWhenWalSkipped", () => {
+  it("reports how many bytes the immutable read left behind", () => {
+    const dbPath = join(makeTempDir(), "usage.sqlite");
+    writeFileSync(dbPath, "");
+    writeFileSync(`${dbPath}-wal`, "x".repeat(4152));
+
+    const stderrSpy = spyOnStderr();
+    warnWhenWalSkipped(dbPath);
+
+    const warning = findWalWarning(stderrSpy);
+    expect(warning).toContain(dbPath);
+    expect(warning).toContain("4152 bytes pending");
+  });
+
+  it("stays quiet when no write-ahead log exists", () => {
+    const dbPath = join(makeTempDir(), "usage.sqlite");
+    writeFileSync(dbPath, "");
+
+    const stderrSpy = spyOnStderr();
+    warnWhenWalSkipped(dbPath);
+
+    expect(findWalWarning(stderrSpy)).toBeNull();
+  });
+
+  it("stays quiet when the write-ahead log is empty", () => {
+    const dbPath = join(makeTempDir(), "usage.sqlite");
+    writeFileSync(dbPath, "");
+    writeFileSync(`${dbPath}-wal`, "");
+
+    const stderrSpy = spyOnStderr();
+    warnWhenWalSkipped(dbPath);
+
+    expect(findWalWarning(stderrSpy)).toBeNull();
+  });
+
+  it("never throws when the database path is unusable", () => {
+    const stderrSpy = spyOnStderr();
+
+    // A missing directory must not turn a successful read into a failure.
+    expect(() =>
+      warnWhenWalSkipped(join(makeTempDir(), "absent", "usage.sqlite")),
+    ).not.toThrow();
+    expect(findWalWarning(stderrSpy)).toBeNull();
+  });
+});
+
 describe.skipIf(!sqliteModule)("readSqliteRows", () => {
   it("reads rows including ones still pending in the write-ahead log", async () => {
     const DatabaseSync = sqliteModule?.DatabaseSync;
@@ -93,6 +100,8 @@ describe.skipIf(!sqliteModule)("readSqliteRows", () => {
     setup.exec("INSERT INTO usage VALUES ('checkpointed')");
     setup.close();
 
+    // Holding this connection open keeps the row below out of the main file,
+    // so the read has to consult the -wal to see it.
     const holder = new DatabaseSync(dbPath);
     holder.exec("INSERT INTO usage VALUES ('pending-in-wal')");
 
@@ -112,36 +121,6 @@ describe.skipIf(!sqliteModule)("readSqliteRows", () => {
     } finally {
       holder.close();
     }
-  });
-
-  it("warns when the immutable fallback skips pending write-ahead log data", async () => {
-    const { dbPath } = makeDatabaseThatOnlyOpensImmutable({ copyWal: true });
-    const stderrSpy = spyOnStderr();
-
-    const rows = await readSqliteRows<{ id: string }>(
-      dbPath,
-      "SELECT id FROM usage",
-    );
-
-    // Only the main file is readable, so the pending row is absent...
-    expect(rows.map((row) => row.id)).toEqual(["checkpointed"]);
-    // ...and that loss is reported instead of passing silently.
-    const warning = findWalWarning(stderrSpy);
-    expect(warning).toContain(dbPath);
-    expect(warning).toContain("bytes pending");
-  });
-
-  it("stays quiet on the immutable fallback when no write-ahead log is left behind", async () => {
-    const { dbPath } = makeDatabaseThatOnlyOpensImmutable({ copyWal: false });
-    const stderrSpy = spyOnStderr();
-
-    const rows = await readSqliteRows<{ id: string }>(
-      dbPath,
-      "SELECT id FROM usage",
-    );
-
-    expect(rows.map((row) => row.id)).toEqual(["checkpointed"]);
-    expect(findWalWarning(stderrSpy)).toBeNull();
   });
 
   it("propagates query errors instead of retrying the fallback", async () => {

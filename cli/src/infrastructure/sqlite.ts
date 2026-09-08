@@ -58,8 +58,12 @@ function withSuppressedSqliteWarning<T>(fn: () => Promise<T>): Promise<T> {
  * error, so warn instead of letting the usage silently come up short. Reading
  * the WAL would need a writable directory, which is exactly what this fallback
  * exists to work around, so there is nothing to recover here.
+ *
+ * Exported for tests: forcing the fallback from the outside needs an
+ * unwritable database directory, and how SQLite reacts to one differs per
+ * platform, so the warning is covered directly instead.
  */
-function warnWhenWalSkipped(dbPath: string): void {
+export function warnWhenWalSkipped(dbPath: string): void {
   try {
     const pendingBytes = statSync(`${dbPath}-wal`).size;
     if (pendingBytes > 0) {
