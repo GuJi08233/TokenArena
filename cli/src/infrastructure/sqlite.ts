@@ -1,5 +1,7 @@
 import { execFileSync } from "node:child_process";
+import { statSync } from "node:fs";
 import { pathToFileURL } from "node:url";
+import { logger } from "../utils/logger";
 
 type SqliteDatabaseSync<TRow> = {
   close(): void;
@@ -49,6 +51,28 @@ function withSuppressedSqliteWarning<T>(fn: () => Promise<T>): Promise<T> {
   });
 }
 
+/**
+ * The immutable fallback promises SQLite the file cannot change, so SQLite
+ * reads the main database alone and skips the write-ahead log. Anything not yet
+ * checkpointed is invisible, and SQLite treats that as success rather than an
+ * error, so warn instead of letting the usage silently come up short. Reading
+ * the WAL would need a writable directory, which is exactly what this fallback
+ * exists to work around, so there is nothing to recover here.
+ */
+function warnWhenWalSkipped(dbPath: string): void {
+  try {
+    const pendingBytes = statSync(`${dbPath}-wal`).size;
+    if (pendingBytes > 0) {
+      logger.warn(
+        `${dbPath} was read without its write-ahead log (${pendingBytes} bytes pending), so the newest records may be missing. This happens when the database directory is not writable.`,
+      );
+    }
+  } catch {
+    // No -wal file means nothing was skipped. A stat failure must never turn a
+    // successful read into a failed one, so it is swallowed either way.
+  }
+}
+
 async function readSqliteRowsWithBuiltin<TRow>(
   dbPath: string,
   query: string,
@@ -60,17 +84,19 @@ async function readSqliteRowsWithBuiltin<TRow>(
         DatabaseSync: new (location: string) => SqliteDatabaseSync<TRow>;
       };
 
-      const locations = [
-        dbPath,
-        `${pathToFileURL(dbPath).href}?mode=ro&immutable=1`,
-      ];
+      const immutableLocation = `${pathToFileURL(dbPath).href}?mode=ro&immutable=1`;
+      const locations = [dbPath, immutableLocation];
       let lastError: unknown = null;
 
       for (const location of locations) {
         let db: SqliteDatabaseSync<TRow> | null = null;
         try {
           db = new sqlite.DatabaseSync(location);
-          return db.prepare(query).all() as TRow[];
+          const rows = db.prepare(query).all() as TRow[];
+          if (location === immutableLocation) {
+            warnWhenWalSkipped(dbPath);
+          }
+          return rows;
         } catch (err) {
           lastError = err;
           const error = err as NodeJS.ErrnoException;
