@@ -227,4 +227,175 @@ describe("KimiCodeParser", () => {
     expect(result.buckets).toHaveLength(0);
     expect(result.sessions).toHaveLength(0);
   });
+
+  it("resolves placeholder model from preceding llm.request", async () => {
+    const rootDir = makeTempDir("tokenarena-kimi-alias-");
+    const sessionsDir = join(rootDir, "sessions");
+    const wireDir = join(
+      sessionsDir,
+      "wd_alias_test",
+      "session-1",
+      "agents",
+      "main",
+    );
+    mkdirSync(wireDir, { recursive: true });
+
+    writeFileSync(
+      join(rootDir, "workspaces.json"),
+      JSON.stringify({
+        version: 1,
+        workspaces: {
+          wd_alias_test: {
+            root: "/Users/dev/alias-project",
+            name: "alias-project",
+          },
+        },
+      }),
+      "utf-8",
+    );
+
+    writeFileSync(
+      join(wireDir, "wire.jsonl"),
+      [
+        JSON.stringify({
+          type: "llm.request",
+          model: "kimi-k3",
+          modelAlias: "__kimi_env_model__",
+          time: 1788972902502,
+        }),
+        JSON.stringify({
+          type: "usage.record",
+          model: "__kimi_env_model__",
+          usage: {
+            inputOther: 7170,
+            output: 119,
+            inputCacheRead: 17232,
+          },
+          usageScope: "turn",
+          time: 1788972916867,
+        }),
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const parser = new KimiCodeParser({
+      sessionsDir,
+      configPath: join(rootDir, "workspaces.json"),
+    });
+    const result = await parser.parse();
+
+    expect(result.buckets).toHaveLength(1);
+    expect(result.buckets[0]).toMatchObject({
+      source: "kimi-code",
+      model: "kimi-k3",
+      project: "alias-project",
+      inputTokens: 7170,
+      outputTokens: 119,
+      cachedTokens: 17232,
+    });
+
+    expect(result.sessions[0]).toMatchObject({
+      primaryModel: "kimi-k3",
+    });
+  });
+
+  it("keeps real model in usage.record when no placeholder is used", async () => {
+    const rootDir = makeTempDir("tokenarena-kimi-real-");
+    const sessionsDir = join(rootDir, "sessions");
+    const wireDir = join(
+      sessionsDir,
+      "wd_real_test",
+      "session-1",
+      "agents",
+      "main",
+    );
+    mkdirSync(wireDir, { recursive: true });
+
+    writeFileSync(
+      join(rootDir, "workspaces.json"),
+      JSON.stringify({
+        version: 1,
+        workspaces: {
+          wd_real_test: {
+            root: "/Users/dev/real-project",
+            name: "real-project",
+          },
+        },
+      }),
+      "utf-8",
+    );
+
+    writeFileSync(
+      join(wireDir, "wire.jsonl"),
+      [
+        JSON.stringify({
+          type: "llm.request",
+          model: "kimi-k3",
+          time: 1788972902502,
+        }),
+        JSON.stringify({
+          type: "usage.record",
+          model: "moonshot-cn/kimi-k3",
+          usage: {
+            inputOther: 500,
+            output: 100,
+            inputCacheRead: 2000,
+          },
+          usageScope: "turn",
+          time: 1788972916867,
+        }),
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const parser = new KimiCodeParser({
+      sessionsDir,
+      configPath: join(rootDir, "workspaces.json"),
+    });
+    const result = await parser.parse();
+
+    expect(result.buckets).toHaveLength(1);
+    expect(result.buckets[0]).toMatchObject({
+      model: "moonshot-cn/kimi-k3",
+    });
+  });
+
+  it("falls back to unknown when usage.record has placeholder but no preceding llm.request", async () => {
+    const rootDir = makeTempDir("tokenarena-kimi-noalias-");
+    const sessionsDir = join(rootDir, "sessions");
+    const wireDir = join(
+      sessionsDir,
+      "wd_noalias_test",
+      "session-1",
+      "agents",
+      "main",
+    );
+    mkdirSync(wireDir, { recursive: true });
+
+    writeFileSync(
+      join(wireDir, "wire.jsonl"),
+      [
+        JSON.stringify({
+          type: "usage.record",
+          model: "__kimi_env_model__",
+          usage: {
+            inputOther: 100,
+            output: 50,
+            inputCacheRead: 0,
+          },
+          usageScope: "turn",
+          time: 1788972916867,
+        }),
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const parser = new KimiCodeParser({ sessionsDir });
+    const result = await parser.parse();
+
+    expect(result.buckets).toHaveLength(1);
+    expect(result.buckets[0]).toMatchObject({
+      model: "unknown",
+    });
+  });
 });

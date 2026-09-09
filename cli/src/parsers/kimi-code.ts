@@ -55,8 +55,9 @@ interface KimiEvent {
   timestamp?: string | number;
   time?: number; // Unix timestamp in milliseconds for usage.record
   payload?: KimiPayload;
-  // New format fields for usage.record
+  // New format fields for usage.record and llm.request
   model?: string;
+  modelAlias?: string;
   usage?: KimiTokenUsage;
   usageScope?: string;
 }
@@ -83,6 +84,10 @@ function getPathLeaf(value: string): string {
   const normalized = value.replace(/\\/g, "/").replace(/\/+$/, "");
   const leaf = normalized.split("/").filter(Boolean).pop();
   return leaf || "unknown";
+}
+
+function isModelPlaceholder(value: string | undefined): boolean {
+  return !value || /^__[^_]+(?:_[^_]+)*__$/.test(value);
 }
 
 function findWireFiles(
@@ -248,6 +253,15 @@ export class KimiCodeParser implements IParser {
           continue;
         }
 
+        // Handle llm.request / model.bind: track real model name for aliased usage records
+        if (obj.type === "llm.request" || obj.type === "model.bind") {
+          const resolved = obj.model;
+          if (!isModelPlaceholder(resolved)) {
+            currentModel = resolved;
+          }
+          continue;
+        }
+
         // Handle new format: usage.record (no payload, uses top-level time)
         if (obj.type === "usage.record") {
           const timestampValue = obj.time;
@@ -280,7 +294,7 @@ export class KimiCodeParser implements IParser {
           entries.push({
             sessionId,
             source: TOOL_ID,
-            model: obj.model || currentModel,
+            model: isModelPlaceholder(obj.model) ? currentModel : obj.model,
             project,
             timestamp,
             inputTokens,
