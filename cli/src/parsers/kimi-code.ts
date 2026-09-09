@@ -255,9 +255,8 @@ export class KimiCodeParser implements IParser {
 
         // Handle llm.request / model.bind: track real model name for aliased usage records
         if (obj.type === "llm.request" || obj.type === "model.bind") {
-          const resolved = obj.model;
-          if (!isModelPlaceholder(resolved)) {
-            currentModel = resolved;
+          if (obj.model && !isModelPlaceholder(obj.model)) {
+            currentModel = obj.model;
           }
           continue;
         }
@@ -291,10 +290,15 @@ export class KimiCodeParser implements IParser {
             role: "assistant",
           });
 
+          const model =
+            obj.model && !isModelPlaceholder(obj.model)
+              ? obj.model
+              : currentModel;
+
           entries.push({
             sessionId,
             source: TOOL_ID,
-            model: isModelPlaceholder(obj.model) ? currentModel : obj.model,
+            model,
             project,
             timestamp,
             inputTokens,
