@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.14.2](https://github.com/GuJi08233/TokenArena/compare/v0.14.1...v0.14.2) (2026-09-09)
+
+
+### Bug Fixes
+
+* **cli:** resolve kimi-code model name from llm.request when aliased ([1ff260f](https://github.com/GuJi08233/TokenArena/commit/1ff260f0f74bdc34de2752907cc33f0902b8aea2))
+* **cli:** resolve type error in kimi-code model placeholder ([c7c0f38](https://github.com/GuJi08233/TokenArena/commit/c7c0f388f57ce5611420c9215bee071a76ce58f9))
+
 ## [0.14.1](https://github.com/GuJi08233/TokenArena/compare/v0.14.0...v0.14.1) (2026-09-08)
 
 
