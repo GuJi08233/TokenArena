@@ -4,6 +4,7 @@ export default function PublicProfileLoading() {
       <div className="mx-auto grid w-full max-w-7xl gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[280px_minmax(0,1fr)] lg:items-stretch lg:px-8">
         <div className="h-72 animate-pulse rounded-xl bg-muted" />
         <div className="h-64 animate-pulse rounded-xl bg-muted" />
+        <div className="h-14 animate-pulse rounded-2xl bg-muted lg:col-start-2" />
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 lg:col-start-2">
           {["metric-a", "metric-b", "metric-c", "metric-d"].map((key) => (
             <div key={key} className="h-24 animate-pulse rounded-xl bg-muted" />

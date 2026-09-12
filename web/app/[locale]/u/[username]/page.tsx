@@ -9,6 +9,7 @@ import { ProfileFollowAction } from "@/components/social/profile-follow-action";
 import { ProfileHeatmap } from "@/components/social/profile-heatmap";
 import { ProfileHeatmapMarkdownButton } from "@/components/social/profile-heatmap-markdown-button";
 import { ProfileLinkedIdentityLink } from "@/components/social/profile-linked-identity";
+import { ProfileRangeFilter } from "@/components/social/profile-range-filter";
 import { ProfileTopList } from "@/components/social/profile-top-list";
 import { ProfileWechatShareButton } from "@/components/social/profile-wechat-share-button";
 import { SocialShell } from "@/components/social/social-shell";
@@ -19,6 +20,7 @@ import { Link } from "@/i18n/navigation";
 import { getOptionalSession } from "@/lib/session";
 import { buildAbsoluteUrl, getAppOrigin } from "@/lib/site-url";
 import { buildActivitySvgUrl } from "@/lib/social/heatmap-svg";
+import { parseProfileRangeQuery } from "@/lib/social/profile-range";
 import {
   getPublicProfileMetadata,
   getPublicProfilePageData,
@@ -35,6 +37,7 @@ type PublicProfilePageProps = {
     locale: string;
     username: string;
   }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
 
 const joinedDateFormatterCache = new Map<string, Intl.DateTimeFormat>();
@@ -107,22 +110,36 @@ export async function generateMetadata({
 
 export default async function PublicProfilePage({
   params,
+  searchParams,
 }: PublicProfilePageProps) {
-  const [{ locale, username }, viewer] = await Promise.all([
-    params,
-    getOptionalSession(),
-  ]);
+  const [{ locale, username }, viewer, resolvedSearchParams] =
+    await Promise.all([
+      params,
+      getOptionalSession(),
+      searchParams ?? Promise.resolve(undefined),
+    ]);
   const [t, profile] = await Promise.all([
     getTranslations({ locale, namespace: "social.profile" }),
     getPublicProfilePageData({
       username,
       viewerUserId: viewer?.user.id ?? null,
+      range: parseProfileRangeQuery(resolvedSearchParams ?? {}),
     }),
   ]);
 
   if (!profile) {
     notFound();
   }
+
+  const isAllTimeRange = profile.range.preset === "all";
+  const overviewLabels = {
+    totalTokens: isAllTimeRange ? t("totalTokens") : t("rangeTotalTokens"),
+    estimatedCost: isAllTimeRange
+      ? t("estimatedCost")
+      : t("rangeEstimatedCost"),
+    activeTime: isAllTimeRange ? t("activeTime") : t("rangeActiveTime"),
+    sessions: isAllTimeRange ? t("sessions") : t("rangeSessions"),
+  };
 
   const wechatShareEnabled = isWechatShareConfigured();
   const baseUrl = getAppOrigin() ?? "";
@@ -316,11 +333,19 @@ export default async function PublicProfilePage({
             </Card>
           ) : null}
 
+          <ProfileRangeFilter
+            basePath={`/u/${encodeURIComponent(profile.username)}`}
+            preset={profile.range.preset}
+            from={profile.range.from}
+            to={profile.range.to}
+            timezone={profile.range.timezone}
+          />
+
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-4">
             <Card className="bg-card shadow-sm ring-1 ring-border/60">
               <CardHeader className="pb-1">
                 <CardTitle className="text-sm text-muted-foreground">
-                  {t("totalTokens")}
+                  {overviewLabels.totalTokens}
                 </CardTitle>
               </CardHeader>
               <CardContent className="pb-1">
@@ -333,7 +358,7 @@ export default async function PublicProfilePage({
             <Card className="bg-card shadow-sm ring-1 ring-border/60">
               <CardHeader className="pb-1">
                 <CardTitle className="text-sm text-muted-foreground">
-                  {t("estimatedCost")}
+                  {overviewLabels.estimatedCost}
                 </CardTitle>
               </CardHeader>
               <CardContent className="pb-1">
@@ -346,7 +371,7 @@ export default async function PublicProfilePage({
             <Card className="bg-card shadow-sm ring-1 ring-border/60">
               <CardHeader className="pb-1">
                 <CardTitle className="text-sm text-muted-foreground">
-                  {t("activeTime")}
+                  {overviewLabels.activeTime}
                 </CardTitle>
               </CardHeader>
               <CardContent className="pb-1">
@@ -359,7 +384,7 @@ export default async function PublicProfilePage({
             <Card className="bg-card shadow-sm ring-1 ring-border/60">
               <CardHeader className="pb-1">
                 <CardTitle className="text-sm text-muted-foreground">
-                  {t("sessions")}
+                  {overviewLabels.sessions}
                 </CardTitle>
               </CardHeader>
               <CardContent className="pb-1">

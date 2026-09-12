@@ -4,6 +4,11 @@ import type { ProfileAchievementWallItem } from "@/lib/achievements/profile-wall
 import { getProfileAchievementWall } from "@/lib/achievements/profile-wall";
 import { getAchievementArenaSummary } from "@/lib/achievements/queries";
 import { normalizeUsername } from "@/lib/auth-username";
+import { getPricingCatalog } from "@/lib/pricing/catalog";
+import {
+  estimateCostUsd,
+  resolveOfficialPricingMatch,
+} from "@/lib/pricing/resolve";
 import { prisma } from "@/lib/prisma";
 import {
   LINKED_PROFILE_PROVIDER_IDS,
@@ -11,6 +16,11 @@ import {
   pickLinkedAccount,
   resolveLinkedProfileUrl,
 } from "@/lib/social/linked-provider-profile";
+import {
+  type ProfileRangePreset,
+  type ProfileRangeQuery,
+  resolveProfileRange,
+} from "@/lib/social/profile-range";
 import { tokenCountToNumber } from "@/lib/token-counts";
 import {
   groupByHourOrDay,
@@ -18,6 +28,7 @@ import {
   resolveDashboardRange,
 } from "@/lib/usage/date-range";
 import { formatDateInput } from "@/lib/usage/format";
+import type { DashboardRange } from "@/lib/usage/types";
 import type { FollowTag } from "./follow-tags";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -130,6 +141,16 @@ export type PublicProfilePageData = {
   followTag: FollowTag | null;
   followsYou: boolean;
   isSelf: boolean;
+  /**
+   * Range the overview and top lists were computed over. `from`/`to` are null
+   * for the all-time default; the heatmap always covers the last 365 days.
+   */
+  range: {
+    preset: ProfileRangePreset;
+    from: string | null;
+    to: string | null;
+    timezone: string;
+  };
   overview: {
     arenaScore: number;
     arenaLevel: number;
@@ -451,94 +472,132 @@ export async function getActivityHeatmap365(input: {
   );
 }
 
+/**
+ * Aggregate the profile overview and top lists for a range.
+ *
+ * These run as database-side `groupBy`/`aggregate` calls rather than loading
+ * raw rows: a public profile is reachable by anyone, and an all-time range on
+ * a heavy account would otherwise transfer every bucket the user ever synced.
+ * Summing per model before applying the rate is equivalent to per-bucket
+ * pricing because `estimateCostUsd` is linear in the token counts.
+ */
 async function loadPublicProfileUsageSnapshot(input: {
   userId: string;
   timezone: string;
+  range: DashboardRange | null;
 }) {
-  const range30 = createDailyRange(input.timezone, 30);
-  const [activityHeatmap, rawBuckets30] = await Promise.all([
-    getActivityHeatmap365(input),
-    prisma.usageBucket.findMany({
-      where: {
+  const bucketWhere = {
+    userId: input.userId,
+    ...(input.range
+      ? {
+          bucketStart: {
+            gte: input.range.from,
+            lte: input.range.to,
+          },
+        }
+      : {}),
+  };
+  const sessionWhere = {
+    userId: input.userId,
+    ...(input.range
+      ? {
+          firstMessageAt: {
+            gte: input.range.from,
+            lte: input.range.to,
+          },
+        }
+      : {}),
+  };
+
+  const [activityHeatmap, catalog, modelRows, sourceRows, sessionTotals] =
+    await Promise.all([
+      getActivityHeatmap365({
         userId: input.userId,
-        bucketStart: {
-          gte: range30.from,
-          lte: range30.to,
+        timezone: input.timezone,
+      }),
+      getPricingCatalog(),
+      prisma.usageBucket.groupBy({
+        by: ["model"],
+        where: bucketWhere,
+        _sum: {
+          inputTokens: true,
+          outputTokens: true,
+          reasoningTokens: true,
+          cachedTokens: true,
+          totalTokens: true,
         },
-      },
-      select: {
-        source: true,
-        model: true,
-        inputTokens: true,
-        outputTokens: true,
-        reasoningTokens: true,
-        cachedTokens: true,
-        totalTokens: true,
-      },
-    }),
-  ]);
-  const buckets30 = rawBuckets30.map(normalizeUsageBucketTokenFields);
+      }),
+      prisma.usageBucket.groupBy({
+        by: ["source"],
+        where: bucketWhere,
+        _sum: { totalTokens: true },
+      }),
+      prisma.usageSession.aggregate({
+        where: sessionWhere,
+        _sum: { activeSeconds: true },
+        _count: { _all: true },
+      }),
+    ]);
+
+  let totalTokens = 0;
+  let estimatedCostUsd = 0;
+  const modelTotals = modelRows.map((row) => {
+    const tokens = normalizeUsageBucketTokenFields({
+      inputTokens: row._sum.inputTokens,
+      outputTokens: row._sum.outputTokens,
+      reasoningTokens: row._sum.reasoningTokens,
+      cachedTokens: row._sum.cachedTokens,
+      totalTokens: row._sum.totalTokens,
+    });
+
+    totalTokens += tokens.totalTokens;
+    estimatedCostUsd +=
+      estimateCostUsd(
+        tokens,
+        resolveOfficialPricingMatch(catalog, row.model)?.cost,
+      )?.totalUsd ?? 0;
+
+    return { name: row.model, totalTokens: tokens.totalTokens };
+  });
 
   return {
     activityHeatmap,
-    topTools: buildTopTools(buckets30),
-    topModels: buildTopModels(buckets30),
+    topTools: buildTopItems(
+      sourceRows.map((row) => ({
+        name: row.source,
+        totalTokens: tokenCountToNumber(row._sum.totalTokens),
+      })),
+    ),
+    topModels: buildTopItems(modelTotals),
+    overview: {
+      totalTokens,
+      estimatedCostUsd,
+      activeSeconds: sessionTotals._sum.activeSeconds ?? 0,
+      sessions: sessionTotals._count._all,
+    },
   };
 }
 
-function buildTopTools(
-  buckets: Array<{
-    source: string;
-    totalTokens: number;
-  }>,
-) {
-  const rows = new Map<string, number>();
+/** Rank pre-aggregated rows and attach each one's share of the total. */
+function buildTopItems(rows: Array<{ name: string; totalTokens: number }>) {
+  const total = rows.reduce((sum, row) => sum + row.totalTokens, 0);
 
-  for (const bucket of buckets) {
-    rows.set(
-      bucket.source,
-      (rows.get(bucket.source) ?? 0) + bucket.totalTokens,
-    );
-  }
+  return rows
+    .reduce<Array<{ name: string; totalTokens: number; share: number }>>(
+      (acc, row) => {
+        // Dropping the empty rows first means `total` is always positive here.
+        if (row.totalTokens > 0) {
+          acc.push({
+            name: row.name,
+            totalTokens: row.totalTokens,
+            share: row.totalTokens / total,
+          });
+        }
 
-  const total = Array.from(rows.values()).reduce(
-    (sum, value) => sum + value,
-    0,
-  );
-
-  return Array.from(rows.entries())
-    .map(([name, totalTokens]) => ({
-      name,
-      totalTokens,
-      share: total === 0 ? 0 : totalTokens / total,
-    }))
-    .sort((left, right) => right.totalTokens - left.totalTokens)
-    .slice(0, 5);
-}
-
-function buildTopModels(
-  buckets: Array<{
-    model: string;
-    totalTokens: number;
-  }>,
-) {
-  const rows = new Map<string, number>();
-
-  for (const bucket of buckets) {
-    rows.set(bucket.model, (rows.get(bucket.model) ?? 0) + bucket.totalTokens);
-  }
-
-  const total = Array.from(rows.values()).reduce(
-    (sum, value) => sum + value,
-    0,
-  );
-
-  return Array.from(rows.entries())
-    .map(([name, totalTokens]) => ({
-      name,
-      totalTokens,
-      share: total === 0 ? 0 : totalTokens / total,
-    }))
+        return acc;
+      },
+      [],
+    )
     .sort((left, right) => right.totalTokens - left.totalTokens)
     .slice(0, 5);
 }
@@ -606,6 +665,7 @@ export async function getPublicProfileActivityShareData(input: {
 export async function getPublicProfilePageData(input: {
   username: string;
   viewerUserId?: string | null;
+  range?: ProfileRangeQuery;
 }): Promise<PublicProfilePageData | null> {
   const user = await prisma.user.findUnique({
     where: {
@@ -627,6 +687,7 @@ export async function getPublicProfilePageData(input: {
   }
 
   const timezone = user.usagePreference?.timezone ?? "UTC";
+  const selection = resolveProfileRange({ query: input.range, timezone });
   const [relationFlags, linkedAccounts, usageSnapshot] = await Promise.all([
     getRelationFlags(input.viewerUserId, user.id),
     prisma.account.findMany({
@@ -636,12 +697,17 @@ export async function getPublicProfilePageData(input: {
       },
       select: { providerId: true, accountId: true, accessToken: true },
     }),
-    loadPublicProfileUsageSnapshot({ userId: user.id, timezone }),
+    loadPublicProfileUsageSnapshot({
+      userId: user.id,
+      timezone,
+      range: selection.range,
+    }),
   ]);
 
-  // Run the all-time achievement queries only after the raw 30-day rows have
-  // been reduced to the small top-list inputs above. This avoids retaining the
-  // profile's history and achievement metrics at the same time.
+  // Run the all-time achievement queries only after the snapshot above has
+  // resolved. `getAchievementArenaSummary` still loads the user's full bucket
+  // and session history, so keeping the phases separate avoids holding it
+  // alongside the heatmap at the same time.
   const [arenaSummary, achievementWall] = await Promise.all([
     getAchievementArenaSummary(user.id),
     getProfileAchievementWall(user.id, 5),
@@ -678,14 +744,19 @@ export async function getPublicProfilePageData(input: {
     followTag: relationFlags.followTag,
     followsYou: relationFlags.followsYou,
     isSelf,
+    range: {
+      preset: selection.preset,
+      from: selection.range?.from.toISOString() ?? null,
+      to: selection.range?.to.toISOString() ?? null,
+      timezone,
+    },
     overview: {
+      // The arena score and active-day streak stay lifetime metrics: they back
+      // the level badge, which a range filter must not appear to change.
       arenaScore: arenaSummary.score,
       arenaLevel: arenaSummary.level,
-      totalTokens: arenaSummary.totalTokens,
-      estimatedCostUsd: arenaSummary.totalEstimatedCostUsd,
-      activeSeconds: arenaSummary.totalActiveSeconds,
-      sessions: arenaSummary.totalSessions,
       activeDays: arenaSummary.totalActiveDays,
+      ...usageSnapshot.overview,
     },
     heatmap: usageSnapshot.activityHeatmap,
     topTools: usageSnapshot.topTools,
