@@ -39,7 +39,7 @@ const timezoneSchema = z
     message: "Invalid timezone. Use IANA format like Asia/Shanghai.",
   });
 
-const dashboardDateParamSchema = z
+export const dashboardDateParamSchema = z
   .string()
   .trim()
   .min(1)
