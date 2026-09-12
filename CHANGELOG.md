@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.0](https://github.com/GuJi08233/TokenArena/compare/v0.14.2...v0.15.0) (2026-09-12)
+
+
+### Features
+
+* **web:** add time range filter to public profiles ([ac9f318](https://github.com/GuJi08233/TokenArena/commit/ac9f318bee3987c09767b7420f3c16dc17d82e33))
+
 ## [0.14.2](https://github.com/GuJi08233/TokenArena/compare/v0.14.1...v0.14.2) (2026-09-09)
 
 
