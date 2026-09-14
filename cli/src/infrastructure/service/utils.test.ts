@@ -16,6 +16,23 @@ describe("resolveManagedDaemonCommand", () => {
       args: ["/tmp/tokenarena/dist/index.js", "daemon", "--service"],
     });
   });
+
+  it("throws when the CLI entry path is missing", () => {
+    expect(() =>
+      resolveManagedDaemonCommand("/usr/local/bin/node", ["node"]),
+    ).toThrowError(/无法解析 CLI 入口路径/);
+  });
+
+  it.each([
+    "/repo/cli/src/index.ts",
+    "/repo/cli/src/index.mts",
+    "/repo/cli/src/index.tsx",
+  ])("refuses to install a service for the unbundled entry %s", (entry) => {
+    // The unit file runs plain `node <entry>`, which cannot load TypeScript.
+    expect(() =>
+      resolveManagedDaemonCommand("/usr/local/bin/node", ["node", entry]),
+    ).toThrowError(/未打包的 TypeScript 入口/);
+  });
 });
 
 describe("getManagedServiceEnvironment", () => {

@@ -30,6 +30,10 @@ import "./parsers/cherry-studio.js";
 
 import { createCli } from "./cli.js";
 import { isMainModule } from "./infrastructure/runtime/main-module.js";
+import { logger } from "./utils/logger.js";
+
+/** Exit code conventionally used for "terminated by SIGINT". */
+const EXIT_CANCELLED = 130;
 
 export function normalizeArgv(argv: string[]) {
   return argv.filter((arg, index) => index < 2 || arg !== "--");
@@ -40,9 +44,20 @@ export async function run(argv = process.argv) {
   await program.parseAsync(normalizeArgv(argv));
 }
 
-// NOTE: pass this module's own URL explicitly — `isMainModule` defaults to the
-// URL of its own file, which only matches the entry point once tsup has inlined
-// everything into dist/index.js. Without it, `tsx src/index.ts` silently no-ops.
-if (isMainModule(process.argv[1], import.meta.url)) {
-  void run();
+export function reportFatalError(error: unknown): void {
+  // @inquirer/prompts rejects with ExitPromptError when the user hits Ctrl+C.
+  // That is a cancellation, not a crash, so it must not print a stack trace.
+  if (error instanceof Error && error.name === "ExitPromptError") {
+    process.exitCode = EXIT_CANCELLED;
+    return;
+  }
+
+  logger.error(error instanceof Error ? error.message : String(error));
+  process.exitCode = 1;
+}
+
+if (isMainModule(import.meta.url)) {
+  // Never `void` this: without a catch every rejecting command handler surfaces
+  // as an unhandled rejection with a raw stack trace instead of CLI output.
+  run().catch(reportFatalError);
 }

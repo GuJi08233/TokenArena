@@ -1,40 +1,45 @@
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, join, parse } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { readFileSafe } from "../fs/utils";
 
 const FALLBACK_VERSION = "0.0.0";
 
 const versionCache = new Map<string, string>();
 
+/**
+ * Reads the version of the package that owns `startDir`.
+ *
+ * The nearest package.json wins and ends the walk, the same way Node resolves a
+ * package boundary. A manifest that is unreadable, malformed or carries no
+ * usable version yields `undefined` rather than resuming the walk: reporting an
+ * unrelated ancestor package's version as the CLI's own is far worse than the
+ * honest `0.0.0` fallback, because it is indistinguishable from a correct answer.
+ */
 function readPackageVersion(startDir: string): string | undefined {
   let dir = startDir;
-  const { root } = parse(dir);
 
   while (true) {
-    const packageJsonPath = join(dir, "package.json");
+    const contents = readFileSafe(join(dir, "package.json"));
 
-    if (existsSync(packageJsonPath)) {
+    if (contents !== null) {
       try {
-        const packageJson = JSON.parse(
-          readFileSync(packageJsonPath, "utf-8"),
-        ) as { name?: unknown; version?: unknown };
+        const { version } = JSON.parse(contents) as { version?: unknown };
 
-        if (
-          typeof packageJson.name === "string" &&
-          typeof packageJson.version === "string"
-        ) {
-          return packageJson.version;
-        }
+        return typeof version === "string" && version.length > 0
+          ? version
+          : undefined;
       } catch {
-        // Ignore malformed package.json and keep walking up.
+        return undefined;
       }
     }
 
-    if (dir === root) {
+    const parent = dirname(dir);
+
+    if (parent === dir) {
       return undefined;
     }
 
-    dir = dirname(dir);
+    dir = parent;
   }
 }
 
@@ -49,7 +54,8 @@ export function getCliVersion(metaUrl = import.meta.url): string {
   const startDir = dirname(fileURLToPath(metaUrl));
   const cached = versionCache.get(startDir);
 
-  if (cached) {
+  // Presence, not truthiness: an empty cached value must still short-circuit.
+  if (cached !== undefined) {
     return cached;
   }
 
@@ -57,4 +63,9 @@ export function getCliVersion(metaUrl = import.meta.url): string {
   versionCache.set(startDir, version);
 
   return version;
+}
+
+/** Drops the memoized versions. Exists so tests stay order-independent. */
+export function clearCliVersionCache(): void {
+  versionCache.clear();
 }

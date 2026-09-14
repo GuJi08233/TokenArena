@@ -2,30 +2,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { getCliVersion } from "./cli-version";
-
-/**
- * `getCliVersion` walks up to the filesystem root, so the "no package.json
- * found" branch can only be exercised deterministically by hiding package
- * manifests from the walk.
- */
-const fsState = { hidePackageJson: false };
-
-vi.mock("node:fs", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("node:fs")>();
-
-  return {
-    ...actual,
-    existsSync: (path: Parameters<typeof actual.existsSync>[0]) => {
-      if (fsState.hidePackageJson && String(path).endsWith("package.json")) {
-        return false;
-      }
-
-      return actual.existsSync(path);
-    },
-  };
-});
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { clearCliVersionCache, getCliVersion } from "./cli-version";
 
 const tempDirs: string[] = [];
 
@@ -44,9 +22,15 @@ function writePackageJson(dir: string, contents: unknown) {
   );
 }
 
-afterEach(() => {
-  fsState.hidePackageJson = false;
+function resolveFrom(moduleDir: string) {
+  return getCliVersion(pathToFileURL(join(moduleDir, "index.js")).href);
+}
 
+beforeEach(() => {
+  clearCliVersionCache();
+});
+
+afterEach(() => {
   while (tempDirs.length > 0) {
     const dir = tempDirs.pop();
     if (dir) {
@@ -58,74 +42,87 @@ afterEach(() => {
 describe("getCliVersion", () => {
   it("reads the version from the owning package.json in a bundled layout", () => {
     const dir = createTempDir();
-    const moduleDir = join(dir, "dist");
 
     writePackageJson(dir, { name: "cli", version: "1.2.3" });
 
-    expect(getCliVersion(pathToFileURL(join(moduleDir, "index.js")).href)).toBe(
-      "1.2.3",
-    );
+    expect(resolveFrom(join(dir, "dist"))).toBe("1.2.3");
   });
 
   it("walks up from deeply nested unbundled sources", () => {
     const dir = createTempDir();
-    const moduleDir = join(dir, "src", "infrastructure", "runtime");
 
     writePackageJson(dir, { name: "cli", version: "4.5.6" });
 
     expect(
-      getCliVersion(pathToFileURL(join(moduleDir, "cli-version.ts")).href),
+      getCliVersion(
+        pathToFileURL(
+          join(dir, "src", "infrastructure", "runtime", "cli-version.ts"),
+        ).href,
+      ),
     ).toBe("4.5.6");
   });
 
-  it("skips package.json files that are not a named package", () => {
+  it("stops at the nearest package.json instead of an ancestor's", () => {
     const dir = createTempDir();
     const innerDir = join(dir, "nested");
-    const moduleDir = join(innerDir, "dist");
 
-    writePackageJson(dir, { name: "cli", version: "2.0.0" });
-    writePackageJson(innerDir, { private: true, version: "9.9.9" });
+    writePackageJson(dir, { name: "host-app", version: "9.9.9" });
+    writePackageJson(innerDir, { name: "cli", version: "2.0.0" });
 
-    expect(getCliVersion(pathToFileURL(join(moduleDir, "index.js")).href)).toBe(
-      "2.0.0",
-    );
+    expect(resolveFrom(join(innerDir, "dist"))).toBe("2.0.0");
   });
 
-  it("skips malformed package.json files", () => {
+  it.each([
+    ["is malformed", "{ not json"],
+    ["has no version", { name: "cli" }],
+    ["has an empty version", { name: "cli", version: "" }],
+    ["has a non-string version", { name: "cli", version: 1 }],
+  ])("falls back to 0.0.0 when the nearest package.json %s", (_label, contents) => {
     const dir = createTempDir();
     const innerDir = join(dir, "nested");
-    const moduleDir = join(innerDir, "dist");
 
-    writePackageJson(dir, { name: "cli", version: "3.0.0" });
-    writePackageJson(innerDir, "{ not json");
+    // An ancestor with a perfectly good version must not be picked up.
+    writePackageJson(dir, { name: "host-app", version: "9.9.9" });
+    writePackageJson(innerDir, contents);
 
-    expect(getCliVersion(pathToFileURL(join(moduleDir, "index.js")).href)).toBe(
-      "3.0.0",
-    );
+    expect(resolveFrom(join(innerDir, "dist"))).toBe("0.0.0");
   });
 
-  it("falls back to 0.0.0 when no package.json is found", () => {
+  it("resolves a version even when the owning package.json has no name", () => {
     const dir = createTempDir();
 
-    fsState.hidePackageJson = true;
+    writePackageJson(dir, { private: true, version: "0.14.2" });
 
-    expect(getCliVersion(pathToFileURL(join(dir, "index.js")).href)).toBe(
-      "0.0.0",
-    );
+    expect(resolveFrom(join(dir, "dist"))).toBe("0.14.2");
   });
 
   it("caches the resolved version per module directory", () => {
     const dir = createTempDir();
-    const moduleDir = join(dir, "dist");
+    const other = createTempDir();
 
     writePackageJson(dir, { name: "cli", version: "7.8.9" });
+    writePackageJson(other, { name: "cli", version: "3.2.1" });
 
-    const metaUrl = pathToFileURL(join(moduleDir, "index.js")).href;
-
-    expect(getCliVersion(metaUrl)).toBe("7.8.9");
+    expect(resolveFrom(join(dir, "dist"))).toBe("7.8.9");
+    expect(resolveFrom(join(other, "dist"))).toBe("3.2.1");
 
     writePackageJson(dir, { name: "cli", version: "1.0.0" });
+    writePackageJson(other, { name: "cli", version: "1.0.0" });
 
-    expect(getCliVersion(metaUrl)).toBe("7.8.9");
+    // Each module directory keeps its own memoized answer.
+    expect(resolveFrom(join(dir, "dist"))).toBe("7.8.9");
+    expect(resolveFrom(join(other, "dist"))).toBe("3.2.1");
+  });
+
+  it("re-resolves after the cache is cleared", () => {
+    const dir = createTempDir();
+
+    writePackageJson(dir, { name: "cli", version: "5.0.0" });
+    expect(resolveFrom(join(dir, "dist"))).toBe("5.0.0");
+
+    writePackageJson(dir, { name: "cli", version: "6.0.0" });
+    clearCliVersionCache();
+
+    expect(resolveFrom(join(dir, "dist"))).toBe("6.0.0");
   });
 });

@@ -30,7 +30,9 @@ afterEach(() => {
 
 describe("isMainModule", () => {
   it("returns false when argv entry is missing", () => {
-    expect(isMainModule(undefined, import.meta.url)).toBe(false);
+    // Must be an explicit empty string: passing `undefined` would fall back to
+    // the `process.argv[1]` default and never reach the guard.
+    expect(isMainModule(import.meta.url, "")).toBe(false);
   });
 
   it("returns true for the direct script path", () => {
@@ -40,7 +42,7 @@ describe("isMainModule", () => {
     mkdirSync(join(dir, "dist"), { recursive: true });
     writeFileSync(scriptPath, "#!/usr/bin/env node\n", "utf-8");
 
-    expect(isMainModule(scriptPath, pathToFileURL(scriptPath).href)).toBe(true);
+    expect(isMainModule(pathToFileURL(scriptPath).href, scriptPath)).toBe(true);
   });
 
   it("returns true when invoked through a symlinked npm bin entry", () => {
@@ -69,7 +71,7 @@ describe("isMainModule", () => {
       throw error;
     }
 
-    expect(isMainModule(binPath, pathToFileURL(scriptPath).href)).toBe(true);
+    expect(isMainModule(pathToFileURL(scriptPath).href, binPath)).toBe(true);
   });
 
   it("returns false for a different entry file", () => {
@@ -81,6 +83,6 @@ describe("isMainModule", () => {
     writeFileSync(scriptPath, "#!/usr/bin/env node\n", "utf-8");
     writeFileSync(otherPath, "#!/usr/bin/env node\n", "utf-8");
 
-    expect(isMainModule(otherPath, pathToFileURL(scriptPath).href)).toBe(false);
+    expect(isMainModule(pathToFileURL(scriptPath).href, otherPath)).toBe(false);
   });
 });

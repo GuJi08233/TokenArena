@@ -44,6 +44,9 @@ export function getManagedServiceEnvironment(
   return next;
 }
 
+/** `.ts`, `.tsx`, `.mts`, `.cts` — anything plain `node` cannot load. */
+const TYPESCRIPT_ENTRY_PATTERN = /\.[cm]?tsx?$/i;
+
 export function resolveManagedDaemonCommand(
   execPath = process.execPath,
   argv = process.argv,
@@ -51,6 +54,15 @@ export function resolveManagedDaemonCommand(
   const scriptPath = argv[1];
   if (!scriptPath) {
     throw new Error("无法解析 CLI 入口路径，请通过 tokenarena 命令重新执行。");
+  }
+
+  // The generated unit runs `node <scriptPath>` with no TypeScript loader, so an
+  // unbundled entry (`pnpm dev:cli service setup`) would install a service that
+  // can never start. Refuse instead of writing a permanently broken unit file.
+  if (TYPESCRIPT_ENTRY_PATTERN.test(scriptPath)) {
+    throw new Error(
+      "无法通过未打包的 TypeScript 入口安装服务，请先执行 pnpm build:cli，再使用打包后的 tokenarena 命令。",
+    );
   }
 
   return {
