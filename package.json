@@ -12,6 +12,7 @@
     "build:cli": "pnpm --filter ./cli build",
     "build:web": "pnpm --filter ./web build",
     "build": "pnpm run build:cli && pnpm run build:web",
+    "typecheck:cli": "pnpm --filter ./cli typecheck",
     "lint:cli": "pnpm --filter ./cli lint",
     "lint:web": "pnpm --filter ./web lint",
     "format:cli": "pnpm --filter ./cli format",

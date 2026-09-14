@@ -14,6 +14,7 @@ vi.mock("../utils/logger", () => ({
 }));
 
 import { getServiceBackend } from "../infrastructure/service";
+import { createMockServiceBackend } from "../testing/service-backend";
 import { logger } from "../utils/logger";
 import { runServiceCommand } from "./service";
 
@@ -29,163 +30,39 @@ describe("runServiceCommand", () => {
   });
 
   it("prints usage when no action", async () => {
-    const mockBackend = {
-      displayName: "test",
-      canSetup: vi.fn(() => ({ ok: true })),
-      setup: vi.fn(),
-      start: vi.fn(),
-      stop: vi.fn(),
-      restart: vi.fn(),
-      status: vi.fn(),
-      uninstall: vi.fn(),
-      isInstalled: vi.fn(),
-      getDefinitionPath: vi.fn(),
-    };
-    vi.mocked(getServiceBackend).mockReturnValue(mockBackend);
+    vi.mocked(getServiceBackend).mockReturnValue(createMockServiceBackend());
     await runServiceCommand({});
     expect(logger.info).toHaveBeenCalled();
   });
 
   it("prints usage with reason when canSetup fails", async () => {
-    const mockBackend = {
-      displayName: "test",
-      canSetup: vi.fn(() => ({ ok: false, reason: "no systemd" })),
-      setup: vi.fn(),
-      start: vi.fn(),
-      stop: vi.fn(),
-      restart: vi.fn(),
-      status: vi.fn(),
-      uninstall: vi.fn(),
-      isInstalled: vi.fn(),
-      getDefinitionPath: vi.fn(),
-    };
-    vi.mocked(getServiceBackend).mockReturnValue(mockBackend);
+    vi.mocked(getServiceBackend).mockReturnValue(
+      createMockServiceBackend({
+        canSetup: vi.fn(() => ({ ok: false, reason: "no systemd" })),
+      }),
+    );
     await runServiceCommand({});
     expect(logger.info).toHaveBeenCalled();
   });
 
-  it("dispatches setup", async () => {
-    const mockBackend = {
-      displayName: "test",
-      canSetup: vi.fn(() => ({ ok: true })),
-      setup: vi.fn(),
-      start: vi.fn(),
-      stop: vi.fn(),
-      restart: vi.fn(),
-      status: vi.fn(),
-      uninstall: vi.fn(),
-      isInstalled: vi.fn(),
-      getDefinitionPath: vi.fn(),
-    };
+  it.each([
+    ["setup", "setup"],
+    ["start", "start"],
+    ["stop", "stop"],
+    ["restart", "restart"],
+    ["status", "status"],
+    ["uninstall", "uninstall"],
+  ] as const)("dispatches %s", async (action, method) => {
+    const mockBackend = createMockServiceBackend();
     vi.mocked(getServiceBackend).mockReturnValue(mockBackend);
-    await runServiceCommand({ action: "setup" });
-    expect(mockBackend.setup).toHaveBeenCalled();
-  });
 
-  it("dispatches start", async () => {
-    const mockBackend = {
-      displayName: "test",
-      canSetup: vi.fn(),
-      setup: vi.fn(),
-      start: vi.fn(),
-      stop: vi.fn(),
-      restart: vi.fn(),
-      status: vi.fn(),
-      uninstall: vi.fn(),
-      isInstalled: vi.fn(),
-      getDefinitionPath: vi.fn(),
-    };
-    vi.mocked(getServiceBackend).mockReturnValue(mockBackend);
-    await runServiceCommand({ action: "start" });
-    expect(mockBackend.start).toHaveBeenCalled();
-  });
+    await runServiceCommand({ action });
 
-  it("dispatches stop", async () => {
-    const mockBackend = {
-      displayName: "test",
-      canSetup: vi.fn(),
-      setup: vi.fn(),
-      start: vi.fn(),
-      stop: vi.fn(),
-      restart: vi.fn(),
-      status: vi.fn(),
-      uninstall: vi.fn(),
-      isInstalled: vi.fn(),
-      getDefinitionPath: vi.fn(),
-    };
-    vi.mocked(getServiceBackend).mockReturnValue(mockBackend);
-    await runServiceCommand({ action: "stop" });
-    expect(mockBackend.stop).toHaveBeenCalled();
-  });
-
-  it("dispatches restart", async () => {
-    const mockBackend = {
-      displayName: "test",
-      canSetup: vi.fn(),
-      setup: vi.fn(),
-      start: vi.fn(),
-      stop: vi.fn(),
-      restart: vi.fn(),
-      status: vi.fn(),
-      uninstall: vi.fn(),
-      isInstalled: vi.fn(),
-      getDefinitionPath: vi.fn(),
-    };
-    vi.mocked(getServiceBackend).mockReturnValue(mockBackend);
-    await runServiceCommand({ action: "restart" });
-    expect(mockBackend.restart).toHaveBeenCalled();
-  });
-
-  it("dispatches status", async () => {
-    const mockBackend = {
-      displayName: "test",
-      canSetup: vi.fn(),
-      setup: vi.fn(),
-      start: vi.fn(),
-      stop: vi.fn(),
-      restart: vi.fn(),
-      status: vi.fn(),
-      uninstall: vi.fn(),
-      isInstalled: vi.fn(),
-      getDefinitionPath: vi.fn(),
-    };
-    vi.mocked(getServiceBackend).mockReturnValue(mockBackend);
-    await runServiceCommand({ action: "status" });
-    expect(mockBackend.status).toHaveBeenCalled();
-  });
-
-  it("dispatches uninstall", async () => {
-    const mockBackend = {
-      displayName: "test",
-      canSetup: vi.fn(),
-      setup: vi.fn(),
-      start: vi.fn(),
-      stop: vi.fn(),
-      restart: vi.fn(),
-      status: vi.fn(),
-      uninstall: vi.fn(),
-      isInstalled: vi.fn(),
-      getDefinitionPath: vi.fn(),
-    };
-    vi.mocked(getServiceBackend).mockReturnValue(mockBackend);
-    await runServiceCommand({ action: "uninstall" });
-    expect(mockBackend.uninstall).toHaveBeenCalled();
+    expect(mockBackend[method]).toHaveBeenCalled();
   });
 
   it("exits with error for unknown action", async () => {
-    const mockBackend = {
-      displayName: "test",
-      canSetup: vi.fn(),
-      setup: vi.fn(),
-      start: vi.fn(),
-      stop: vi.fn(),
-      restart: vi.fn(),
-      status: vi.fn(),
-      uninstall: vi.fn(),
-      isInstalled: vi.fn(),
-      getDefinitionPath: vi.fn(),
-    };
-    vi.mocked(getServiceBackend).mockReturnValue(mockBackend);
+    vi.mocked(getServiceBackend).mockReturnValue(createMockServiceBackend());
     const mockExit = vi.spyOn(process, "exit").mockImplementation(() => {
       throw new Error("exit");
     });

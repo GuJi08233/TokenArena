@@ -20,16 +20,18 @@ vi.mock("node:fs", async (importOriginal) => {
       return false;
     },
     readdirSync(path: string, opts?: { withFileTypes?: boolean }) {
-      if (dirEntries.has(path)) {
-        const entries = dirEntries.get(path);
-        if (!entries) return [];
-        if (opts?.withFileTypes) return entries;
-        return entries.map((e) => e.name);
+      const entries = dirEntries.get(path);
+      if (entries) {
+        return opts?.withFileTypes ? entries : entries.map((e) => e.name);
       }
-      return actual.readdirSync(path, opts);
+      // Pick a concrete overload per branch: the union would match none.
+      return opts?.withFileTypes
+        ? actual.readdirSync(path, { withFileTypes: true })
+        : actual.readdirSync(path);
     },
-    readFileSync(path: string, encoding: string) {
-      if (fileContents.has(path)) return fileContents.get(path);
+    readFileSync(path: string, encoding: BufferEncoding) {
+      const contents = fileContents.get(path);
+      if (contents !== undefined) return contents;
       return actual.readFileSync(path, encoding);
     },
   };

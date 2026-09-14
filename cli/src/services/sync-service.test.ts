@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import type { UploadSessionMetadata, UploadTokenBucket } from "../domain/types";
+import type {
+  TokenBucket,
+  UploadSessionMetadata,
+  UploadTokenBucket,
+} from "../domain/types";
 import { getIngestPayloadSize } from "../infrastructure/api/client";
 import {
   buildUploadBatches,
@@ -189,6 +193,7 @@ describe("sync-service helpers", () => {
           model: "gpt-4",
           project: "my-project",
           bucketStart: "2026-01-01T00:00:00Z",
+          hostname: "test",
           inputTokens: 100,
           outputTokens: 50,
           reasoningTokens: 10,
@@ -210,6 +215,7 @@ describe("sync-service helpers", () => {
           model: "gpt-4",
           project: "proj",
           bucketStart: "2026-01-01T00:00:00Z",
+          hostname: "test",
           inputTokens: 100,
           outputTokens: 50,
           reasoningTokens: 0,
@@ -221,6 +227,7 @@ describe("sync-service helpers", () => {
           model: "gpt-4",
           project: "proj",
           bucketStart: "2026-01-01T00:00:00Z",
+          hostname: "test",
           inputTokens: 200,
           outputTokens: 100,
           reasoningTokens: 0,
@@ -235,17 +242,20 @@ describe("sync-service helpers", () => {
     });
 
     it("defaults reasoningTokens and cachedTokens to 0 when undefined", () => {
+      // Deliberately violates TokenBucket: this guards the runtime fallback for
+      // parsers that omit the optional token counts, which the type cannot express.
       const buckets = [
         {
           source: "test",
           model: "gpt-4",
           project: "proj",
           bucketStart: "2026-01-01T00:00:00Z",
+          hostname: "test",
           inputTokens: 100,
           outputTokens: 50,
           totalTokens: 150,
         },
-      ];
+      ] as unknown as TokenBucket[];
       const result = toUploadBuckets(buckets, settings, device);
       expect(result[0].reasoningTokens).toBe(0);
       expect(result[0].cachedTokens).toBe(0);
@@ -271,12 +281,14 @@ describe("sync-service helpers", () => {
           source: "test",
           project: "my-project",
           sessionHash: "hash1",
+          hostname: "test",
           firstMessageAt: "2026-01-01T00:00:00Z",
           lastMessageAt: "2026-01-01T01:00:00Z",
           durationSeconds: 3600,
           activeSeconds: 1800,
           messageCount: 10,
           userMessageCount: 5,
+          userPromptHours: [0],
           inputTokens: 100,
           outputTokens: 50,
           reasoningTokens: 20,

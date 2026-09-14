@@ -38,6 +38,11 @@ jobs:
       - name: Check linting and formatting
         run: pnpm check
 
+      # Neither `pnpm check` nor tsup covers the CLI test files: Biome does not
+      # type check, and tsup only walks the src/index.ts entry graph.
+      - name: Typecheck CLI
+        run: pnpm typecheck:cli
+
   test-cli:
     name: Test CLI
     runs-on: ubuntu-latest

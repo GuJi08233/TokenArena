@@ -146,7 +146,10 @@ describe("config command", () => {
         apiUrl: "https://example.com",
       });
       const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      const mockExit = vi.spyOn(process, "exit").mockImplementation(() => {});
+      // `process.exit` is typed `=> never`; the double just has to not exit.
+      const mockExit = vi
+        .spyOn(process, "exit")
+        .mockImplementation((() => undefined) as never);
       await handleConfig(["get", "apiKey"]);
       expect(logSpy).toHaveBeenCalledWith("ta_test");
       logSpy.mockRestore();

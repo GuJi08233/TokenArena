@@ -22,6 +22,7 @@
     "dev": "tsx src/index.ts",
     "build": "tsup",
     "prepack": "pnpm run build",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage --coverage.reporter=text --coverage.reporter=json-summary --coverage.reporter=lcov",
     "lint": "biome check",

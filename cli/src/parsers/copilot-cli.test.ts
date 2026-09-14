@@ -31,7 +31,13 @@ vi.mock("node:fs", async (importOriginal) => {
         | { encoding?: BufferEncoding; withFileTypes?: boolean },
     ) => {
       const rp = typeof p === "string" ? redirect(p) : p;
-      return actual.readdirSync(rp, options);
+      // Pick a concrete overload per branch: the union matches none of them.
+      if (typeof options === "object" && options?.withFileTypes) {
+        return actual.readdirSync(rp, { ...options, withFileTypes: true });
+      }
+      const encoding =
+        typeof options === "object" ? options?.encoding : options;
+      return actual.readdirSync(rp, encoding);
     },
     readFileSync: (
       p: string | Buffer | URL | number,

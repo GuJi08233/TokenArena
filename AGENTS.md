@@ -14,6 +14,7 @@
 - `pnpm format:cli` / `pnpm format:web` — apply Biome formatting.
 - `pnpm format:check:cli` / `pnpm format:check:web` — verify Biome formatting without writing changes.
 - `pnpm check` — run the same lint + format steps enforced by the Husky pre-commit hook.
+- `pnpm typecheck:cli` — type check the CLI workspace, including its test files (Biome does not type check, and `pnpm build:cli` only covers the `src/index.ts` entry graph).
 - `pnpm test:cli` / `pnpm test:web` — run Vitest coverage for the CLI or Web workspace.
 - `pnpm migrate` — deploy Prisma migrations for the Web workspace.
 - `pnpm db:seed` — seed the Web database with development data.

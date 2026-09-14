@@ -40,6 +40,7 @@ import { existsSync } from "node:fs";
 import { deleteConfig, loadConfig } from "../infrastructure/config/manager";
 import { getServiceBackend } from "../infrastructure/service";
 import { promptConfirm } from "../infrastructure/ui/prompts";
+import { createMockServiceBackend } from "../testing/service-backend";
 import { logger } from "../utils/logger";
 import { runUninstall } from "./uninstall";
 
@@ -86,12 +87,11 @@ describe("runUninstall", () => {
       apiKey: "ta_test",
       apiUrl: "https://example.com",
     });
-    const mockBackend = {
+    const mockBackend = createMockServiceBackend({
       displayName: "test-service",
       isInstalled: vi.fn(() => true),
       getDefinitionPath: vi.fn(() => "/tmp/service"),
-      uninstall: vi.fn().mockResolvedValue(undefined),
-    };
+    });
     vi.mocked(getServiceBackend).mockReturnValue(mockBackend);
     vi.mocked(promptConfirm)
       .mockResolvedValueOnce(true) // confirm uninstall
@@ -106,12 +106,12 @@ describe("runUninstall", () => {
       apiKey: "ta_test",
       apiUrl: "https://example.com",
     });
-    const mockBackend = {
+    const mockBackend = createMockServiceBackend({
       displayName: "test-service",
       isInstalled: vi.fn(() => true),
       getDefinitionPath: vi.fn(() => "/tmp/service"),
-      uninstall: vi.fn().mockRejectedValue(new Error("failed")),
-    };
+      uninstall: vi.fn(() => Promise.reject(new Error("failed"))),
+    });
     vi.mocked(getServiceBackend).mockReturnValue(mockBackend);
     vi.mocked(promptConfirm)
       .mockResolvedValueOnce(true)
@@ -126,12 +126,11 @@ describe("runUninstall", () => {
       apiKey: "ta_test",
       apiUrl: "https://example.com",
     });
-    const mockBackend = {
+    const mockBackend = createMockServiceBackend({
       displayName: "test-service",
       isInstalled: vi.fn(() => true),
       getDefinitionPath: vi.fn(() => "/tmp/service"),
-      uninstall: vi.fn(),
-    };
+    });
     vi.mocked(getServiceBackend).mockReturnValue(mockBackend);
     vi.mocked(promptConfirm)
       .mockResolvedValueOnce(true) // confirm uninstall
