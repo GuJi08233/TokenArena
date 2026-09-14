@@ -40,6 +40,9 @@ export async function run(argv = process.argv) {
   await program.parseAsync(normalizeArgv(argv));
 }
 
-if (isMainModule()) {
+// NOTE: pass this module's own URL explicitly — `isMainModule` defaults to the
+// URL of its own file, which only matches the entry point once tsup has inlined
+// everything into dist/index.js. Without it, `tsx src/index.ts` silently no-ops.
+if (isMainModule(process.argv[1], import.meta.url)) {
   void run();
 }
