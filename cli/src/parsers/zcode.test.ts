@@ -1,22 +1,10 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
+import { useTempDirs } from "../testing/temp-dir";
 import { ZCodeParser } from "./zcode";
 
-const tempDirs: string[] = [];
-
-function makeTempDir(prefix: string): string {
-  const dir = mkdtempSync(join(tmpdir(), prefix));
-  tempDirs.push(dir);
-  return dir;
-}
-
-afterEach(() => {
-  for (const dir of tempDirs.splice(0)) {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
+const makeTempDir = useTempDirs();
 
 describe("ZCodeParser", () => {
   it("parses ZCode model usage and session metadata from sqlite rows", async () => {

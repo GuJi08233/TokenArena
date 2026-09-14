@@ -1,13 +1,13 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { UploadManifest } from "../../domain/upload-manifest";
+import { useTempDirs } from "../../testing/temp-dir";
 
 describe("runtime/upload-manifest", () => {
   const originalStateHome = process.env.XDG_STATE_HOME;
   const originalRuntimeDir = process.env.XDG_RUNTIME_DIR;
-  const createdDirs: string[] = [];
+  const makeTempDir = useTempDirs();
 
   beforeEach(() => {
     vi.resetModules();
@@ -23,9 +23,6 @@ describe("runtime/upload-manifest", () => {
       process.env.XDG_RUNTIME_DIR = originalRuntimeDir;
     } else {
       delete process.env.XDG_RUNTIME_DIR;
-    }
-    for (const dir of createdDirs.splice(0)) {
-      rmSync(dir, { force: true, recursive: true });
     }
   });
 
@@ -48,8 +45,7 @@ describe("runtime/upload-manifest", () => {
   }
 
   it("loadUploadManifest returns null when file does not exist", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "ta-um-"));
-    createdDirs.push(tmp);
+    const tmp = makeTempDir("ta-um-");
     process.env.XDG_STATE_HOME = tmp;
     process.env.XDG_RUNTIME_DIR = tmp;
     const { loadUploadManifest } = await import("./upload-manifest");
@@ -57,8 +53,7 @@ describe("runtime/upload-manifest", () => {
   });
 
   it("loadUploadManifest reads valid manifest", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "ta-um-"));
-    createdDirs.push(tmp);
+    const tmp = makeTempDir("ta-um-");
     process.env.XDG_STATE_HOME = tmp;
     process.env.XDG_RUNTIME_DIR = tmp;
     const { saveUploadManifest, loadUploadManifest } = await import(
@@ -73,8 +68,7 @@ describe("runtime/upload-manifest", () => {
   });
 
   it("loadUploadManifest returns null on corrupt JSON", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "ta-um-"));
-    createdDirs.push(tmp);
+    const tmp = makeTempDir("ta-um-");
     process.env.XDG_STATE_HOME = tmp;
     process.env.XDG_RUNTIME_DIR = tmp;
     const { getUploadManifestPath } = await import("./paths");
@@ -87,8 +81,7 @@ describe("runtime/upload-manifest", () => {
   });
 
   it("loadUploadManifest returns null on schema mismatch", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "ta-um-"));
-    createdDirs.push(tmp);
+    const tmp = makeTempDir("ta-um-");
     process.env.XDG_STATE_HOME = tmp;
     process.env.XDG_RUNTIME_DIR = tmp;
     const { getUploadManifestPath } = await import("./paths");
@@ -101,8 +94,7 @@ describe("runtime/upload-manifest", () => {
   });
 
   it("loadUploadManifest returns null when scope is missing fields", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "ta-um-"));
-    createdDirs.push(tmp);
+    const tmp = makeTempDir("ta-um-");
     process.env.XDG_STATE_HOME = tmp;
     process.env.XDG_RUNTIME_DIR = tmp;
     const { getUploadManifestPath } = await import("./paths");
@@ -124,8 +116,7 @@ describe("runtime/upload-manifest", () => {
   });
 
   it("loadUploadManifest returns null when buckets is not Record<string,string>", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "ta-um-"));
-    createdDirs.push(tmp);
+    const tmp = makeTempDir("ta-um-");
     process.env.XDG_STATE_HOME = tmp;
     process.env.XDG_RUNTIME_DIR = tmp;
     const { getUploadManifestPath } = await import("./paths");
@@ -153,8 +144,7 @@ describe("runtime/upload-manifest", () => {
   });
 
   it("saveUploadManifest and loadUploadManifest round-trip", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "ta-um-"));
-    createdDirs.push(tmp);
+    const tmp = makeTempDir("ta-um-");
     process.env.XDG_STATE_HOME = tmp;
     process.env.XDG_RUNTIME_DIR = tmp;
     const { saveUploadManifest, loadUploadManifest } = await import(
@@ -171,8 +161,7 @@ describe("runtime/upload-manifest", () => {
   });
 
   it("defaults snapshotProtocolVersion to 0 when missing", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "ta-um-"));
-    createdDirs.push(tmp);
+    const tmp = makeTempDir("ta-um-");
     process.env.XDG_STATE_HOME = tmp;
     process.env.XDG_RUNTIME_DIR = tmp;
     const { getUploadManifestPath } = await import("./paths");

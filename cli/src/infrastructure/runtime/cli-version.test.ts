@@ -1,17 +1,11 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
+import { useTempDirs } from "../../testing/temp-dir";
 import { clearCliVersionCache, getCliVersion } from "./cli-version";
 
-const tempDirs: string[] = [];
-
-function createTempDir() {
-  const dir = mkdtempSync(join(tmpdir(), "tokenarena-cli-version-"));
-  tempDirs.push(dir);
-  return dir;
-}
+const createTempDir = useTempDirs("tokenarena-cli-version-");
 
 function writePackageJson(dir: string, contents: unknown) {
   mkdirSync(dir, { recursive: true });
@@ -28,15 +22,6 @@ function resolveFrom(moduleDir: string) {
 
 beforeEach(() => {
   clearCliVersionCache();
-});
-
-afterEach(() => {
-  while (tempDirs.length > 0) {
-    const dir = tempDirs.pop();
-    if (dir) {
-      rmSync(dir, { force: true, recursive: true });
-    }
-  }
 });
 
 describe("getCliVersion", () => {

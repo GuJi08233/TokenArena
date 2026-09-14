@@ -1,25 +1,20 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { useTempDirs } from "../testing/temp-dir";
 
 import { OpenCodeParser } from "./opencode";
 
 describe("OpenCodeParser", () => {
   const originalOpenCodeDir = process.env.TOKEN_ARENA_OPENCODE_DIR;
-  const createdDirs: string[] = [];
+  const makeTempDir = useTempDirs();
 
   afterEach(() => {
     process.env.TOKEN_ARENA_OPENCODE_DIR = originalOpenCodeDir;
-
-    for (const dir of createdDirs.splice(0)) {
-      rmSync(dir, { force: true, recursive: true });
-    }
   });
 
   it("ignores malformed negative token usage entries from json storage", async () => {
-    const rootDir = mkdtempSync(join(tmpdir(), "tokenarena-opencode-"));
-    createdDirs.push(rootDir);
+    const rootDir = makeTempDir("tokenarena-opencode-");
 
     const sessionDir = join(rootDir, "storage", "message", "ses_1");
     mkdirSync(sessionDir, { recursive: true });
@@ -76,8 +71,7 @@ describe("OpenCodeParser", () => {
   });
 
   it("parses valid assistant messages from json storage", async () => {
-    const rootDir = mkdtempSync(join(tmpdir(), "tokenarena-opencode-"));
-    createdDirs.push(rootDir);
+    const rootDir = makeTempDir("tokenarena-opencode-");
 
     const sessionDir = join(rootDir, "storage", "message", "ses_2");
     mkdirSync(sessionDir, { recursive: true });
@@ -120,8 +114,7 @@ describe("OpenCodeParser", () => {
   });
 
   it("skips messages without valid timestamps", async () => {
-    const rootDir = mkdtempSync(join(tmpdir(), "tokenarena-opencode-"));
-    createdDirs.push(rootDir);
+    const rootDir = makeTempDir("tokenarena-opencode-");
 
     const sessionDir = join(rootDir, "storage", "message", "ses_3");
     mkdirSync(sessionDir, { recursive: true });
@@ -142,8 +135,7 @@ describe("OpenCodeParser", () => {
   });
 
   it("skips messages without modelID", async () => {
-    const rootDir = mkdtempSync(join(tmpdir(), "tokenarena-opencode-"));
-    createdDirs.push(rootDir);
+    const rootDir = makeTempDir("tokenarena-opencode-");
 
     const sessionDir = join(rootDir, "storage", "message", "ses_4");
     mkdirSync(sessionDir, { recursive: true });
@@ -164,8 +156,7 @@ describe("OpenCodeParser", () => {
   });
 
   it("isInstalled returns true when dir exists", () => {
-    const rootDir = mkdtempSync(join(tmpdir(), "tokenarena-opencode-"));
-    createdDirs.push(rootDir);
+    const rootDir = makeTempDir("tokenarena-opencode-");
     const parser = new OpenCodeParser(() => [rootDir]);
     expect(parser.isInstalled()).toBe(true);
   });

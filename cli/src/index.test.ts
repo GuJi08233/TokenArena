@@ -1,12 +1,12 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { normalizeArgv } from "./index";
+import { useTempDirs } from "./testing/temp-dir";
 
 const CLI_ROOT = fileURLToPath(new URL("..", import.meta.url));
 const SPAWN_TIMEOUT_MS = 60_000;
@@ -22,17 +22,14 @@ describe("normalizeArgv", () => {
 });
 
 describe("entry point", () => {
-  const stateDir = mkdtempSync(join(tmpdir(), "tokenarena-entry-"));
-
-  afterAll(() => {
-    rmSync(stateDir, { force: true, recursive: true });
-  });
+  const makeTempDir = useTempDirs("tokenarena-entry-");
 
   // Guards the `isMainModule` wiring: the unbundled sources must behave like the
   // bundled dist/index.js, otherwise `pnpm dev:cli` silently does nothing.
   it(
     "runs the CLI when executed directly through tsx",
     () => {
+      const stateDir = makeTempDir();
       const require = createRequire(import.meta.url);
       // The same entry `pnpm dev:cli` runs, so this inherits tsx's own Node
       // version gating instead of hard-requiring `--import` (Node >= 20.6.0).

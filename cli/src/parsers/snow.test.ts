@@ -1,20 +1,14 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
+import { useTempDirs } from "../testing/temp-dir";
 import { SnowParser } from "./snow";
 
-const dirs: string[] = [];
-afterEach(() => {
-  for (const dir of dirs.splice(0)) {
-    rmSync(dir, { force: true, recursive: true });
-  }
-});
+const makeTempDir = useTempDirs();
 
 describe("SnowParser", () => {
   it("parses usage JSONL and ignores malformed records", async () => {
-    const root = mkdtempSync(join(tmpdir(), "tokenarena-snow-"));
-    dirs.push(root);
+    const root = makeTempDir("tokenarena-snow-");
     const day = join(root, "2026-07-11");
     mkdirSync(day);
     writeFileSync(

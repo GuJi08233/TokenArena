@@ -1,12 +1,12 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useTempDirs } from "../../testing/temp-dir";
 
 describe("runtime/lock", () => {
   const originalStateHome = process.env.XDG_STATE_HOME;
   const originalRuntimeDir = process.env.XDG_RUNTIME_DIR;
-  const createdDirs: string[] = [];
+  const makeTempDir = useTempDirs();
 
   beforeEach(() => {
     vi.resetModules();
@@ -23,9 +23,6 @@ describe("runtime/lock", () => {
     } else {
       delete process.env.XDG_RUNTIME_DIR;
     }
-    for (const dir of createdDirs.splice(0)) {
-      rmSync(dir, { force: true, recursive: true });
-    }
   });
 
   async function importLock() {
@@ -33,8 +30,7 @@ describe("runtime/lock", () => {
   }
 
   it("tryAcquireSyncLock succeeds on first call", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "ta-lock-"));
-    createdDirs.push(tmp);
+    const tmp = makeTempDir("ta-lock-");
     process.env.XDG_RUNTIME_DIR = tmp;
     process.env.XDG_STATE_HOME = tmp;
     const { tryAcquireSyncLock } = await importLock();
@@ -44,8 +40,7 @@ describe("runtime/lock", () => {
   });
 
   it("lock can be re-acquired after release", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "ta-lock-"));
-    createdDirs.push(tmp);
+    const tmp = makeTempDir("ta-lock-");
     process.env.XDG_RUNTIME_DIR = tmp;
     process.env.XDG_STATE_HOME = tmp;
     const { tryAcquireSyncLock } = await importLock();
@@ -58,8 +53,7 @@ describe("runtime/lock", () => {
   });
 
   it("second acquisition returns null when locked", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "ta-lock-"));
-    createdDirs.push(tmp);
+    const tmp = makeTempDir("ta-lock-");
     process.env.XDG_RUNTIME_DIR = tmp;
     process.env.XDG_STATE_HOME = tmp;
     const { tryAcquireSyncLock } = await importLock();
@@ -71,8 +65,7 @@ describe("runtime/lock", () => {
   });
 
   it("describeExistingSyncLock returns null when no lock", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "ta-lock-"));
-    createdDirs.push(tmp);
+    const tmp = makeTempDir("ta-lock-");
     process.env.XDG_RUNTIME_DIR = tmp;
     process.env.XDG_STATE_HOME = tmp;
     const { describeExistingSyncLock } = await importLock();
@@ -80,8 +73,7 @@ describe("runtime/lock", () => {
   });
 
   it("describeExistingSyncLock returns description when locked", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "ta-lock-"));
-    createdDirs.push(tmp);
+    const tmp = makeTempDir("ta-lock-");
     process.env.XDG_RUNTIME_DIR = tmp;
     process.env.XDG_STATE_HOME = tmp;
     const { tryAcquireSyncLock, describeExistingSyncLock } = await importLock();
@@ -95,8 +87,7 @@ describe("runtime/lock", () => {
   });
 
   it("releases stale lock from dead process", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "ta-lock-"));
-    createdDirs.push(tmp);
+    const tmp = makeTempDir("ta-lock-");
     process.env.XDG_RUNTIME_DIR = tmp;
     process.env.XDG_STATE_HOME = tmp;
     // Create a lock file with a PID that doesn't exist

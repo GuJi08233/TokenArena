@@ -1,10 +1,9 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useTempDirs } from "../testing/temp-dir";
 import type { IParser } from "./types";
 
-const tempDirs: string[] = [];
 let copilotTestDir = "";
 
 vi.mock("node:fs", async (importOriginal) => {
@@ -52,11 +51,7 @@ vi.mock("node:fs", async (importOriginal) => {
 import { getParser } from "./registry";
 import "./copilot-cli";
 
-function makeTempDir(prefix: string): string {
-  const dir = mkdtempSync(join(tmpdir(), prefix));
-  tempDirs.push(dir);
-  return dir;
-}
+const makeTempDir = useTempDirs();
 
 function writeEventsFile(sessionDir: string, events: object[]): void {
   const content = events.map((e) => JSON.stringify(e)).join("\n");
@@ -64,9 +59,6 @@ function writeEventsFile(sessionDir: string, events: object[]): void {
 }
 
 afterEach(() => {
-  for (const dir of tempDirs.splice(0)) {
-    rmSync(dir, { recursive: true, force: true });
-  }
   copilotTestDir = "";
 });
 

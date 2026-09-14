@@ -1,22 +1,10 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
+import { useTempDirs } from "../testing/temp-dir";
 import { GrokBuildParser, projectFromEncodedCwd } from "./grok-build";
 
-const tempDirs: string[] = [];
-
-function makeTempDir(prefix: string): string {
-  const dir = mkdtempSync(join(tmpdir(), prefix));
-  tempDirs.push(dir);
-  return dir;
-}
-
-afterEach(() => {
-  for (const dir of tempDirs.splice(0)) {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
+const makeTempDir = useTempDirs();
 
 describe("projectFromEncodedCwd", () => {
   it("decodes URL-encoded cwd and uses the leaf name", () => {

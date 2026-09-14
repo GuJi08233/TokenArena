@@ -1,12 +1,12 @@
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { useTempDirs } from "../../testing/temp-dir";
 
 describe("paths", () => {
   const originalStateHome = process.env.XDG_STATE_HOME;
   const originalRuntimeDir = process.env.XDG_RUNTIME_DIR;
-  const createdDirs: string[] = [];
+  const makeTempDir = useTempDirs();
 
   afterEach(() => {
     if (originalStateHome !== undefined) {
@@ -19,9 +19,6 @@ describe("paths", () => {
     } else {
       delete process.env.XDG_RUNTIME_DIR;
     }
-    for (const dir of createdDirs.splice(0)) {
-      rmSync(dir, { force: true, recursive: true });
-    }
   });
 
   async function importPaths() {
@@ -30,40 +27,35 @@ describe("paths", () => {
   }
 
   it("getRuntimeDirPath joins runtime dir with tokenarena", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "ta-paths-"));
-    createdDirs.push(tmp);
+    const tmp = makeTempDir("ta-paths-");
     process.env.XDG_RUNTIME_DIR = tmp;
     const { getRuntimeDirPath } = await importPaths();
     expect(getRuntimeDirPath()).toBe(join(tmp, "tokenarena"));
   });
 
   it("getStateDir joins state home with tokenarena", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "ta-paths-"));
-    createdDirs.push(tmp);
+    const tmp = makeTempDir("ta-paths-");
     process.env.XDG_STATE_HOME = tmp;
     const { getStateDir } = await importPaths();
     expect(getStateDir()).toBe(join(tmp, "tokenarena"));
   });
 
   it("getSyncLockPath returns path under runtime dir", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "ta-paths-"));
-    createdDirs.push(tmp);
+    const tmp = makeTempDir("ta-paths-");
     process.env.XDG_RUNTIME_DIR = tmp;
     const { getSyncLockPath } = await importPaths();
     expect(getSyncLockPath()).toBe(join(tmp, "tokenarena", "sync.lock"));
   });
 
   it("getSyncStatePath returns path under state dir", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "ta-paths-"));
-    createdDirs.push(tmp);
+    const tmp = makeTempDir("ta-paths-");
     process.env.XDG_STATE_HOME = tmp;
     const { getSyncStatePath } = await importPaths();
     expect(getSyncStatePath()).toBe(join(tmp, "tokenarena", "status.json"));
   });
 
   it("getUploadManifestPath returns path under state dir", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "ta-paths-"));
-    createdDirs.push(tmp);
+    const tmp = makeTempDir("ta-paths-");
     process.env.XDG_STATE_HOME = tmp;
     const { getUploadManifestPath } = await importPaths();
     expect(getUploadManifestPath()).toBe(
@@ -72,8 +64,7 @@ describe("paths", () => {
   });
 
   it("ensureAppDirs creates directories", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "ta-paths-"));
-    createdDirs.push(tmp);
+    const tmp = makeTempDir("ta-paths-");
     process.env.XDG_RUNTIME_DIR = tmp;
     process.env.XDG_STATE_HOME = tmp;
     const { ensureAppDirs } = await importPaths();

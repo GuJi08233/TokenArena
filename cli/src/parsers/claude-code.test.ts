@@ -1,7 +1,8 @@
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { existsSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { useTempDirs } from "../testing/temp-dir";
 
 const PROJECTS_DIR = join(homedir(), ".claude", "projects");
 
@@ -29,18 +30,9 @@ import { getParser } from "./registry";
 const parser = getParser("claude-code");
 if (!parser) throw new Error("claude-code parser not found");
 
-const tempDirs: string[] = [];
-
-function makeTempDir(prefix: string): string {
-  const dir = mkdtempSync(join(tmpdir(), prefix));
-  tempDirs.push(dir);
-  return dir;
-}
+const makeTempDir = useTempDirs();
 
 afterEach(() => {
-  for (const dir of tempDirs.splice(0)) {
-    rmSync(dir, { recursive: true, force: true });
-  }
   projectFiles = [];
 });
 

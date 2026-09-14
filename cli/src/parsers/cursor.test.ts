@@ -1,22 +1,10 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
+import { useTempDirs } from "../testing/temp-dir";
 import { CursorParser } from "./cursor";
 
-const tempDirs: string[] = [];
-
-function makeTempDir(prefix: string): string {
-  const dir = mkdtempSync(join(tmpdir(), prefix));
-  tempDirs.push(dir);
-  return dir;
-}
-
-afterEach(() => {
-  for (const dir of tempDirs.splice(0)) {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
+const makeTempDir = useTempDirs();
 
 const SAMPLE_CSV = `Date,Model,Input (w/ Cache Write),Input (w/o Cache Write),Cache Read,Output Tokens
 2025-04-10,claude-sonnet-4.5,1000,500,200,800

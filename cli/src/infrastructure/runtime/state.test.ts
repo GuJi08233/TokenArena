@@ -1,12 +1,11 @@
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useTempDirs } from "../../testing/temp-dir";
 
 describe("runtime/state", () => {
   const originalStateHome = process.env.XDG_STATE_HOME;
   const originalRuntimeDir = process.env.XDG_RUNTIME_DIR;
-  const createdDirs: string[] = [];
+  const makeTempDir = useTempDirs();
 
   beforeEach(() => {
     vi.resetModules();
@@ -23,9 +22,6 @@ describe("runtime/state", () => {
     } else {
       delete process.env.XDG_RUNTIME_DIR;
     }
-    for (const dir of createdDirs.splice(0)) {
-      rmSync(dir, { force: true, recursive: true });
-    }
   });
 
   async function importState() {
@@ -33,8 +29,7 @@ describe("runtime/state", () => {
   }
 
   it("loadSyncState returns default when no file exists", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "ta-state-"));
-    createdDirs.push(tmp);
+    const tmp = makeTempDir("ta-state-");
     process.env.XDG_STATE_HOME = tmp;
     process.env.XDG_RUNTIME_DIR = tmp;
     const { loadSyncState } = await importState();
@@ -42,8 +37,7 @@ describe("runtime/state", () => {
   });
 
   it("loadSyncState reads valid JSON", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "ta-state-"));
-    createdDirs.push(tmp);
+    const tmp = makeTempDir("ta-state-");
     process.env.XDG_STATE_HOME = tmp;
     process.env.XDG_RUNTIME_DIR = tmp;
     const { saveSyncState, loadSyncState } = await importState();
@@ -54,8 +48,7 @@ describe("runtime/state", () => {
   });
 
   it("loadSyncState returns default on corrupt JSON", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "ta-state-"));
-    createdDirs.push(tmp);
+    const tmp = makeTempDir("ta-state-");
     process.env.XDG_STATE_HOME = tmp;
     process.env.XDG_RUNTIME_DIR = tmp;
     const { getSyncStatePath } = await import("./paths");
@@ -67,8 +60,7 @@ describe("runtime/state", () => {
   });
 
   it("saveSyncState writes readable JSON", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "ta-state-"));
-    createdDirs.push(tmp);
+    const tmp = makeTempDir("ta-state-");
     process.env.XDG_STATE_HOME = tmp;
     process.env.XDG_RUNTIME_DIR = tmp;
     const { saveSyncState, loadSyncState } = await importState();
@@ -78,8 +70,7 @@ describe("runtime/state", () => {
   });
 
   it("markSyncStarted sets syncing status", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "ta-state-"));
-    createdDirs.push(tmp);
+    const tmp = makeTempDir("ta-state-");
     process.env.XDG_STATE_HOME = tmp;
     process.env.XDG_RUNTIME_DIR = tmp;
     const { markSyncStarted, loadSyncState } = await importState();
@@ -92,8 +83,7 @@ describe("runtime/state", () => {
   });
 
   it("markSyncSucceeded sets idle and clears lastError", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "ta-state-"));
-    createdDirs.push(tmp);
+    const tmp = makeTempDir("ta-state-");
     process.env.XDG_STATE_HOME = tmp;
     process.env.XDG_RUNTIME_DIR = tmp;
     const { markSyncFailed, markSyncSucceeded, loadSyncState } =
@@ -109,8 +99,7 @@ describe("runtime/state", () => {
   });
 
   it("markSyncFailed sets error status", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "ta-state-"));
-    createdDirs.push(tmp);
+    const tmp = makeTempDir("ta-state-");
     process.env.XDG_STATE_HOME = tmp;
     process.env.XDG_RUNTIME_DIR = tmp;
     const { markSyncFailed, loadSyncState } = await importState();
@@ -123,8 +112,7 @@ describe("runtime/state", () => {
   });
 
   it("markSyncFailed with auth_error status", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "ta-state-"));
-    createdDirs.push(tmp);
+    const tmp = makeTempDir("ta-state-");
     process.env.XDG_STATE_HOME = tmp;
     process.env.XDG_RUNTIME_DIR = tmp;
     const { markSyncFailed, loadSyncState } = await importState();

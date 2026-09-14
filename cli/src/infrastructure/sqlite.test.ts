@@ -1,7 +1,7 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { useTempDirs } from "../testing/temp-dir";
 import { readSqliteRows, warnWhenWalSkipped } from "./sqlite";
 
 // `node:sqlite` only exists on Node 22.5+, and the CLI matrix still covers
@@ -15,13 +15,7 @@ try {
   sqliteModule = null;
 }
 
-const tempDirs: string[] = [];
-
-function makeTempDir(): string {
-  const dir = mkdtempSync(join(tmpdir(), "tokenarena-sqlite-"));
-  tempDirs.push(dir);
-  return dir;
-}
+const makeTempDir = useTempDirs("tokenarena-sqlite-");
 
 function spyOnStderr() {
   return vi.spyOn(process.stderr, "write").mockImplementation(() => true);
@@ -37,9 +31,6 @@ function findWalWarning(spy: ReturnType<typeof spyOnStderr>): string | null {
 
 afterEach(() => {
   vi.restoreAllMocks();
-  for (const dir of tempDirs.splice(0)) {
-    rmSync(dir, { recursive: true, force: true });
-  }
 });
 
 describe("warnWhenWalSkipped", () => {

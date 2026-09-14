@@ -1,16 +1,11 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
+import { useTempDirs } from "../testing/temp-dir";
 import { CherryStudioParser, getCherryStudioDbPaths } from "./cherry-studio";
 
-const tempDirs: string[] = [];
-
-function makeTempDir(prefix: string): string {
-  const dir = mkdtempSync(join(tmpdir(), prefix));
-  tempDirs.push(dir);
-  return dir;
-}
+const makeTempDir = useTempDirs();
 
 function makeDbPath(): string {
   const dbPath = join(
@@ -64,12 +59,6 @@ function makeParser(options: {
     },
   });
 }
-
-afterEach(() => {
-  for (const dir of tempDirs.splice(0)) {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
 
 describe("CherryStudioParser", () => {
   it("splits cached tokens back out of the recorded input count", async () => {

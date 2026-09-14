@@ -1,32 +1,11 @@
-import {
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  symlinkSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
+import { useTempDirs } from "../../testing/temp-dir";
 import { isMainModule } from "./main-module";
 
-const tempDirs: string[] = [];
-
-function createTempDir() {
-  const dir = mkdtempSync(join(tmpdir(), "tokenarena-main-module-"));
-  tempDirs.push(dir);
-  return dir;
-}
-
-afterEach(() => {
-  while (tempDirs.length > 0) {
-    const dir = tempDirs.pop();
-    if (dir) {
-      rmSync(dir, { force: true, recursive: true });
-    }
-  }
-});
+const createTempDir = useTempDirs("tokenarena-main-module-");
 
 describe("isMainModule", () => {
   it("returns false when argv entry is missing", () => {

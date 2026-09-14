@@ -1,19 +1,13 @@
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useTempDirs } from "../../testing/temp-dir";
 
 describe("config/manager", () => {
   const originalConfigHome = process.env.XDG_CONFIG_HOME;
   const originalDev = process.env.TOKEN_ARENA_DEV;
   const originalApiUrl = process.env.TOKEN_ARENA_API_URL;
-  const createdDirs: string[] = [];
+  const makeTempDir = useTempDirs();
 
   beforeEach(() => {
     vi.resetModules();
@@ -34,9 +28,6 @@ describe("config/manager", () => {
       process.env.TOKEN_ARENA_API_URL = originalApiUrl;
     } else {
       delete process.env.TOKEN_ARENA_API_URL;
-    }
-    for (const dir of createdDirs.splice(0)) {
-      rmSync(dir, { force: true, recursive: true });
     }
   });
 
@@ -89,8 +80,7 @@ describe("config/manager", () => {
 
   describe("file system operations", () => {
     it("loadConfig returns null when file does not exist", async () => {
-      const tmp = mkdtempSync(join(tmpdir(), "ta-cfg-"));
-      createdDirs.push(tmp);
+      const tmp = makeTempDir("ta-cfg-");
       process.env.XDG_CONFIG_HOME = tmp;
       delete process.env.TOKEN_ARENA_DEV;
       const { loadConfig } = await importManager();
@@ -98,8 +88,7 @@ describe("config/manager", () => {
     });
 
     it("saveConfig and loadConfig round-trip", async () => {
-      const tmp = mkdtempSync(join(tmpdir(), "ta-cfg-"));
-      createdDirs.push(tmp);
+      const tmp = makeTempDir("ta-cfg-");
       process.env.XDG_CONFIG_HOME = tmp;
       delete process.env.TOKEN_ARENA_DEV;
       const { saveConfig, loadConfig } = await importManager();
@@ -112,8 +101,7 @@ describe("config/manager", () => {
     });
 
     it("loadConfig defaults apiUrl when missing", async () => {
-      const tmp = mkdtempSync(join(tmpdir(), "ta-cfg-"));
-      createdDirs.push(tmp);
+      const tmp = makeTempDir("ta-cfg-");
       process.env.XDG_CONFIG_HOME = tmp;
       delete process.env.TOKEN_ARENA_DEV;
       const { saveConfig, loadConfig } = await importManager();
@@ -123,8 +111,7 @@ describe("config/manager", () => {
     });
 
     it("loadConfig returns null on invalid JSON", async () => {
-      const tmp = mkdtempSync(join(tmpdir(), "ta-cfg-"));
-      createdDirs.push(tmp);
+      const tmp = makeTempDir("ta-cfg-");
       process.env.XDG_CONFIG_HOME = tmp;
       delete process.env.TOKEN_ARENA_DEV;
       const { getConfigPath, loadConfig } = await importManager();
@@ -135,8 +122,7 @@ describe("config/manager", () => {
     });
 
     it("deleteConfig removes the file", async () => {
-      const tmp = mkdtempSync(join(tmpdir(), "ta-cfg-"));
-      createdDirs.push(tmp);
+      const tmp = makeTempDir("ta-cfg-");
       process.env.XDG_CONFIG_HOME = tmp;
       delete process.env.TOKEN_ARENA_DEV;
       const { saveConfig, deleteConfig, loadConfig, getConfigPath } =
@@ -149,8 +135,7 @@ describe("config/manager", () => {
     });
 
     it("getOrCreateDeviceId returns existing id", async () => {
-      const tmp = mkdtempSync(join(tmpdir(), "ta-cfg-"));
-      createdDirs.push(tmp);
+      const tmp = makeTempDir("ta-cfg-");
       process.env.XDG_CONFIG_HOME = tmp;
       delete process.env.TOKEN_ARENA_DEV;
       const { getOrCreateDeviceId } = await importManager();
@@ -164,8 +149,7 @@ describe("config/manager", () => {
     });
 
     it("getOrCreateDeviceId generates and persists new id", async () => {
-      const tmp = mkdtempSync(join(tmpdir(), "ta-cfg-"));
-      createdDirs.push(tmp);
+      const tmp = makeTempDir("ta-cfg-");
       process.env.XDG_CONFIG_HOME = tmp;
       delete process.env.TOKEN_ARENA_DEV;
       const { getOrCreateDeviceId, loadConfig } = await importManager();
