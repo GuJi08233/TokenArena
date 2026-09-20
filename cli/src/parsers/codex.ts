@@ -34,6 +34,7 @@ interface CodexEvent {
     thread_id?: string;
     threadId?: string;
     forked_from_id?: string;
+    forked_from_ordinal_exclusive?: number;
     source?: { subagent?: { thread_spawn?: { parent_thread_id?: string } } };
     model?: string;
     cwd?: string;
@@ -66,8 +67,11 @@ interface Rollout {
   project: string;
   parentId: string | null;
   parentConflict: boolean;
+  forkOrdinalExclusive: number | null;
+  lineCount: number;
   rootTimestampOrder: bigint | null;
   latestTimestampOrder: bigint;
+  minLineTimestampOrder: bigint | null;
   tokens: TokenEvent[];
   prompts: Array<{ line: number; timestamp: Date; timestampOrder: bigint }>;
 }
@@ -76,6 +80,7 @@ interface Thread {
   files: Rollout[];
   timeline: TokenEvent[];
   latestTimestampOrder: bigint;
+  minLineTimestampOrder: bigint | null;
   invalidTokenTimestamp: boolean;
   status: "new" | "visiting" | "done" | "deferred";
 }
@@ -163,16 +168,22 @@ function readRollout(path: string): Rollout | null {
   let rootMeta: CodexEvent | null = null;
   let model = "unknown";
   let latestTimestampOrder = 0n;
+  let minLineTimestampOrder: bigint | null = null;
   let line = 0;
+  let lineCount = 0;
   for (const text of content.split("\n")) {
     line++;
     if (!text.trim()) continue;
+    lineCount++;
     try {
       const event = JSON.parse(text) as CodexEvent;
       const timestamp = readTimestamp(event.timestamp);
       const order = timestampOrder(event.timestamp, timestamp);
-      if (order !== null && order > latestTimestampOrder)
-        latestTimestampOrder = order;
+      if (order !== null) {
+        if (order > latestTimestampOrder) latestTimestampOrder = order;
+        if (minLineTimestampOrder === null || order < minLineTimestampOrder)
+          minLineTimestampOrder = order;
+      }
       if (event.type === "session_meta" && !rootMeta) rootMeta = event;
       if (event.type === "turn_context") {
         model =
@@ -224,11 +235,19 @@ function readRollout(path: string): Rollout | null {
     parentConflict: Boolean(
       forkedFrom && spawnedFrom && forkedFrom !== spawnedFrom,
     ),
+    forkOrdinalExclusive:
+      typeof meta?.forked_from_ordinal_exclusive === "number" &&
+      Number.isSafeInteger(meta.forked_from_ordinal_exclusive) &&
+      meta.forked_from_ordinal_exclusive > 0
+        ? meta.forked_from_ordinal_exclusive
+        : null,
+    lineCount,
     rootTimestampOrder: timestampOrder(
       rootMeta?.timestamp,
       readTimestamp(rootMeta?.timestamp),
     ),
     latestTimestampOrder,
+    minLineTimestampOrder,
     tokens,
     prompts,
   };
@@ -310,6 +329,7 @@ export class CodexParser implements IParser {
           files: [],
           timeline: [],
           latestTimestampOrder: 0n,
+          minLineTimestampOrder: null,
           invalidTokenTimestamp: false,
           status: "new",
         };
@@ -318,6 +338,12 @@ export class CodexParser implements IParser {
       thread.files.push(file);
       if (file.latestTimestampOrder > thread.latestTimestampOrder)
         thread.latestTimestampOrder = file.latestTimestampOrder;
+      if (
+        file.minLineTimestampOrder !== null &&
+        (thread.minLineTimestampOrder === null ||
+          file.minLineTimestampOrder < thread.minLineTimestampOrder)
+      )
+        thread.minLineTimestampOrder = file.minLineTimestampOrder;
       thread.invalidTokenTimestamp ||= file.tokens.some(
         (token) => !token.timestamp,
       );
@@ -355,6 +381,26 @@ export class CodexParser implements IParser {
             ? threadIndex.get(file.parentId)
             : undefined;
           const cutoff = file.rootTimestampOrder;
+          // fork 在父会话写入 session_meta 的瞬间发生，父文件此后不会再有
+          // 早于该时刻的增量事件；但时间戳精度（父为整毫秒、fork meta 含
+          // 亚毫秒）会让父最大时间戳显得略早于截止点。fork 元数据带有
+          // forked_from_ordinal_exclusive（父文件行序号）时，以父文件实际
+          // 行数核验覆盖范围；旧格式日志回退到时间戳容差（1 秒）。
+          const coverageOk = parent
+            ? file.forkOrdinalExclusive !== null
+              ? // 多文件父线程按最新文件（通常就是产生该 fork 的 rollout）
+                // 的行数核验；其余文件属于同一线程的历史分段。
+                parent.files.some(
+                  (rollout) =>
+                    rollout.lineCount >= (file.forkOrdinalExclusive ?? 0),
+                )
+              : cutoff !== null &&
+                // 父最大时间戳落后不超过 1 秒，或父内容完全早于截止点
+                // 且父最早行时间戳也早于截止点（父在截止前已停止写入）。
+                (parent.latestTimestampOrder >= cutoff - 1_000_000n ||
+                  (parent.minLineTimestampOrder !== null &&
+                    parent.minLineTimestampOrder < cutoff))
+            : false;
           if (
             file.parentConflict ||
             !parent ||
@@ -362,7 +408,7 @@ export class CodexParser implements IParser {
             cutoff === null ||
             !processThread(parent) ||
             parent.invalidTokenTimestamp ||
-            parent.latestTimestampOrder < cutoff
+            !coverageOk
           ) {
             logger.warn(
               "Codex fork replay could not be verified; skipping " +
