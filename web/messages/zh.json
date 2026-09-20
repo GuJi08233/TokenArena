@@ -212,7 +212,8 @@
       "allDevices": "全部设备",
       "allTools": "全部工具",
       "allModels": "全部模型",
-      "allProjects": "全部项目"
+      "allProjects": "全部项目",
+      "today": "今天"
     },
     "kpis": {
       "estimatedCost": "预估费用",
@@ -222,7 +223,7 @@
       "reasoningTokens": "推理 Tokens",
       "reasoningIncluded": "{value} 推理",
       "reasoningSuffix": " 推理",
-      "cachedTokens": "缓存 Tokens",
+      "cachedTokens": "缓存读取 Tokens",
       "activeTime": "活跃时长",
       "totalTime": "总时长",
       "sessions": "会话数",
@@ -242,7 +243,10 @@
           "summary": "总时长是每个会话从首条消息到末条消息的时间跨度之和。",
           "details": "它包含会话内部的思考、看代码等空闲时间，但不包含不同会话之间的间隔。"
         }
-      }
+      },
+      "cacheTokens": "缓存 Tokens",
+      "cacheCreationTokens": "缓存写入 Tokens",
+      "cacheCreationSuffix": " 缓存写入"
     },
     "trend": {
       "title": "每日趋势",
@@ -257,13 +261,14 @@
         "totalTime": "时长"
       },
       "total": "总计",
-      "cache": "缓存",
+      "cache": "缓存读取",
       "input": "输入",
       "output": "输出",
       "reasoning": "推理",
       "cost": "预估费用",
       "totalTime": "总时长",
-      "emptyCost": "这个时间范围内没有可定价的模型使用数据。"
+      "emptyCost": "这个时间范围内没有可定价的模型使用数据。",
+      "cacheCreation": "缓存写入"
     },
     "hourlyHeatmap": {
       "title": "分时活跃",
@@ -313,7 +318,8 @@
         "input": "输入",
         "output": "输出",
         "reasoning": "推理",
-        "cache": "缓存"
+        "cache": "缓存读取",
+        "cacheCreation": "缓存写入"
       }
     },
     "breakdowns": {
@@ -360,7 +366,8 @@
         "messages": "消息数",
         "userMessages": "用户消息数",
         "share": "占比",
-        "reasoning": "推理 {value}"
+        "reasoning": "推理 {value}",
+        "cacheCreation": "缓存写入"
       }
     },
     "sessions": {
@@ -379,7 +386,8 @@
         "input": "输入",
         "output": "输出",
         "reasoning": "推理",
-        "cache": "缓存"
+        "cache": "缓存",
+        "cacheCreation": "缓存写入"
       },
       "pagination": {
         "prev": "上一页",
@@ -506,7 +514,8 @@
           "input": "输入",
           "output": "输出",
           "reasoning": "推理",
-          "cache": "缓存"
+          "cache": "缓存",
+          "cacheCreation": "缓存写入"
         }
       },
       "captions": {

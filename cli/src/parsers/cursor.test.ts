@@ -49,7 +49,8 @@ describe("CursorParser", () => {
       source: "cursor",
       model: "claude-sonnet-4.5",
       project: "unknown",
-      inputTokens: 1500,
+      inputTokens: 500,
+      cacheCreationTokens: 1000,
       outputTokens: 800,
       cachedTokens: 200,
       reasoningTokens: 0,
@@ -60,7 +61,8 @@ describe("CursorParser", () => {
     expect(gptBucket).toMatchObject({
       source: "cursor",
       model: "gpt-4o",
-      inputTokens: 3000,
+      inputTokens: 0,
+      cacheCreationTokens: 3000,
       outputTokens: 400,
       cachedTokens: 100,
       totalTokens: 3500,
@@ -75,7 +77,8 @@ describe("CursorParser", () => {
     expect(result.buckets).toHaveLength(1);
     expect(result.buckets[0]).toMatchObject({
       source: "cursor",
-      inputTokens: 3500,
+      inputTokens: 2500,
+      cacheCreationTokens: 1000,
       outputTokens: 4800,
       cachedTokens: 3200,
       totalTokens: 11500,

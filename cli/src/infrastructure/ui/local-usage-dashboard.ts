@@ -155,7 +155,7 @@ function renderOverview(tool: LocalUsageToolSummary): string[] {
   return [
     `${bold("Overview")} ${dim(tool.source)}`,
     `  Tokens   ${formatCompactNumber(tool.totals.totalTokens)} total · ${formatCompactNumber(tool.totals.inputTokens)} input · ${formatCompactNumber(tool.totals.outputTokens)} output`,
-    `  Details  ${formatCompactNumber(tool.totals.cachedTokens)} cached · ${formatCompactNumber(tool.totals.reasoningTokens)} reasoning`,
+    `  Details  ${formatCompactNumber(tool.totals.cachedTokens)} cache read · ${formatCompactNumber(tool.totals.cacheCreationTokens)} cache write · ${formatCompactNumber(tool.totals.reasoningTokens)} reasoning`,
     `  Scope    ${tool.totals.sessions} sessions · ${tool.totals.buckets} buckets · ${tool.totals.projects} projects · ${tool.totals.models} models`,
   ];
 }

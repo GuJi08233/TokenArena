@@ -152,11 +152,12 @@ describe("recomputeLeaderboardUserDays", () => {
         findMany: vi.fn().mockResolvedValue([
           {
             bucketStart,
-            inputTokens: 1000n,
-            outputTokens: 500n,
-            reasoningTokens: 200n,
-            cachedTokens: 100n,
-            totalTokens: 1800n,
+            inputTokens: BigInt(1000),
+            outputTokens: BigInt(500),
+            reasoningTokens: BigInt(200),
+            cachedTokens: BigInt(100),
+            cacheCreationTokens: BigInt(0),
+            totalTokens: BigInt(1800),
           },
         ]),
       },
@@ -179,8 +180,8 @@ describe("recomputeLeaderboardUserDays", () => {
 
     expect(db.leaderboardUserDay.upsert).toHaveBeenCalledTimes(1);
     const upsertArg = db.leaderboardUserDay.upsert.mock.calls[0][0];
-    expect(upsertArg.update.inputTokens).toBe(1000n);
-    expect(upsertArg.update.outputTokens).toBe(500n);
+    expect(upsertArg.update.inputTokens).toBe(BigInt(1000));
+    expect(upsertArg.update.outputTokens).toBe(BigInt(500));
     expect(upsertArg.update.activeSeconds).toBe(120);
     expect(upsertArg.update.sessions).toBe(1);
     expect(upsertArg.update.messages).toBe(10);
@@ -196,11 +197,12 @@ describe("recomputeLeaderboardUserDays", () => {
         findMany: vi.fn().mockResolvedValue([
           {
             bucketStart: dateWithData,
-            inputTokens: 500n,
-            outputTokens: 200n,
-            reasoningTokens: 0n,
-            cachedTokens: 0n,
-            totalTokens: 700n,
+            inputTokens: BigInt(500),
+            outputTokens: BigInt(200),
+            reasoningTokens: BigInt(0),
+            cachedTokens: BigInt(0),
+            cacheCreationTokens: BigInt(0),
+            totalTokens: BigInt(700),
           },
         ]),
       },
@@ -239,19 +241,21 @@ describe("recomputeLeaderboardUserDays", () => {
         findMany: vi.fn().mockResolvedValue([
           {
             bucketStart: day1,
-            inputTokens: 100n,
-            outputTokens: 50n,
-            reasoningTokens: 0n,
-            cachedTokens: 0n,
-            totalTokens: 150n,
+            inputTokens: BigInt(100),
+            outputTokens: BigInt(50),
+            reasoningTokens: BigInt(0),
+            cachedTokens: BigInt(0),
+            cacheCreationTokens: BigInt(0),
+            totalTokens: BigInt(150),
           },
           {
             bucketStart: day2,
-            inputTokens: 200n,
-            outputTokens: 100n,
-            reasoningTokens: 10n,
-            cachedTokens: 5n,
-            totalTokens: 315n,
+            inputTokens: BigInt(200),
+            outputTokens: BigInt(100),
+            reasoningTokens: BigInt(10),
+            cachedTokens: BigInt(5),
+            cacheCreationTokens: BigInt(0),
+            totalTokens: BigInt(315),
           },
         ]),
       },

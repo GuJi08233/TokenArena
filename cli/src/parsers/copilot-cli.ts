@@ -41,6 +41,13 @@ interface CopilotEvent {
   };
 }
 
+type CopilotUsageCounts = {
+  inputTokens: number;
+  outputTokens: number;
+  cachedTokens: number;
+  cacheCreationTokens: number;
+};
+
 function collectEventFiles(
   dir: string,
   results: { filePath: string; sessionId: string }[],
@@ -100,6 +107,7 @@ class CopilotCliParser implements IParser {
 
     const entries: TokenUsageEntry[] = [];
     const sessionEvents: SessionEvent[] = [];
+    const cumulativeUsage = new Map<string, CopilotUsageCounts>();
 
     for (const { filePath, sessionId } of eventFiles) {
       let content: string;
@@ -152,11 +160,55 @@ class CopilotCliParser implements IParser {
             const usage = metrics?.usage;
             if (!usage) continue;
 
-            const totalInput = usage.inputTokens || 0;
-            const cachedRead = usage.cacheReadTokens || 0;
-            const output = usage.outputTokens || 0;
+            const totalInput = usage.inputTokens ?? 0;
+            const cachedRead = usage.cacheReadTokens ?? 0;
+            const cachedWrite = usage.cacheWriteTokens ?? 0;
+            const output = usage.outputTokens ?? 0;
+            if (
+              [totalInput, cachedRead, cachedWrite, output].some(
+                (count) => !Number.isSafeInteger(count) || count < 0,
+              )
+            ) {
+              continue;
+            }
 
-            if (totalInput === 0 && cachedRead === 0 && output === 0) {
+            // shutdown 是会话/模型累计快照，inputTokens 已包含缓存读写。
+            // https://ccusage.com/guide/copilot/
+            const key = JSON.stringify([sessionId, model]);
+            const previous = cumulativeUsage.get(key) ?? {
+              inputTokens: 0,
+              outputTokens: 0,
+              cachedTokens: 0,
+              cacheCreationTokens: 0,
+            };
+            const inputTokens = Math.max(
+              0,
+              totalInput - cachedRead - cachedWrite - previous.inputTokens,
+            );
+            const outputTokens = Math.max(0, output - previous.outputTokens);
+            const cachedTokens = Math.max(
+              0,
+              cachedRead - previous.cachedTokens,
+            );
+            const cacheCreationTokens = Math.max(
+              0,
+              cachedWrite - previous.cacheCreationTokens,
+            );
+            // 保留高水位，重复或晚到的旧快照不能使下次恢复时再次累计旧用量。
+            cumulativeUsage.set(key, {
+              inputTokens: previous.inputTokens + inputTokens,
+              outputTokens: previous.outputTokens + outputTokens,
+              cachedTokens: previous.cachedTokens + cachedTokens,
+              cacheCreationTokens:
+                previous.cacheCreationTokens + cacheCreationTokens,
+            });
+            if (
+              inputTokens +
+                outputTokens +
+                cachedTokens +
+                cacheCreationTokens ===
+              0
+            ) {
               continue;
             }
 
@@ -166,10 +218,11 @@ class CopilotCliParser implements IParser {
               model,
               project: currentProject,
               timestamp,
-              inputTokens: Math.max(0, totalInput - cachedRead),
-              outputTokens: output,
+              inputTokens,
+              outputTokens,
               reasoningTokens: 0,
-              cachedTokens: cachedRead,
+              cachedTokens,
+              cacheCreationTokens,
             });
           }
         } catch {

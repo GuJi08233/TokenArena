@@ -80,6 +80,7 @@ function estimateBucketCostUsd(
     outputTokens: number;
     reasoningTokens: number;
     cachedTokens: number;
+    cacheCreationTokens: number;
   },
   catalog: PricingCatalog | null,
 ) {
@@ -94,6 +95,7 @@ function estimateBucketCostUsd(
       outputTokens: bucket.outputTokens,
       reasoningTokens: bucket.reasoningTokens,
       cachedTokens: bucket.cachedTokens,
+      cacheCreationTokens: bucket.cacheCreationTokens ?? 0,
     },
     match?.cost,
   );
@@ -149,6 +151,7 @@ function buildAllTimeMetrics(input: {
     outputTokens: number | bigint;
     reasoningTokens: number | bigint;
     cachedTokens: number | bigint;
+    cacheCreationTokens: number | bigint;
     model: string;
     source: string;
     projectKey: string;
@@ -198,6 +201,7 @@ function buildAllTimeMetrics(input: {
       outputTokens: tokenCountToNumber(bucket.outputTokens),
       reasoningTokens: tokenCountToNumber(bucket.reasoningTokens),
       cachedTokens: tokenCountToNumber(bucket.cachedTokens),
+      cacheCreationTokens: tokenCountToNumber(bucket.cacheCreationTokens),
     };
     const estimatedCostUsd = estimateBucketCostUsd(
       {
@@ -206,6 +210,7 @@ function buildAllTimeMetrics(input: {
         outputTokens: normalized.outputTokens,
         reasoningTokens: normalized.reasoningTokens,
         cachedTokens: normalized.cachedTokens,
+        cacheCreationTokens: normalized.cacheCreationTokens ?? 0,
       },
       input.catalog,
     );
@@ -288,6 +293,7 @@ function buildAllTimeMetrics(input: {
     totalTokens: 0,
     reasoningTokens: 0,
     cachedTokens: 0,
+    cacheCreationTokens: 0,
     byProject: new Map<string, number>(),
     byModel: new Map<string, number>(),
   };
@@ -308,6 +314,9 @@ function buildAllTimeMetrics(input: {
     recentTotals.totalTokens += bucketTotalTokens;
     recentTotals.reasoningTokens += tokenCountToNumber(bucket.reasoningTokens);
     recentTotals.cachedTokens += tokenCountToNumber(bucket.cachedTokens);
+    recentTotals.cacheCreationTokens += tokenCountToNumber(
+      bucket.cacheCreationTokens,
+    );
     recentTotals.byProject.set(
       bucket.projectKey,
       (recentTotals.byProject.get(bucket.projectKey) ?? 0) + bucketTotalTokens,
@@ -449,6 +458,7 @@ async function loadAchievementMetrics(userId: string) {
           outputTokens: true,
           reasoningTokens: true,
           cachedTokens: true,
+          cacheCreationTokens: true,
           model: true,
           source: true,
           projectKey: true,

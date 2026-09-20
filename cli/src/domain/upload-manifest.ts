@@ -121,6 +121,7 @@ function getUploadBucketContentHash(bucket: UploadTokenBucket): string {
   return fingerprint(
     JSON.stringify({
       cachedTokens: bucket.cachedTokens,
+      cacheCreationTokens: bucket.cacheCreationTokens ?? 0,
       hostname: bucket.hostname,
       inputTokens: bucket.inputTokens,
       outputTokens: bucket.outputTokens,
@@ -136,6 +137,7 @@ function getUploadSessionContentHash(session: UploadSessionMetadata): string {
     JSON.stringify({
       activeSeconds: session.activeSeconds,
       cachedTokens: session.cachedTokens,
+      cacheCreationTokens: session.cacheCreationTokens ?? 0,
       durationSeconds: session.durationSeconds,
       firstMessageAt: session.firstMessageAt,
       hostname: session.hostname,

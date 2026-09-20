@@ -95,21 +95,18 @@ export function resolveSnapshotResetDeviceId(input: {
   previous: UploadManifest | null;
   scopeChangedReasons: UploadManifestScopeChange[];
 }): string | null {
-  if (!input.previous) {
+  if (
+    !input.previous ||
+    input.scopeChangedReasons.includes("server_or_api_key")
+  ) {
     return null;
   }
-
-  if (input.scopeChangedReasons.includes("server_or_api_key")) {
-    return null;
-  }
-
   if (
     input.scopeChangedReasons.includes("project_identity") ||
     input.scopeChangedReasons.includes("snapshot_protocol")
   ) {
     return input.previous.scope.deviceId;
   }
-
   return null;
 }
 
@@ -129,6 +126,7 @@ export interface SyncOptions {
   source?: SyncSource;
   throws?: boolean;
   quiet?: boolean;
+  rebuild?: boolean;
 }
 
 export interface SyncResult {
@@ -171,6 +169,8 @@ export function toUploadBuckets(
       existing.outputTokens += bucket.outputTokens;
       existing.reasoningTokens += bucket.reasoningTokens || 0;
       existing.cachedTokens += bucket.cachedTokens || 0;
+      existing.cacheCreationTokens =
+        (existing.cacheCreationTokens ?? 0) + (bucket.cacheCreationTokens ?? 0);
       existing.totalTokens += bucket.totalTokens;
       continue;
     }
@@ -187,6 +187,7 @@ export function toUploadBuckets(
       outputTokens: bucket.outputTokens,
       reasoningTokens: bucket.reasoningTokens || 0,
       cachedTokens: bucket.cachedTokens || 0,
+      cacheCreationTokens: bucket.cacheCreationTokens ?? 0,
       totalTokens: bucket.totalTokens,
     });
   }
@@ -223,6 +224,7 @@ export function toUploadSessions(
       outputTokens: session.outputTokens,
       reasoningTokens: session.reasoningTokens,
       cachedTokens: session.cachedTokens,
+      cacheCreationTokens: session.cacheCreationTokens ?? 0,
       totalTokens: session.totalTokens,
       primaryModel: session.primaryModel,
       modelUsages: session.modelUsages,
@@ -327,7 +329,12 @@ export async function runSync(
   config: Config,
   opts: SyncOptions = {},
 ): Promise<SyncResult> {
-  const { quiet = false, source = "manual", throws = false } = opts;
+  const {
+    quiet = false,
+    source = "manual",
+    throws = false,
+    rebuild = false,
+  } = opts;
 
   const lock = tryAcquireSyncLock(source);
   if (!lock) {
@@ -350,15 +357,30 @@ export async function runSync(
   let totalIngested = 0;
   let totalSessionsSynced = 0;
   let caughtError: SyncFailure | null = null;
+  let snapshotResetAttempted = false;
 
   try {
     const {
       buckets: allBuckets,
       sessions: allSessions,
       parserResults,
+      failedSources = [],
     } = await runAllParsers();
 
+    if (rebuild && failedSources.length > 0) {
+      throw new SyncFailure(
+        `Cannot rebuild: incomplete or failed parsers (${failedSources.join(", ")}). Remote history has not been changed.`,
+        "error",
+      );
+    }
+
     if (allBuckets.length === 0 && allSessions.length === 0) {
+      if (rebuild) {
+        throw new SyncFailure(
+          "Cannot rebuild from an empty scan. Restore complete local logs first. Remote history has not been changed.",
+          "error",
+        );
+      }
       if (!quiet) {
         logger.info("No new usage data found.");
       }
@@ -416,29 +438,40 @@ export async function runSync(
       scope: manifestScope,
       sessions: uploadSessions,
     });
-    const changedBuckets = uploadDiff.bucketsToUpload;
-    const changedSessions = uploadDiff.sessionsToUpload;
-    const snapshotResetDeviceId = resolveSnapshotResetDeviceId({
-      previous: previousManifest,
-      scopeChangedReasons: uploadDiff.scopeChangedReasons,
-    });
+    const snapshotResetDeviceId = rebuild
+      ? device.deviceId
+      : resolveSnapshotResetDeviceId({
+          previous: previousManifest,
+          scopeChangedReasons: uploadDiff.scopeChangedReasons,
+        });
+    if (snapshotResetDeviceId && failedSources.length > 0) {
+      throw new SyncFailure(
+        "Cannot replace the device snapshot: incomplete or failed parsers (" +
+          failedSources.join(", ") +
+          "). Remote history has not been changed.",
+        "error",
+      );
+    }
+    const changedBuckets = snapshotResetDeviceId
+      ? uploadBuckets
+      : uploadDiff.bucketsToUpload;
+    const changedSessions = snapshotResetDeviceId
+      ? uploadSessions
+      : uploadDiff.sessionsToUpload;
 
-    if (!quiet && uploadDiff.scopeChangedReasons.length > 0) {
+    if (!rebuild && !quiet && uploadDiff.scopeChangedReasons.length > 0) {
       const scopeReasons = uploadDiff.scopeChangedReasons
         .map(formatScopeChangeReason)
         .join(", ");
-      if (snapshotResetDeviceId) {
-        logger.warn(
-          `Upload scope changed (${scopeReasons}). TokenArena will replace the previous remote snapshot for this device before uploading the current snapshot again.`,
-        );
-      } else {
-        logger.warn(
-          `Upload scope changed (${scopeReasons}). TokenArena will upload the current snapshot again, but existing remote records from the previous scope will not be deleted automatically.`,
-        );
-      }
+      logger.warn(
+        snapshotResetDeviceId
+          ? `Upload scope changed (${scopeReasons}). The previous device snapshot will be replaced to apply the new privacy or protocol settings.`
+          : `Upload scope changed (${scopeReasons}). Current records will be uploaded again; remote records from the previous server, account or device are preserved.`,
+      );
     }
 
     if (
+      !rebuild &&
       !quiet &&
       (uploadDiff.removedBuckets > 0 || uploadDiff.removedSessions > 0)
     ) {
@@ -450,27 +483,8 @@ export async function runSync(
         parts.push(`${uploadDiff.removedSessions} sessions`);
       }
       logger.warn(
-        `Detected ${parts.join(" + ")} that were present in the previous local snapshot but are missing now. Remote deletions are not supported yet, so renamed projects or removed local logs may leave stale data online.`,
+        `Detected ${parts.join(" + ")} that were present in the previous local snapshot but are missing now. Remote history is preserved. Use tokenarena sync --rebuild to replace it only when complete local logs are available.`,
       );
-    }
-
-    if (snapshotResetDeviceId) {
-      const deleted = await apiClient.deleteDeviceData(snapshotResetDeviceId);
-      if (!quiet) {
-        const deletedParts: string[] = [];
-        if (deleted.deletedBuckets > 0) {
-          deletedParts.push(`${deleted.deletedBuckets} buckets`);
-        }
-        if (deleted.deletedSessions > 0) {
-          deletedParts.push(`${deleted.deletedSessions} sessions`);
-        }
-
-        logger.info(
-          deletedParts.length > 0
-            ? `Cleared ${deletedParts.join(" + ")} from the previous remote snapshot before re-uploading.`
-            : "Previous remote snapshot was already empty before re-uploading.",
-        );
-      }
     }
 
     if (changedBuckets.length === 0 && changedSessions.length === 0) {
@@ -513,6 +527,26 @@ export async function runSync(
       (sum, size) => sum + size,
       0,
     );
+    if (snapshotResetDeviceId) {
+      // 清空本地指纹必须先落盘；删除或上传中断后，普通 sync 才会补传所有记录。
+      // 此处不能使用会吞掉写盘错误的 persistUploadManifest。
+      saveUploadManifest({
+        ...uploadDiff.nextManifest,
+        // 自动隐私迁移保留旧 scope；清理中断后，下次同步仍会重试删除旧快照。
+        scope:
+          !rebuild && previousManifest ? previousManifest.scope : manifestScope,
+        buckets: {},
+        sessions: {},
+      });
+      snapshotResetAttempted = true;
+      const deleted = await apiClient.deleteDeviceData(snapshotResetDeviceId);
+      if (!quiet) {
+        logger.info(
+          `Replacing the device snapshot (${deleted.deletedBuckets} buckets and ${deleted.deletedSessions} sessions cleared).`,
+        );
+      }
+    }
+
     let uploadedBytesBeforeBatch = 0;
 
     if (!quiet) {
@@ -524,10 +558,10 @@ export async function runSync(
         parts.push(`${changedSessions.length} sessions`);
       }
       const skippedParts: string[] = [];
-      if (uploadDiff.unchangedBuckets > 0) {
+      if (!snapshotResetDeviceId && uploadDiff.unchangedBuckets > 0) {
         skippedParts.push(`${uploadDiff.unchangedBuckets} unchanged buckets`);
       }
-      if (uploadDiff.unchangedSessions > 0) {
+      if (!snapshotResetDeviceId && uploadDiff.unchangedSessions > 0) {
         skippedParts.push(`${uploadDiff.unchangedSessions} unchanged sessions`);
       }
       logger.info(
@@ -611,9 +645,9 @@ export async function runSync(
       );
     } else if (error instanceof SyncFailure) {
       caughtError = error;
-    } else if (totalIngested > 0) {
+    } else if (totalIngested > 0 || totalSessionsSynced > 0) {
       caughtError = new SyncFailure(
-        `Sync partially completed (${totalIngested} buckets uploaded). ${httpErr.message}`,
+        `Sync partially completed (${totalIngested} buckets and ${totalSessionsSynced} sessions uploaded). ${httpErr.message}`,
         "error",
         error as Error,
       );
@@ -625,6 +659,15 @@ export async function runSync(
       );
     }
 
+    if (snapshotResetAttempted) {
+      caughtError = new SyncFailure(
+        (rebuild ? "Rebuild" : "Snapshot replacement") +
+          " did not finish. Run tokenarena sync to retry. " +
+          caughtError.message,
+        caughtError.kind,
+        caughtError.causeError,
+      );
+    }
     markSyncFailed(source, caughtError.message, caughtError.kind);
   } finally {
     lock.release();

@@ -74,6 +74,73 @@ const range = {
   timezone: "UTC",
 };
 
+describe("complete usage pagination", () => {
+  it("includes records beyond 10,000 buckets and 5,000 sessions", async () => {
+    vi.clearAllMocks();
+    mocks.tokenCountToNumber.mockImplementation((value) => Number(value ?? 0));
+    const buckets = Array.from({ length: 10_001 }, (_, index) => ({
+      id: `bucket-${String(index).padStart(6, "0")}`,
+      deviceId: "device",
+      source: "claude-code",
+      model: "claude-sonnet-4",
+      projectKey: "project",
+      projectLabel: "Project",
+      bucketStart: range.from,
+      inputTokens: 1,
+      outputTokens: 0,
+      reasoningTokens: 0,
+      cachedTokens: 2,
+      cacheCreationTokens: 3,
+      totalTokens: 6,
+    }));
+    const sessions = Array.from({ length: 5_001 }, (_, index) => ({
+      id: `session-${String(index).padStart(6, "0")}`,
+      firstMessageAt: range.from,
+      activeSeconds: 1,
+      durationSeconds: 2,
+      messageCount: 2,
+      userMessageCount: 1,
+    }));
+    function page<T extends { id: string }>(
+      rows: T[],
+      args: {
+        cursor?: { id: string };
+        take: number;
+        where: Record<string, unknown>;
+      },
+      dateField: string,
+    ) {
+      const dateFilter = args.where[dateField] as { gte: Date };
+      if (dateFilter.gte.getTime() !== range.from.getTime()) return [];
+      const offset = args.cursor
+        ? rows.findIndex((row) => row.id === args.cursor?.id) + 1
+        : 0;
+      return rows.slice(offset, offset + args.take);
+    }
+    mocks.usageBucketFindMany.mockImplementation((args) =>
+      Promise.resolve(page(buckets, args, "bucketStart")),
+    );
+    mocks.usageSessionFindMany.mockImplementation((args) =>
+      Promise.resolve(page(sessions, args, "firstMessageAt")),
+    );
+    const overview = await getOverviewMetrics({
+      userId: "user",
+      range,
+      filters: {},
+    });
+    expect(overview.totalTokens.current).toBe(60_006);
+    expect(overview.cacheCreationTokens.current).toBe(30_003);
+    expect(overview.sessions.current).toBe(5_001);
+    expect(overview.totalTokens.previous).toBe(0);
+    expect(mocks.usageBucketFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cursor: { id: "bucket-009999" },
+        skip: 1,
+      }),
+    );
+  });
+});
+
 describe("getBreakdowns", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -110,6 +177,7 @@ describe("getBreakdowns", () => {
         outputTokens: 200,
         reasoningTokens: 40,
         cachedTokens: 40,
+        cacheCreationTokens: 0,
       },
       {
         deviceId: "22222222-beta",
@@ -122,6 +190,7 @@ describe("getBreakdowns", () => {
         outputTokens: 150,
         reasoningTokens: 30,
         cachedTokens: 50,
+        cacheCreationTokens: 0,
       },
     ]);
 
@@ -231,6 +300,7 @@ describe("getSessionRows", () => {
         outputTokens: 500,
         reasoningTokens: 200,
         cachedTokens: 100,
+        cacheCreationTokens: 0,
         totalTokens: 1800,
         primaryModel: "claude-sonnet-4-20250514",
         estimatedCostUsd: 0.012,
@@ -270,6 +340,7 @@ describe("getSessionRows", () => {
         outputTokens: 500,
         reasoningTokens: 200,
         cachedTokens: 100,
+        cacheCreationTokens: 0,
         primaryModel: "claude-sonnet-4-20250514",
       },
     ]);
@@ -299,11 +370,11 @@ describe("getUsageDashboardSnapshot", () => {
     expect(mocks.usageSessionFindMany).toHaveBeenCalledTimes(3);
     expect(mocks.usageSessionFindMany).toHaveBeenNthCalledWith(
       1,
-      expect.objectContaining({ take: 5_000 }),
+      expect.objectContaining({ take: 1_000 }),
     );
     expect(mocks.usageSessionFindMany).toHaveBeenNthCalledWith(
       2,
-      expect.objectContaining({ take: 5_000 }),
+      expect.objectContaining({ take: 1_000 }),
     );
     expect(mocks.usageSessionFindMany).toHaveBeenNthCalledWith(
       3,
@@ -349,6 +420,7 @@ describe("getTokenTrend", () => {
         outputTokens: 200,
         reasoningTokens: 50,
         cachedTokens: 25,
+        cacheCreationTokens: 0,
         totalTokens: 375,
       },
     ]);
@@ -408,6 +480,7 @@ describe("getHourlyActivityHeatmap", () => {
         outputTokens: 40,
         reasoningTokens: 0,
         cachedTokens: 0,
+        cacheCreationTokens: 0,
         totalTokens: 140,
       },
     ]);
@@ -470,6 +543,7 @@ describe("getOverviewMetrics", () => {
           outputTokens: 200,
           reasoningTokens: 50,
           cachedTokens: 50,
+          cacheCreationTokens: 0,
         },
       ])
       // Previous period: empty
@@ -627,6 +701,7 @@ describe("getPricingSummaryAndRows", () => {
             outputTokens: 400,
             reasoningTokens: 50,
             cachedTokens: 50,
+            cacheCreationTokens: 0,
             bucketStart: new Date("2026-03-25T00:00:00.000Z"),
             userId: "user_123",
             deviceId: "device-1",

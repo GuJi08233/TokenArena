@@ -49,6 +49,10 @@ export function createCli(): Command {
   program
     .command("sync")
     .description("Manually sync usage data to server")
+    .option(
+      "--rebuild",
+      "Replace this device's remote history; requires complete local logs",
+    )
     .addOption(new Option("--quiet").hideHelp())
     .action(async (opts) => {
       await runSyncCommand(opts);

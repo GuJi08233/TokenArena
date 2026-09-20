@@ -23,6 +23,7 @@ vi.mock("../parsers/registry", () => ({
             outputTokens: 50,
             reasoningTokens: 0,
             cachedTokens: 0,
+            cacheCreationTokens: 0,
             totalTokens: 150,
           },
         ],
@@ -41,6 +42,7 @@ vi.mock("../parsers/registry", () => ({
             outputTokens: 50,
             reasoningTokens: 0,
             cachedTokens: 0,
+            cacheCreationTokens: 0,
             totalTokens: 150,
             primaryModel: "gpt-4",
             modelUsages: [],
@@ -82,6 +84,23 @@ describe("parser-service", () => {
       // failing-tool should be skipped, others should work
       expect(getAllParsers()).toHaveLength(3);
       expect(result.parserResults).toHaveLength(1);
+      expect(result.failedSources).toEqual(["failing-tool"]);
+    });
+
+    it("does not upload partial snapshots over complete remote data", async () => {
+      const parsers = getAllParsers();
+      const partial = await parsers[1].parse();
+      vi.mocked(getAllParsers).mockReturnValueOnce([
+        {
+          tool: parsers[1].tool,
+          parse: vi.fn().mockResolvedValue({ ...partial, incomplete: true }),
+        },
+      ]);
+      const result = await runAllParsers();
+      expect(result.failedSources).toEqual(["tool-with-data"]);
+      expect(result.buckets).toHaveLength(0);
+      expect(result.sessions).toHaveLength(0);
+      expect(result.parserResults).toHaveLength(0);
     });
   });
 

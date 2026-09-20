@@ -73,6 +73,7 @@ const ingestBucketSchema = z.object({
   outputTokens: z.number().int().nonnegative(),
   reasoningTokens: z.number().int().nonnegative(),
   cachedTokens: z.number().int().nonnegative(),
+  cacheCreationTokens: z.number().int().nonnegative().default(0),
   totalTokens: z.number().int().nonnegative(),
 });
 
@@ -91,6 +92,7 @@ const ingestSessionSchema = z.object({
   outputTokens: z.number().int().nonnegative().optional(),
   reasoningTokens: z.number().int().nonnegative().optional(),
   cachedTokens: z.number().int().nonnegative().optional(),
+  cacheCreationTokens: z.number().int().nonnegative().optional(),
   totalTokens: z.number().int().nonnegative().optional(),
   primaryModel: z.string().optional(),
   modelUsages: z
@@ -101,6 +103,7 @@ const ingestSessionSchema = z.object({
         outputTokens: z.number().int().nonnegative(),
         reasoningTokens: z.number().int().nonnegative(),
         cachedTokens: z.number().int().nonnegative(),
+        cacheCreationTokens: z.number().int().nonnegative().default(0),
         totalTokens: z.number().int().nonnegative(),
       }),
     )

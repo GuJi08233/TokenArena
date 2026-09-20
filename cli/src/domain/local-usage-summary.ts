@@ -9,6 +9,7 @@ export interface LocalUsageTotals {
   inputTokens: number;
   outputTokens: number;
   cachedTokens: number;
+  cacheCreationTokens: number;
   reasoningTokens: number;
   totalTokens: number;
   buckets: number;
@@ -23,6 +24,7 @@ export interface LocalUsageRankItem {
   inputTokens: number;
   outputTokens: number;
   cachedTokens: number;
+  cacheCreationTokens: number;
   reasoningTokens: number;
   sessions: number;
 }
@@ -62,6 +64,7 @@ function createTotals(): LocalUsageTotals {
     inputTokens: 0,
     outputTokens: 0,
     cachedTokens: 0,
+    cacheCreationTokens: 0,
     reasoningTokens: 0,
     totalTokens: 0,
     buckets: 0,
@@ -78,6 +81,7 @@ function addBucketToTotals(
   totals.inputTokens += bucket.inputTokens || 0;
   totals.outputTokens += bucket.outputTokens || 0;
   totals.cachedTokens += bucket.cachedTokens || 0;
+  totals.cacheCreationTokens += bucket.cacheCreationTokens || 0;
   totals.reasoningTokens += bucket.reasoningTokens || 0;
   totals.totalTokens += bucket.totalTokens || 0;
   totals.buckets += 1;
@@ -94,6 +98,7 @@ function addBucketToRank(
     inputTokens: 0,
     outputTokens: 0,
     cachedTokens: 0,
+    cacheCreationTokens: 0,
     reasoningTokens: 0,
     totalTokens: 0,
     sessions: 0,
@@ -102,6 +107,7 @@ function addBucketToRank(
   current.inputTokens += bucket.inputTokens || 0;
   current.outputTokens += bucket.outputTokens || 0;
   current.cachedTokens += bucket.cachedTokens || 0;
+  current.cacheCreationTokens += bucket.cacheCreationTokens || 0;
   current.reasoningTokens += bucket.reasoningTokens || 0;
   current.totalTokens += bucket.totalTokens || 0;
   map.set(name, current);
@@ -153,6 +159,7 @@ function buildToolSummary(input: {
         inputTokens: 0,
         outputTokens: 0,
         cachedTokens: 0,
+        cacheCreationTokens: 0,
         reasoningTokens: 0,
         totalTokens: 0,
         sessions: 1,
@@ -168,6 +175,7 @@ function buildToolSummary(input: {
         inputTokens: 0,
         outputTokens: 0,
         cachedTokens: 0,
+        cacheCreationTokens: 0,
         reasoningTokens: 0,
         totalTokens: 0,
         sessions: 1,

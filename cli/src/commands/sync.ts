@@ -10,6 +10,7 @@ import { runInit } from "./init";
 
 export interface SyncCommandOptions {
   quiet?: boolean;
+  rebuild?: boolean;
 }
 
 export async function runSyncCommand(
@@ -39,6 +40,7 @@ export async function runSyncCommand(
 
   await runSync(config, {
     quiet: opts.quiet,
+    rebuild: opts.rebuild,
     source: "manual",
   });
 }

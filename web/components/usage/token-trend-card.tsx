@@ -60,6 +60,13 @@ const TOKEN_TREND_SERIES = [
     radius: [0, 0, 0, 0] as [number, number, number, number],
   },
   {
+    dataKey: "cacheCreationTokens",
+    labelKey: "cacheCreation",
+    color: "var(--chart-1)",
+    opacity: 0.86,
+    radius: [0, 0, 0, 0] as [number, number, number, number],
+  },
+  {
     dataKey: "inputTokens",
     labelKey: "input",
     color: "var(--chart-1)",
@@ -90,17 +97,21 @@ const TOKEN_TREND_TOOLTIP_STYLES = {
     backgroundColor: TOKEN_TREND_SERIES[0].color,
     opacity: TOKEN_TREND_SERIES[0].opacity,
   },
-  input: {
+  cacheCreation: {
     backgroundColor: TOKEN_TREND_SERIES[1].color,
     opacity: TOKEN_TREND_SERIES[1].opacity,
   },
-  output: {
+  input: {
     backgroundColor: TOKEN_TREND_SERIES[2].color,
     opacity: TOKEN_TREND_SERIES[2].opacity,
   },
-  reasoning: {
+  output: {
     backgroundColor: TOKEN_TREND_SERIES[3].color,
     opacity: TOKEN_TREND_SERIES[3].opacity,
+  },
+  reasoning: {
+    backgroundColor: TOKEN_TREND_SERIES[4].color,
+    opacity: TOKEN_TREND_SERIES[4].opacity,
   },
   cost: {
     backgroundColor: "var(--chart-2)",
@@ -155,6 +166,11 @@ function getTooltipRows(
   return [
     { labelKey: "total", kind: "tokens", value: point.totalTokens },
     { labelKey: "cache", kind: "tokens", value: point.cachedTokens },
+    {
+      labelKey: "cacheCreation",
+      kind: "tokens",
+      value: point.cacheCreationTokens,
+    },
     { labelKey: "input", kind: "tokens", value: point.inputTokens },
     { labelKey: "output", kind: "tokens", value: point.outputTokens },
     { labelKey: "reasoning", kind: "tokens", value: point.reasoningTokens },

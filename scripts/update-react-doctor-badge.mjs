@@ -43,6 +43,14 @@ if (doctor.status !== 0) {
   process.exit(doctor.status ?? 1);
 }
 
+// 部分平台的 lint 启动失败仍返回 0；不完整扫描不能替换上次完整检查的徽章。
+if (/lint checks failed/i.test(output)) {
+  console.warn(
+    "React Doctor lint scan was incomplete; keeping the existing README badge.",
+  );
+  process.exit(0);
+}
+
 const scoreMatch = output.match(/\b(\d{1,3})\s*\/\s*100\b/);
 const issuesMatch = output.match(/\b(\d+)\s+issues\s+across\s+(\d+)\/\d+\s+files\b/);
 

@@ -156,14 +156,17 @@ describe("CherryStudioParser", () => {
     });
   });
 
-  it("counts cache writes alongside cache reads", async () => {
+  it.each([
+    50,
+    null,
+  ])("keeps cache writes separate with noCacheTokens=%s", async (noCacheTokens) => {
     const dbPath = makeDbPath();
     const parser = makeParser({
       dbPath,
       usageRows: [
         {
           modelId: "claude-sonnet-4.5",
-          noCacheTokens: 50,
+          noCacheTokens,
           inputTokens: 354,
           outputTokens: 120,
           reasoningTokens: 0,
@@ -180,7 +183,8 @@ describe("CherryStudioParser", () => {
     expect(result.buckets[0]).toMatchObject({
       inputTokens: 50,
       outputTokens: 120,
-      cachedTokens: 304,
+      cachedTokens: 100,
+      cacheCreationTokens: 204,
       totalTokens: 474,
     });
   });

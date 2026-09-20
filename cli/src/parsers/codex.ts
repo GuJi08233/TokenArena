@@ -1,5 +1,6 @@
+import { existsSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { aggregateToBuckets } from "../domain/aggregator";
 import { extractSessions } from "../domain/session-extractor";
 import type {
@@ -8,28 +9,20 @@ import type {
   TokenUsageEntry,
 } from "../domain/types";
 import { findJsonlFiles, readFileSafe } from "../infrastructure/fs/utils";
+import { logger } from "../utils/logger";
 import { registerParser } from "./registry";
 import type { IParser, ToolDefinition } from "./types";
 
 const TOOL_ID = "codex";
-const TOOL_NAME = "Codex CLI";
 const DEFAULT_DATA_DIR = join(homedir(), ".codex", "sessions");
+const DEFAULT_ARCHIVE_DIR = join(homedir(), ".codex", "archived_sessions");
 
-function createToolDefinition(dataDir: string): ToolDefinition {
-  return {
-    id: TOOL_ID,
-    name: TOOL_NAME,
-    dataDir,
-  };
-}
-
-function toSafeNumber(value: unknown): number {
-  const numberValue = Number(value);
-  return Number.isFinite(numberValue) ? numberValue : 0;
-}
-
-function toNonNegativeDelta(current: unknown, previous: unknown): number {
-  return Math.max(0, toSafeNumber(current) - toSafeNumber(previous));
+interface Usage {
+  input: number;
+  output: number;
+  cached: number;
+  reasoning: number;
+  reportedTotal: number | null;
 }
 
 interface CodexEvent {
@@ -37,243 +30,446 @@ interface CodexEvent {
   timestamp?: string;
   payload?: {
     type?: string;
+    id?: string;
+    thread_id?: string;
+    threadId?: string;
+    forked_from_id?: string;
+    source?: { subagent?: { thread_spawn?: { parent_thread_id?: string } } };
     model?: string;
     cwd?: string;
-    git?: {
-      repository_url?: string;
-    };
+    git?: { repository_url?: string };
+    rate_limits?: { limit_id?: string };
     info?: {
       model?: string;
-      last_token_usage?: {
-        input_tokens?: number;
-        output_tokens?: number;
-        cached_input_tokens?: number;
-        reasoning_output_tokens?: number;
-      };
-      total_token_usage?: {
-        input_tokens?: number;
-        output_tokens?: number;
-        cached_input_tokens?: number;
-        reasoning_output_tokens?: number;
-      };
+      model_name?: string;
+      last_token_usage?: unknown;
+      total_token_usage?: unknown;
     };
   };
 }
 
-function getPathLeaf(value: string): string {
-  const normalized = value.replace(/\\/g, "/").replace(/\/+$/, "");
-  const leaf = normalized.split("/").filter(Boolean).pop();
-  return leaf || "unknown";
+interface TokenEvent {
+  line: number;
+  timestamp: Date | null;
+  timestampOrder: bigint | null;
+  model: string;
+  signature: string;
+  snapshotSource: string;
+  total: Usage | null;
+  last: Usage | null;
+}
+
+interface Rollout {
+  path: string;
+  sessionId: string;
+  threadId: string | null;
+  project: string;
+  parentId: string | null;
+  parentConflict: boolean;
+  rootTimestampOrder: bigint | null;
+  latestTimestampOrder: bigint;
+  tokens: TokenEvent[];
+  prompts: Array<{ line: number; timestamp: Date; timestampOrder: bigint }>;
+}
+
+interface Thread {
+  files: Rollout[];
+  timeline: TokenEvent[];
+  latestTimestampOrder: bigint;
+  invalidTokenTimestamp: boolean;
+  status: "new" | "visiting" | "done" | "deferred";
+}
+
+function safeCount(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : 0;
+}
+
+function readUsage(value: unknown): Usage | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const fields = value as Record<string, unknown>;
+  const names = [
+    "input_tokens",
+    "output_tokens",
+    "cached_input_tokens",
+    "cache_read_input_tokens",
+    "reasoning_output_tokens",
+    "total_tokens",
+  ];
+  // 空对象不能遮蔽有效累计值，也不能被当成全零快照参与去重。
+  if (!names.some((name) => Object.hasOwn(fields, name))) return null;
+  return {
+    input: safeCount(fields.input_tokens),
+    output: safeCount(fields.output_tokens),
+    cached: safeCount(
+      fields.cached_input_tokens ?? fields.cache_read_input_tokens,
+    ),
+    reasoning: safeCount(fields.reasoning_output_tokens),
+    reportedTotal:
+      typeof fields.total_tokens === "number"
+        ? safeCount(fields.total_tokens)
+        : null,
+  };
+}
+
+function readTimestamp(value: unknown): Date | null {
+  if (typeof value !== "string") return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function timestampOrder(value: unknown, timestamp: Date | null): bigint | null {
+  if (!timestamp) return null;
+  // Date 截断到毫秒；fork 截止点必须保留 Codex 日志中的纳秒精度。
+  const fraction =
+    typeof value === "string"
+      ? (value.match(/\.(\d+)(?:z|[+-]\d{2}:?\d{2})?$/i)?.[1] ?? "")
+      : "";
+  const remainder = fraction.slice(3, 9).padEnd(6, "0");
+  return BigInt(timestamp.getTime()) * 1_000_000n + BigInt(remainder);
+}
+
+function readId(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function filenameThreadId(path: string): string | null {
+  return (
+    basename(path).match(
+      /([\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12})\.jsonl$/i,
+    )?.[1] ?? null
+  );
 }
 
 export function resolveCodexProject(payload?: CodexEvent["payload"]): string {
-  if (!payload) {
-    return "unknown";
-  }
-
-  const repositoryUrl = payload.git?.repository_url;
-  if (repositoryUrl) {
+  const repositoryUrl = payload?.git?.repository_url;
+  if (typeof repositoryUrl === "string" && repositoryUrl) {
     const match = repositoryUrl.match(/([^/]+\/[^/]+?)(?:\.git)?$/);
-    if (match) {
-      return match[1];
+    if (match) return match[1];
+  }
+  const normalized =
+    typeof payload?.cwd === "string"
+      ? payload.cwd.replace(/\\/g, "/").replace(/\/+$/, "")
+      : "";
+  return normalized?.split("/").filter(Boolean).pop() || "unknown";
+}
+
+function readRollout(path: string): Rollout | null {
+  const content = readFileSafe(path);
+  if (!content) return null;
+  const tokens: TokenEvent[] = [];
+  const prompts: Rollout["prompts"] = [];
+  let rootMeta: CodexEvent | null = null;
+  let model = "unknown";
+  let latestTimestampOrder = 0n;
+  let line = 0;
+  for (const text of content.split("\n")) {
+    line++;
+    if (!text.trim()) continue;
+    try {
+      const event = JSON.parse(text) as CodexEvent;
+      const timestamp = readTimestamp(event.timestamp);
+      const order = timestampOrder(event.timestamp, timestamp);
+      if (order !== null && order > latestTimestampOrder)
+        latestTimestampOrder = order;
+      if (event.type === "session_meta" && !rootMeta) rootMeta = event;
+      if (event.type === "turn_context") {
+        model =
+          readId(event.payload?.model) ||
+          readId(event.payload?.info?.model) ||
+          model;
+        if (timestamp && order !== null)
+          prompts.push({ line, timestamp, timestampOrder: order });
+      }
+      if (event.type !== "event_msg" || event.payload?.type !== "token_count")
+        continue;
+      const info = event.payload.info;
+      if (!info) continue;
+      const total = readUsage(info.total_token_usage);
+      const last = readUsage(info.last_token_usage);
+      if (!total && !last) continue;
+      model =
+        readId(info.model) ||
+        readId(info.model_name) ||
+        readId(event.payload.model) ||
+        model;
+      tokens.push({
+        line,
+        timestamp,
+        timestampOrder: order,
+        model,
+        total,
+        last,
+        signature: JSON.stringify([total, last]),
+        snapshotSource: readId(event.payload.rate_limits?.limit_id) || "",
+      });
+    } catch {
+      // 活跃日志的末行可能尚未写完；其他损坏行也不会阻塞后续记录。
     }
   }
+  const meta = rootMeta?.payload;
+  const threadId =
+    readId(meta?.id) || readId(meta?.thread_id) || readId(meta?.threadId);
+  const forkedFrom = readId(meta?.forked_from_id);
+  const spawnedFrom = readId(
+    meta?.source?.subagent?.thread_spawn?.parent_thread_id,
+  );
+  return {
+    path,
+    threadId,
+    sessionId: threadId ? `codex:${threadId}` : `codex-file:${path}`,
+    project: resolveCodexProject(meta),
+    parentId: forkedFrom || spawnedFrom,
+    parentConflict: Boolean(
+      forkedFrom && spawnedFrom && forkedFrom !== spawnedFrom,
+    ),
+    rootTimestampOrder: timestampOrder(
+      rootMeta?.timestamp,
+      readTimestamp(rootMeta?.timestamp),
+    ),
+    latestTimestampOrder,
+    tokens,
+    prompts,
+  };
+}
 
-  if (payload.cwd) {
-    return getPathLeaf(payload.cwd);
+function matchingReplayPrefix(
+  tokens: TokenEvent[],
+  history: TokenEvent[],
+): number {
+  let offset = 0;
+  let matched = 0;
+  // 子线程可能只复制父历史的一个子序列；首次不匹配后全部视为新事件。
+  for (const token of tokens) {
+    while (
+      offset < history.length &&
+      (history[offset].signature !== token.signature ||
+        // 缺少累计值时，相同用量不能证明回放；还必须对应同一时刻和模型。
+        (!token.total &&
+          (token.timestampOrder === null ||
+            token.timestampOrder !== history[offset].timestampOrder ||
+            token.model !== history[offset].model)))
+    )
+      offset++;
+    if (offset === history.length) break;
+    offset++;
+    matched++;
   }
+  return matched;
+}
 
-  return "unknown";
+function usageDelta(current: Usage, previous: Usage | null): Usage {
+  return {
+    input: Math.max(0, current.input - (previous?.input ?? 0)),
+    output: Math.max(0, current.output - (previous?.output ?? 0)),
+    cached: Math.max(0, current.cached - (previous?.cached ?? 0)),
+    reasoning: Math.max(0, current.reasoning - (previous?.reasoning ?? 0)),
+    reportedTotal: null,
+  };
+}
+
+function highWater(previous: Usage | null, current: Usage): Usage {
+  return {
+    input: Math.max(previous?.input ?? 0, current.input),
+    output: Math.max(previous?.output ?? 0, current.output),
+    cached: Math.max(previous?.cached ?? 0, current.cached),
+    reasoning: Math.max(previous?.reasoning ?? 0, current.reasoning),
+    reportedTotal: null,
+  };
 }
 
 export class CodexParser implements IParser {
   readonly tool: ToolDefinition;
+  private readonly dataDirs: string[];
 
-  constructor(private readonly dataDir = DEFAULT_DATA_DIR) {
-    this.tool = createToolDefinition(dataDir);
+  constructor(
+    dataDir = DEFAULT_DATA_DIR,
+    archiveDir = dataDir === DEFAULT_DATA_DIR ? DEFAULT_ARCHIVE_DIR : undefined,
+  ) {
+    this.dataDirs = archiveDir ? [dataDir, archiveDir] : [dataDir];
+    this.tool = { id: TOOL_ID, name: "Codex CLI", dataDir };
+  }
+
+  isInstalled(): boolean {
+    return this.dataDirs.some((directory) => existsSync(directory));
   }
 
   async parse(): Promise<ParseResult> {
     const entries: TokenUsageEntry[] = [];
     const sessionEvents: SessionEvent[] = [];
-    const files = findJsonlFiles(this.dataDir);
-
-    if (files.length === 0) {
-      return { buckets: [], sessions: [] };
+    const threads = new Map<string, Thread>();
+    const threadIndex = new Map<string, Thread>();
+    const files = [...new Set(this.dataDirs.flatMap(findJsonlFiles))].sort();
+    for (const path of files) {
+      const file = readRollout(path);
+      if (!file) continue;
+      let thread = threads.get(file.sessionId);
+      if (!thread) {
+        thread = {
+          files: [],
+          timeline: [],
+          latestTimestampOrder: 0n,
+          invalidTokenTimestamp: false,
+          status: "new",
+        };
+        threads.set(file.sessionId, thread);
+      }
+      thread.files.push(file);
+      if (file.latestTimestampOrder > thread.latestTimestampOrder)
+        thread.latestTimestampOrder = file.latestTimestampOrder;
+      thread.invalidTokenTimestamp ||= file.tokens.some(
+        (token) => !token.timestamp,
+      );
+      if (file.threadId) threadIndex.set(file.threadId, thread);
+      const rolloutId = filenameThreadId(path);
+      if (rolloutId) threadIndex.set(rolloutId, thread);
     }
 
-    // Codex writes the same usage more than once: token_count events are
-    // sometimes double-written, re-emitted between turns with an unchanged
-    // cumulative state, and resuming a session replays the whole history
-    // (with fresh timestamps) into the new rollout file. A cumulative
-    // total_token_usage state that was already seen therefore carries no new
-    // consumption, so it is deduplicated globally across files.
-    const seenTotalStates = new Set<string>();
-    const seenLastOnly = new Set<string>();
+    const processThread = (thread: Thread): boolean => {
+      if (thread.status !== "new") return thread.status === "done";
+      thread.status = "visiting";
+      const threadEntries: TokenUsageEntry[] = [];
+      const threadEvents: SessionEvent[] = [];
+      let cumulative: Usage | null = null;
+      const eventKeys = new Set<string>();
+      thread.files.sort((left, right) => {
+        const firstTime = (file: Rollout) =>
+          file.tokens.find((token) => token.timestampOrder !== null)
+            ?.timestampOrder ??
+          file.rootTimestampOrder ??
+          0n;
+        const leftTime = firstTime(left);
+        const rightTime = firstTime(right);
+        return leftTime < rightTime
+          ? -1
+          : leftTime > rightTime
+            ? 1
+            : left.path.localeCompare(right.path);
+      });
 
-    for (const filePath of files) {
-      const content = readFileSafe(filePath);
-      if (!content) continue;
-
-      let sessionProject = "unknown";
-      const sessionModel = "unknown";
-      for (const line of content.split("\n")) {
-        if (!line.trim()) continue;
-        try {
-          const obj = JSON.parse(line) as CodexEvent;
-          if (obj.type === "session_meta") {
-            sessionProject = resolveCodexProject(obj.payload);
-            break;
-          }
-        } catch {
-          break;
-        }
-      }
-
-      let turnContextModel = "unknown";
-      type TokenUsage = {
-        input_tokens?: number;
-        output_tokens?: number;
-        cached_input_tokens?: number;
-        reasoning_output_tokens?: number;
-      };
-      const prevTotal = new Map<string, TokenUsage>();
-
-      for (const line of content.split("\n")) {
-        if (!line.trim()) continue;
-        try {
-          const obj = JSON.parse(line) as CodexEvent;
-
-          if (obj.type === "turn_context" && obj.timestamp) {
-            const eventTimestamp = new Date(obj.timestamp);
-            if (!Number.isNaN(eventTimestamp.getTime())) {
-              sessionEvents.push({
-                sessionId: filePath,
-                source: TOOL_ID,
-                project: sessionProject,
-                timestamp: eventTimestamp,
-                role: "user",
-              });
-            }
-          }
-
-          if (obj.type === "turn_context" && obj.payload?.model) {
-            turnContextModel = obj.payload.model;
-            continue;
-          }
-
-          if (obj.type !== "event_msg") continue;
-
-          const payload = obj.payload;
-          if (!payload || payload.type !== "token_count") continue;
-
-          const info = payload.info;
-          if (!info) continue;
-
-          const timestamp = obj.timestamp ? new Date(obj.timestamp) : null;
-          if (!timestamp || Number.isNaN(timestamp.getTime())) continue;
-
-          const model =
-            info.model || payload.model || turnContextModel || sessionModel;
-
-          let isDuplicate = false;
-          if (info.total_token_usage) {
-            const curr = info.total_token_usage;
-            const stateKey = `${model}|${toSafeNumber(curr.input_tokens)}|${toSafeNumber(curr.output_tokens)}|${toSafeNumber(curr.cached_input_tokens)}|${toSafeNumber(curr.reasoning_output_tokens)}`;
-            isDuplicate = seenTotalStates.has(stateKey);
-            if (!isDuplicate) seenTotalStates.add(stateKey);
-          } else if (info.last_token_usage) {
-            const u = info.last_token_usage;
-            const lastKey = `${obj.timestamp}|${toSafeNumber(u.input_tokens)}|${toSafeNumber(u.output_tokens)}|${toSafeNumber(u.cached_input_tokens)}|${toSafeNumber(u.reasoning_output_tokens)}`;
-            isDuplicate = seenLastOnly.has(lastKey);
-            if (!isDuplicate) seenLastOnly.add(lastKey);
-          }
-
-          if (!isDuplicate) {
-            sessionEvents.push({
-              sessionId: filePath,
-              source: TOOL_ID,
-              project: sessionProject,
-              timestamp,
-              role: "assistant",
-            });
-          }
-
-          let usage = info.last_token_usage;
-          if (!usage && info.total_token_usage) {
-            const totalKey = `${info.model || payload.model || turnContextModel || ""}`;
-            const prev = prevTotal.get(totalKey);
-            const curr = info.total_token_usage;
-            if (prev) {
-              usage = {
-                input_tokens: toNonNegativeDelta(
-                  curr.input_tokens,
-                  prev.input_tokens,
-                ),
-                output_tokens: toNonNegativeDelta(
-                  curr.output_tokens,
-                  prev.output_tokens,
-                ),
-                cached_input_tokens: toNonNegativeDelta(
-                  curr.cached_input_tokens,
-                  prev.cached_input_tokens,
-                ),
-                reasoning_output_tokens: toNonNegativeDelta(
-                  curr.reasoning_output_tokens,
-                  prev.reasoning_output_tokens,
-                ),
-              };
-            } else {
-              usage = curr;
-            }
-            // The delta baseline advances even for duplicated events so that
-            // the first genuinely new state after a replayed history yields
-            // its true increment instead of the full cumulative value.
-            prevTotal.set(totalKey, { ...curr });
-          }
-          if (!usage) continue;
-          if (isDuplicate) continue;
-
-          const cachedInput = toSafeNumber(usage.cached_input_tokens);
-          const reasoningTokens = toSafeNumber(usage.reasoning_output_tokens);
-          const inputTokens = Math.max(
-            0,
-            toSafeNumber(usage.input_tokens) - cachedInput,
-          );
-          const outputTokens = Math.max(
-            0,
-            toSafeNumber(usage.output_tokens) - reasoningTokens,
-          );
-
+      for (const file of thread.files) {
+        let parentPrefix = 0;
+        if (file.parentConflict || file.parentId) {
+          const parent = file.parentId
+            ? threadIndex.get(file.parentId)
+            : undefined;
+          const cutoff = file.rootTimestampOrder;
           if (
-            inputTokens === 0 &&
-            outputTokens === 0 &&
-            reasoningTokens === 0 &&
-            cachedInput === 0
+            file.parentConflict ||
+            !parent ||
+            parent === thread ||
+            cutoff === null ||
+            !processThread(parent) ||
+            parent.invalidTokenTimestamp ||
+            parent.latestTimestampOrder < cutoff
           ) {
-            continue;
+            logger.warn(
+              "Codex fork replay could not be verified; skipping " +
+                basename(file.path),
+            );
+            thread.status = "deferred";
+            return false;
           }
-
-          entries.push({
-            sessionId: filePath,
-            source: TOOL_ID,
-            model,
-            project: sessionProject,
-            timestamp,
-            inputTokens,
-            outputTokens,
-            reasoningTokens,
-            cachedTokens: cachedInput,
-          });
-        } catch {
-          // Ignore malformed lines and continue scanning the session log.
+          parentPrefix = matchingReplayPrefix(
+            file.tokens,
+            parent.timeline.filter(
+              (token) =>
+                token.timestampOrder !== null && token.timestampOrder <= cutoff,
+            ),
+          );
         }
-      }
-    }
 
+        // 同一逻辑线程的新 rollout 才可能重放旧文件；缺少身份的文件互不去重。
+        const ownPrefix = matchingReplayPrefix(file.tokens, thread.timeline);
+        const replayPrefix = Math.max(parentPrefix, ownPrefix);
+        const replayEndLine = file.tokens[replayPrefix - 1]?.line ?? -1;
+        const snapshots = new Map<string, string>();
+        const lastOnlyEvents = new Set<string>();
+        let previousSignature: string | null = null;
+        const addEvent = (
+          timestamp: Date,
+          order: bigint,
+          role: SessionEvent["role"],
+        ) => {
+          const key = `${role}|${order.toString()}`;
+          if (eventKeys.has(key)) return;
+          eventKeys.add(key);
+          threadEvents.push({
+            sessionId: file.sessionId,
+            source: TOOL_ID,
+            project: file.project,
+            timestamp,
+            role,
+          });
+        };
+        for (const prompt of file.prompts) {
+          if (prompt.line > replayEndLine)
+            addEvent(prompt.timestamp, prompt.timestampOrder, "user");
+        }
+
+        for (const [index, token] of file.tokens.entries()) {
+          if (!token.timestamp || token.timestampOrder === null) continue;
+          const duplicate = token.total
+            ? snapshots.get(token.snapshotSource) === token.signature ||
+              previousSignature === token.signature
+            : lastOnlyEvents.has(
+                token.model +
+                  "|" +
+                  token.timestampOrder.toString() +
+                  "|" +
+                  token.signature,
+              );
+          if (token.total) snapshots.set(token.snapshotSource, token.signature);
+          else
+            lastOnlyEvents.add(
+              token.model +
+                "|" +
+                token.timestampOrder.toString() +
+                "|" +
+                token.signature,
+            );
+          previousSignature = token.signature;
+
+          const usage =
+            token.last ??
+            (token.total ? usageDelta(token.total, cumulative) : null);
+          // 累计值贯穿模型和限额来源；有 last 时仍推进高水位，重放也不例外。
+          if (token.total) cumulative = highWater(cumulative, token.total);
+          if (!usage || duplicate || index < replayPrefix) continue;
+          addEvent(token.timestamp, token.timestampOrder, "assistant");
+          const cachedTokens = Math.min(usage.cached, usage.input);
+          const reasoningTokens = Math.min(usage.reasoning, usage.output);
+          if (usage.input === 0 && usage.output === 0) continue;
+          threadEntries.push({
+            sessionId: file.sessionId,
+            source: TOOL_ID,
+            model: token.model,
+            project: file.project,
+            timestamp: token.timestamp,
+            inputTokens: usage.input - cachedTokens,
+            outputTokens: usage.output - reasoningTokens,
+            reasoningTokens,
+            cachedTokens,
+          });
+        }
+        for (let index = ownPrefix; index < file.tokens.length; index++)
+          thread.timeline.push(file.tokens[index]);
+      }
+      for (const entry of threadEntries) entries.push(entry);
+      for (const event of threadEvents) sessionEvents.push(event);
+      thread.status = "done";
+      return true;
+    };
+
+    let incomplete = false;
+    for (const thread of threads.values()) {
+      if (!processThread(thread)) incomplete = true;
+    }
     return {
       buckets: aggregateToBuckets(entries),
       sessions: extractSessions(sessionEvents, entries),
+      ...(incomplete ? { incomplete: true } : {}),
     };
   }
 }

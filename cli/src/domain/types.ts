@@ -11,6 +11,7 @@ export interface TokenUsageEntry {
   outputTokens: number;
   reasoningTokens: number;
   cachedTokens: number;
+  cacheCreationTokens?: number;
 }
 
 export interface SessionModelUsage {
@@ -19,6 +20,7 @@ export interface SessionModelUsage {
   outputTokens: number;
   reasoningTokens: number;
   cachedTokens: number;
+  cacheCreationTokens?: number;
   totalTokens: number;
 }
 
@@ -35,6 +37,7 @@ export interface TokenBucket {
   outputTokens: number;
   reasoningTokens: number;
   cachedTokens: number;
+  cacheCreationTokens?: number;
   totalTokens: number;
 }
 
@@ -53,6 +56,7 @@ export interface UploadTokenBucket {
   outputTokens: number;
   reasoningTokens: number;
   cachedTokens: number;
+  cacheCreationTokens?: number;
   totalTokens: number;
 }
 
@@ -86,6 +90,7 @@ export interface SessionMetadata {
   outputTokens: number;
   reasoningTokens: number;
   cachedTokens: number;
+  cacheCreationTokens?: number;
   totalTokens: number;
   primaryModel: string;
   modelUsages: SessionModelUsage[];
@@ -111,6 +116,7 @@ export interface UploadSessionMetadata {
   outputTokens: number;
   reasoningTokens: number;
   cachedTokens: number;
+  cacheCreationTokens?: number;
   totalTokens: number;
   primaryModel: string;
   modelUsages: SessionModelUsage[];
@@ -122,6 +128,8 @@ export interface UploadSessionMetadata {
 export interface ParseResult {
   buckets: TokenBucket[];
   sessions: SessionMetadata[];
+  /** 已知有数据暂缓处理时禁止用该结果替换完整云端快照。 */
+  incomplete?: boolean;
 }
 
 /**

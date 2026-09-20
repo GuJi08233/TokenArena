@@ -1,19 +1,79 @@
-import { describe, expect, it } from "vitest";
+import { hostname } from "node:os";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
+  ApiSettings,
+  SessionMetadata,
   TokenBucket,
   UploadSessionMetadata,
   UploadTokenBucket,
 } from "../domain/types";
+import {
+  buildUploadManifestScope,
+  createUploadManifest,
+  type UploadManifest,
+} from "../domain/upload-manifest";
 import { getIngestPayloadSize } from "../infrastructure/api/client";
+import { getOrCreateDeviceId } from "../infrastructure/config/manager";
+import { tryAcquireSyncLock } from "../infrastructure/runtime/lock";
+import {
+  markSyncFailed,
+  markSyncSucceeded,
+} from "../infrastructure/runtime/state";
+import {
+  loadUploadManifest,
+  saveUploadManifest,
+} from "../infrastructure/runtime/upload-manifest";
+import { type AllParsersResult, runAllParsers } from "./parser-service";
 import {
   buildUploadBatches,
   formatBytes,
   MAX_INGEST_PAYLOAD_BYTES,
   renderProgressBar,
+  runSync,
   shouldSyncAchievementsForBatch,
   toUploadBuckets,
   toUploadSessions,
 } from "./sync-service";
+
+const syncApi = vi.hoisted(() => ({
+  fetchSettings: vi.fn(),
+  deleteDeviceData: vi.fn(),
+  ingest: vi.fn(),
+  release: vi.fn(),
+}));
+
+vi.mock("../infrastructure/api/client", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../infrastructure/api/client")>();
+  return {
+    ...actual,
+    ApiClient: class {
+      fetchSettings = syncApi.fetchSettings;
+      deleteDeviceData = syncApi.deleteDeviceData;
+      ingest = syncApi.ingest;
+    },
+  };
+});
+vi.mock("../infrastructure/config/manager", () => ({
+  getOrCreateDeviceId: vi.fn(),
+}));
+vi.mock("../infrastructure/runtime/lock", () => ({
+  tryAcquireSyncLock: vi.fn(),
+  describeExistingSyncLock: vi.fn(),
+}));
+vi.mock("../infrastructure/runtime/state", () => ({
+  markSyncStarted: vi.fn(),
+  markSyncFailed: vi.fn(),
+  markSyncSucceeded: vi.fn(),
+}));
+vi.mock("../infrastructure/runtime/upload-manifest", () => ({
+  loadUploadManifest: vi.fn(),
+  saveUploadManifest: vi.fn(),
+}));
+vi.mock("./parser-service", () => ({ runAllParsers: vi.fn() }));
+vi.mock("../utils/logger", () => ({
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}));
 
 describe("sync-service helpers", () => {
   describe("formatBytes", () => {
@@ -95,6 +155,7 @@ describe("sync-service helpers", () => {
         outputTokens: 50,
         reasoningTokens: 0,
         cachedTokens: 0,
+        cacheCreationTokens: 0,
         totalTokens: 150,
         primaryModel: "gpt-5.4",
         modelUsages: [],
@@ -152,6 +213,7 @@ describe("sync-service helpers", () => {
         outputTokens: 50,
         reasoningTokens: 0,
         cachedTokens: 0,
+        cacheCreationTokens: 0,
         totalTokens: 150,
       };
 
@@ -198,6 +260,7 @@ describe("sync-service helpers", () => {
           outputTokens: 50,
           reasoningTokens: 10,
           cachedTokens: 20,
+          cacheCreationTokens: 0,
           totalTokens: 160,
         },
       ];
@@ -220,6 +283,7 @@ describe("sync-service helpers", () => {
           outputTokens: 50,
           reasoningTokens: 0,
           cachedTokens: 0,
+          cacheCreationTokens: 0,
           totalTokens: 150,
         },
         {
@@ -232,6 +296,7 @@ describe("sync-service helpers", () => {
           outputTokens: 100,
           reasoningTokens: 0,
           cachedTokens: 0,
+          cacheCreationTokens: 0,
           totalTokens: 300,
         },
       ];
@@ -293,6 +358,7 @@ describe("sync-service helpers", () => {
           outputTokens: 50,
           reasoningTokens: 20,
           cachedTokens: 10,
+          cacheCreationTokens: 0,
           totalTokens: 150,
           primaryModel: "gpt-4",
           modelUsages: [],
@@ -304,5 +370,337 @@ describe("sync-service helpers", () => {
       expect(result[0].deviceId).toBe("dev1");
       expect(result[0].primaryModel).toBe("gpt-4");
     });
+  });
+});
+
+describe("runSync rebuild safeguards", () => {
+  const config = {
+    apiKey: "ta_test",
+    apiUrl: "https://example.com",
+    deviceId: "device-current",
+  };
+  const device = {
+    deviceId: config.deviceId,
+    hostname: hostname().replace(/\.local$/, ""),
+  };
+  const settings: ApiSettings = {
+    schemaVersion: 2,
+    projectMode: "hashed",
+    projectHashSalt: "salt",
+    timezone: "UTC",
+  };
+  const options = { quiet: true, throws: true };
+  let manifest: UploadManifest | null;
+  let snapshot: AllParsersResult;
+
+  function bucket(index = 0): TokenBucket {
+    return {
+      source: "codex",
+      model: `model-${index}`,
+      project: "project",
+      bucketStart: "2026-07-10T03:00:00.000Z",
+      hostname: device.hostname,
+      inputTokens: 100,
+      outputTokens: 50,
+      cachedTokens: 20,
+      reasoningTokens: 10,
+      cacheCreationTokens: 0,
+      totalTokens: 180,
+    };
+  }
+
+  function session(index = 0): SessionMetadata {
+    return {
+      source: "codex",
+      project: "project",
+      sessionHash: `session-${index}`,
+      hostname: device.hostname,
+      firstMessageAt: "2026-07-10T03:00:00.000Z",
+      lastMessageAt: "2026-07-10T03:01:00.000Z",
+      durationSeconds: 60,
+      activeSeconds: 30,
+      messageCount: 2,
+      userMessageCount: 1,
+      userPromptHours: [],
+      inputTokens: 100,
+      outputTokens: 50,
+      cachedTokens: 20,
+      reasoningTokens: 10,
+      cacheCreationTokens: 0,
+      totalTokens: 180,
+      primaryModel: "model-0",
+      modelUsages: [],
+    };
+  }
+
+  function rememberSnapshot(): void {
+    manifest = createUploadManifest({
+      buckets: toUploadBuckets(snapshot.buckets, settings, device),
+      sessions: toUploadSessions(snapshot.sessions, settings, device),
+      scope: buildUploadManifestScope({ ...config, settings }),
+    });
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    manifest = null;
+    snapshot = {
+      buckets: [bucket()],
+      sessions: [session()],
+      parserResults: [],
+      failedSources: [],
+    };
+    syncApi.fetchSettings.mockReset().mockResolvedValue(settings);
+    syncApi.deleteDeviceData
+      .mockReset()
+      .mockResolvedValue({ deletedBuckets: 1, deletedSessions: 1 });
+    syncApi.ingest
+      .mockReset()
+      .mockImplementation(async (_device, buckets, sessions = []) => ({
+        ingested: buckets.length,
+        sessions: sessions.length,
+      }));
+    vi.mocked(getOrCreateDeviceId).mockReturnValue(config.deviceId);
+    vi.mocked(tryAcquireSyncLock).mockReturnValue({ release: syncApi.release });
+    vi.mocked(runAllParsers)
+      .mockReset()
+      .mockImplementation(async () => snapshot);
+    vi.mocked(loadUploadManifest).mockImplementation(() => manifest);
+    vi.mocked(saveUploadManifest)
+      .mockReset()
+      .mockImplementation((next) => {
+        manifest = structuredClone(next);
+      });
+  });
+
+  it("keeps normal incremental sync free of remote deletions", async () => {
+    rememberSnapshot();
+    expect(await runSync(config, options)).toEqual({ buckets: 0, sessions: 0 });
+    expect(syncApi.deleteDeviceData).not.toHaveBeenCalled();
+    expect(syncApi.ingest).not.toHaveBeenCalled();
+    expect(markSyncSucceeded).toHaveBeenCalledWith("manual", {
+      buckets: 0,
+      sessions: 0,
+    });
+  });
+
+  it.each([
+    "project_identity",
+    "snapshot_protocol",
+  ])("preserves automatic snapshot replacement for %s changes", async (reason) => {
+    rememberSnapshot();
+    if (!manifest) throw new Error("fixture");
+    if (reason === "project_identity") manifest.scope.projectMode = "raw";
+    else manifest.scope.snapshotProtocolVersion = 0;
+    expect(await runSync(config, options)).toEqual({ buckets: 1, sessions: 1 });
+    expect(syncApi.ingest).toHaveBeenCalledOnce();
+    expect(syncApi.deleteDeviceData).toHaveBeenCalledExactlyOnceWith(
+      config.deviceId,
+    );
+  });
+
+  it("retries automatic privacy cleanup after an interrupted replacement", async () => {
+    rememberSnapshot();
+    if (!manifest) throw new Error("fixture");
+    manifest.scope.projectMode = "raw";
+    syncApi.deleteDeviceData.mockRejectedValueOnce(new Error("delete timeout"));
+    await expect(runSync(config, options)).rejects.toThrow("delete timeout");
+    expect(manifest).toMatchObject({
+      scope: { projectMode: "raw" },
+      buckets: {},
+      sessions: {},
+    });
+    expect(markSyncSucceeded).not.toHaveBeenCalled();
+    expect(await runSync(config, options)).toEqual({ buckets: 1, sessions: 1 });
+    expect(syncApi.deleteDeviceData).toHaveBeenCalledTimes(2);
+    expect(manifest?.scope.projectMode).toBe("hashed");
+  });
+
+  it("does not delete a privacy snapshot when any parser reports incomplete data", async () => {
+    rememberSnapshot();
+    if (!manifest) throw new Error("fixture");
+    manifest.scope.projectMode = "raw";
+    snapshot.failedSources = ["codex"];
+    await expect(runSync(config, options)).rejects.toThrow(
+      "incomplete or failed parsers",
+    );
+    expect(syncApi.deleteDeviceData).not.toHaveBeenCalled();
+    expect(saveUploadManifest).not.toHaveBeenCalled();
+  });
+
+  it("forces all current buckets and sessions to upload after an explicit rebuild", async () => {
+    rememberSnapshot();
+    expect(await runSync(config, { ...options, rebuild: true })).toEqual({
+      buckets: 1,
+      sessions: 1,
+    });
+    expect(syncApi.deleteDeviceData).toHaveBeenCalledExactlyOnceWith(
+      config.deviceId,
+    );
+    expect(syncApi.ingest).toHaveBeenCalledWith(
+      device,
+      toUploadBuckets(snapshot.buckets, settings, device),
+      toUploadSessions(snapshot.sessions, settings, device),
+      undefined,
+      { syncAchievements: true },
+    );
+    expect(saveUploadManifest).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ buckets: {}, sessions: {} }),
+    );
+    expect(
+      vi.mocked(saveUploadManifest).mock.invocationCallOrder[0],
+    ).toBeLessThan(syncApi.deleteDeviceData.mock.invocationCallOrder[0]);
+    expect(syncApi.deleteDeviceData.mock.invocationCallOrder[0]).toBeLessThan(
+      syncApi.ingest.mock.invocationCallOrder[0],
+    );
+    expect(Object.keys(manifest?.buckets ?? {})).toHaveLength(1);
+    expect(Object.keys(manifest?.sessions ?? {})).toHaveLength(1);
+    expect(markSyncFailed).not.toHaveBeenCalled();
+    expect(syncApi.release).toHaveBeenCalledOnce();
+  });
+
+  it("only deletes the current device even when the previous manifest belongs to another", async () => {
+    rememberSnapshot();
+    if (!manifest) throw new Error("fixture");
+    manifest.scope.deviceId = "device-old";
+    await runSync(config, { ...options, rebuild: true });
+    expect(syncApi.deleteDeviceData).toHaveBeenCalledExactlyOnceWith(
+      "device-current",
+    );
+  });
+
+  it("rejects failed or incomplete parsers before changing the remote snapshot", async () => {
+    rememberSnapshot();
+    const previous = structuredClone(manifest);
+    snapshot.failedSources = ["codex"];
+    await expect(
+      runSync(config, { ...options, rebuild: true }),
+    ).rejects.toThrow("incomplete or failed parsers (codex)");
+    expect(syncApi.deleteDeviceData).not.toHaveBeenCalled();
+    expect(syncApi.fetchSettings).not.toHaveBeenCalled();
+    expect(syncApi.ingest).not.toHaveBeenCalled();
+    expect(manifest).toEqual(previous);
+    expect(markSyncSucceeded).not.toHaveBeenCalled();
+    expect(markSyncFailed).toHaveBeenCalled();
+    expect(syncApi.release).toHaveBeenCalledOnce();
+  });
+
+  it("continues syncing healthy parser results during normal sync", async () => {
+    snapshot.failedSources = ["unavailable-tool"];
+    expect(await runSync(config, options)).toEqual({ buckets: 1, sessions: 1 });
+    expect(syncApi.deleteDeviceData).not.toHaveBeenCalled();
+    expect(syncApi.ingest).toHaveBeenCalledOnce();
+  });
+
+  it("rejects an empty rebuild scan without updating the manifest or remote history", async () => {
+    rememberSnapshot();
+    const previous = structuredClone(manifest);
+    snapshot = {
+      buckets: [],
+      sessions: [],
+      parserResults: [],
+      failedSources: [],
+    };
+    await expect(
+      runSync(config, { ...options, rebuild: true }),
+    ).rejects.toThrow("empty scan");
+    expect(syncApi.deleteDeviceData).not.toHaveBeenCalled();
+    expect(saveUploadManifest).not.toHaveBeenCalled();
+    expect(manifest).toEqual(previous);
+    expect(markSyncSucceeded).not.toHaveBeenCalled();
+  });
+
+  it("requires valid settings before deleting remote data", async () => {
+    syncApi.fetchSettings.mockResolvedValue(null);
+    await expect(
+      runSync(config, { ...options, rebuild: true }),
+    ).rejects.toThrow("Could not fetch usage settings");
+    expect(syncApi.deleteDeviceData).not.toHaveBeenCalled();
+    expect(saveUploadManifest).not.toHaveBeenCalled();
+  });
+
+  it("validates every upload batch before deleting or invalidating the old snapshot", async () => {
+    rememberSnapshot();
+    const previous = structuredClone(manifest);
+    syncApi.fetchSettings.mockResolvedValue({
+      ...settings,
+      projectMode: "raw",
+    });
+    snapshot.buckets = Array.from({ length: 101 }, (_, index) => bucket(index));
+    snapshot.buckets[100].project = "x".repeat(MAX_INGEST_PAYLOAD_BYTES);
+    await expect(
+      runSync(config, { ...options, rebuild: true }),
+    ).rejects.toThrow("single usage record exceeds");
+    expect(syncApi.deleteDeviceData).not.toHaveBeenCalled();
+    expect(syncApi.ingest).not.toHaveBeenCalled();
+    expect(saveUploadManifest).not.toHaveBeenCalled();
+    expect(manifest).toEqual(previous);
+    expect(markSyncSucceeded).not.toHaveBeenCalled();
+  });
+
+  it("does not delete anything when the recovery manifest cannot be saved", async () => {
+    rememberSnapshot();
+    const previous = structuredClone(manifest);
+    vi.mocked(saveUploadManifest).mockImplementation(() => {
+      throw new Error("disk full");
+    });
+    await expect(
+      runSync(config, { ...options, rebuild: true }),
+    ).rejects.toThrow("disk full");
+    expect(syncApi.deleteDeviceData).not.toHaveBeenCalled();
+    expect(syncApi.ingest).not.toHaveBeenCalled();
+    expect(manifest).toEqual(previous);
+    expect(markSyncSucceeded).not.toHaveBeenCalled();
+  });
+
+  it("keeps a retryable manifest after a failed deletion without claiming success", async () => {
+    rememberSnapshot();
+    syncApi.deleteDeviceData.mockRejectedValue(new Error("delete timeout"));
+    await expect(
+      runSync(config, { ...options, rebuild: true }),
+    ).rejects.toThrow("delete timeout");
+    expect(syncApi.ingest).not.toHaveBeenCalled();
+    expect(manifest).toMatchObject({ buckets: {}, sessions: {} });
+    expect(markSyncSucceeded).not.toHaveBeenCalled();
+    expect(markSyncFailed).toHaveBeenCalledWith(
+      "manual",
+      expect.stringContaining("Rebuild did not finish"),
+      "error",
+    );
+  });
+
+  it("retries the entire local snapshot with normal sync after a partial upload failure", async () => {
+    snapshot.sessions = Array.from({ length: 501 }, (_, index) =>
+      session(index),
+    );
+    rememberSnapshot();
+    syncApi.ingest
+      .mockResolvedValueOnce({ ingested: 1, sessions: 500 })
+      .mockRejectedValueOnce(new Error("upload failed"));
+    await expect(
+      runSync(config, { ...options, rebuild: true }),
+    ).rejects.toThrow("upload failed");
+    expect(manifest).toMatchObject({ buckets: {}, sessions: {} });
+    expect(markSyncSucceeded).not.toHaveBeenCalled();
+    expect(markSyncFailed).toHaveBeenCalledWith(
+      "manual",
+      expect.stringContaining("Rebuild did not finish"),
+      "error",
+    );
+    expect(saveUploadManifest).toHaveBeenCalledOnce();
+
+    syncApi.ingest.mockClear();
+    syncApi.deleteDeviceData.mockClear();
+    expect(await runSync(config, options)).toEqual({
+      buckets: 1,
+      sessions: 501,
+    });
+    expect(syncApi.deleteDeviceData).not.toHaveBeenCalled();
+    expect(syncApi.ingest.mock.calls.map((call) => call[2].length)).toEqual([
+      500, 1,
+    ]);
+    expect(Object.keys(manifest?.sessions ?? {})).toHaveLength(501);
+    expect(markSyncSucceeded).toHaveBeenCalledOnce();
   });
 });

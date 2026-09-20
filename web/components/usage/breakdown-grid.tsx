@@ -91,6 +91,7 @@ function aggregateRows(rows: BreakdownRow[], name: string): BreakdownRow {
       result.outputTokens += row.outputTokens;
       result.reasoningTokens += row.reasoningTokens;
       result.cachedTokens += row.cachedTokens;
+      result.cacheCreationTokens += row.cacheCreationTokens;
       result.estimatedCostUsd += row.estimatedCostUsd;
       result.activeSeconds += row.activeSeconds;
       result.totalSeconds += row.totalSeconds;
@@ -109,6 +110,7 @@ function aggregateRows(rows: BreakdownRow[], name: string): BreakdownRow {
       outputTokens: 0,
       reasoningTokens: 0,
       cachedTokens: 0,
+      cacheCreationTokens: 0,
       estimatedCostUsd: 0,
       activeSeconds: 0,
       totalSeconds: 0,

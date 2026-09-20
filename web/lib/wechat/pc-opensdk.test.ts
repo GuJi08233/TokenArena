@@ -99,9 +99,9 @@ describe("pc opensdk helpers", () => {
 
   it("getWechatShareRequestBody returns source and locale", () => {
     const body = getWechatShareRequestBody({
-      source: "profile_page",
+      source: "chat",
       locale: "zh",
     });
-    expect(body).toEqual({ source: "profile_page", locale: "zh" });
+    expect(body).toEqual({ source: "chat", locale: "zh" });
   });
 });

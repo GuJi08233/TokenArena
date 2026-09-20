@@ -33,6 +33,7 @@ export type UsageMetricTotals = {
   outputTokens: number;
   reasoningTokens: number;
   cachedTokens: number;
+  cacheCreationTokens: number;
   activeSeconds: number;
   totalSeconds: number;
   sessions: number;
@@ -52,6 +53,7 @@ export type UsageOverviewMetrics = {
   outputTokens: UsageMetricDelta;
   reasoningTokens: UsageMetricDelta;
   cachedTokens: UsageMetricDelta;
+  cacheCreationTokens: UsageMetricDelta;
   activeSeconds: UsageMetricDelta;
   totalSeconds: UsageMetricDelta;
   sessions: UsageMetricDelta;
@@ -67,6 +69,7 @@ export type TokenTrendPoint = {
   outputTokens: number;
   reasoningTokens: number;
   cachedTokens: number;
+  cacheCreationTokens: number;
   estimatedCostUsd: number;
   totalSeconds: number;
 };
@@ -107,6 +110,7 @@ export type BreakdownRow = {
   outputTokens: number;
   reasoningTokens: number;
   cachedTokens: number;
+  cacheCreationTokens: number;
   estimatedCostUsd: number;
   activeSeconds: number;
   totalSeconds: number;
@@ -137,16 +141,19 @@ export type ModelPricingRow = {
   outputRateUsdPerMillion: number | null;
   reasoningRateUsdPerMillion: number | null;
   cacheRateUsdPerMillion: number | null;
+  cacheCreationRateUsdPerMillion: number | null;
   totalTokens: number;
   inputTokens: number;
   outputTokens: number;
   reasoningTokens: number;
   cachedTokens: number;
+  cacheCreationTokens: number;
   estimatedCostUsd: number | null;
   estimatedInputUsd: number | null;
   estimatedOutputUsd: number | null;
   estimatedReasoningUsd: number | null;
   estimatedCacheUsd: number | null;
+  estimatedCacheCreationUsd: number | null;
 };
 
 export type FilterOption = {
@@ -181,6 +188,7 @@ export type UsageSessionRow = {
   outputTokens: number;
   reasoningTokens: number;
   cachedTokens: number;
+  cacheCreationTokens: number;
   primaryModel: string;
 };
 

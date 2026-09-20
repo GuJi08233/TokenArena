@@ -31,6 +31,7 @@ describe("extractSessions", () => {
           inputTokens: 100,
           outputTokens: 60,
           cachedTokens: 25,
+          cacheCreationTokens: 0,
           reasoningTokens: 10,
         },
         {
@@ -42,6 +43,7 @@ describe("extractSessions", () => {
           inputTokens: 40,
           outputTokens: 20,
           cachedTokens: 0,
+          cacheCreationTokens: 0,
           reasoningTokens: 5,
         },
       ],
@@ -62,6 +64,7 @@ describe("extractSessions", () => {
         outputTokens: 60,
         reasoningTokens: 10,
         cachedTokens: 25,
+        cacheCreationTokens: 0,
         totalTokens: 195,
       },
       {
@@ -70,6 +73,7 @@ describe("extractSessions", () => {
         outputTokens: 20,
         reasoningTokens: 5,
         cachedTokens: 0,
+        cacheCreationTokens: 0,
         totalTokens: 65,
       },
     ]);
@@ -103,6 +107,7 @@ describe("extractSessions", () => {
           inputTokens: 100,
           outputTokens: 60,
           cachedTokens: 25,
+          cacheCreationTokens: 0,
           reasoningTokens: 10,
         },
         {
@@ -114,6 +119,7 @@ describe("extractSessions", () => {
           inputTokens: -40,
           outputTokens: 20,
           cachedTokens: 120,
+          cacheCreationTokens: 0,
           reasoningTokens: 0,
         },
       ],
@@ -132,6 +138,7 @@ describe("extractSessions", () => {
         outputTokens: 60,
         reasoningTokens: 10,
         cachedTokens: 25,
+        cacheCreationTokens: 0,
         totalTokens: 195,
       },
     ]);

@@ -57,6 +57,7 @@ describe("UsageVisualizationCard", () => {
       outputTokens: 500000,
       reasoningTokens: 200000,
       cachedTokens: 100000,
+      cacheCreationTokens: 0,
       estimatedCostUsd: 12.5,
       totalSeconds: 3600,
     },

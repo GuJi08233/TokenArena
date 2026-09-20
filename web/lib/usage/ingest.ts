@@ -48,6 +48,7 @@ type NormalizedSessionUsage = {
   outputTokens: number;
   reasoningTokens: number;
   cachedTokens: number;
+  cacheCreationTokens: number;
   totalTokens: number;
   primaryModel: string;
   estimatedCostUsd: number | null;
@@ -79,6 +80,7 @@ function buildUsageSessionWriteInput(input: NormalizedSessionUsage) {
     outputTokens: tokenCountToBigInt(input.outputTokens),
     reasoningTokens: tokenCountToBigInt(input.reasoningTokens),
     cachedTokens: tokenCountToBigInt(input.cachedTokens),
+    cacheCreationTokens: tokenCountToBigInt(input.cacheCreationTokens),
     totalTokens: tokenCountToBigInt(input.totalTokens),
     primaryModel: input.primaryModel,
     estimatedCostUsd: input.estimatedCostUsd,
@@ -92,7 +94,13 @@ function buildUsageBucketWriteInput(bucket: IngestPayload["buckets"][number]) {
     outputTokens: tokenCountToBigInt(bucket.outputTokens),
     reasoningTokens: tokenCountToBigInt(bucket.reasoningTokens),
     cachedTokens: tokenCountToBigInt(bucket.cachedTokens),
-    totalTokens: tokenCountToBigInt(bucket.totalTokens),
+    cacheCreationTokens: tokenCountToBigInt(bucket.cacheCreationTokens),
+    totalTokens:
+      tokenCountToBigInt(bucket.inputTokens) +
+      tokenCountToBigInt(bucket.outputTokens) +
+      tokenCountToBigInt(bucket.reasoningTokens) +
+      tokenCountToBigInt(bucket.cachedTokens) +
+      tokenCountToBigInt(bucket.cacheCreationTokens),
   };
 }
 
@@ -100,18 +108,23 @@ function normalizeSessionUsage(
   session: IngestPayload["sessions"][number],
   catalog: Awaited<ReturnType<typeof getPricingCatalog>>,
 ): NormalizedSessionUsage | null {
-  const aggregatedFromModels = session.modelUsages?.reduce(
+  const modelUsages = session.modelUsages?.length
+    ? session.modelUsages
+    : undefined;
+  const aggregatedFromModels = modelUsages?.reduce(
     (result, modelUsage) => {
       const modelTotalTokens =
         modelUsage.inputTokens +
         modelUsage.outputTokens +
         modelUsage.reasoningTokens +
-        modelUsage.cachedTokens;
+        modelUsage.cachedTokens +
+        (modelUsage.cacheCreationTokens ?? 0);
 
       result.inputTokens += modelUsage.inputTokens;
       result.outputTokens += modelUsage.outputTokens;
       result.reasoningTokens += modelUsage.reasoningTokens;
       result.cachedTokens += modelUsage.cachedTokens;
+      result.cacheCreationTokens += modelUsage.cacheCreationTokens ?? 0;
       result.totalTokens += modelTotalTokens;
 
       const match = resolveOfficialPricingMatch(catalog, modelUsage.model);
@@ -121,6 +134,7 @@ function normalizeSessionUsage(
           outputTokens: modelUsage.outputTokens,
           reasoningTokens: modelUsage.reasoningTokens,
           cachedTokens: modelUsage.cachedTokens,
+          cacheCreationTokens: modelUsage.cacheCreationTokens ?? 0,
         },
         match?.cost,
       );
@@ -137,6 +151,7 @@ function normalizeSessionUsage(
       outputTokens: 0,
       reasoningTokens: 0,
       cachedTokens: 0,
+      cacheCreationTokens: 0,
       totalTokens: 0,
       estimatedCostUsd: 0,
       hasPricedModel: false,
@@ -148,6 +163,7 @@ function normalizeSessionUsage(
     session.outputTokens !== undefined ||
     session.reasoningTokens !== undefined ||
     session.cachedTokens !== undefined ||
+    session.cacheCreationTokens !== undefined ||
     session.totalTokens !== undefined;
 
   if (!aggregatedFromModels && !hasExplicitUsage) {
@@ -160,6 +176,7 @@ function normalizeSessionUsage(
       outputTokens: aggregatedFromModels.outputTokens,
       reasoningTokens: aggregatedFromModels.reasoningTokens,
       cachedTokens: aggregatedFromModels.cachedTokens,
+      cacheCreationTokens: aggregatedFromModels.cacheCreationTokens ?? 0,
       totalTokens: aggregatedFromModels.totalTokens,
       primaryModel:
         session.primaryModel ?? session.modelUsages?.[0]?.model ?? "",
@@ -173,15 +190,21 @@ function normalizeSessionUsage(
   const outputTokens = session.outputTokens ?? 0;
   const reasoningTokens = session.reasoningTokens ?? 0;
   const cachedTokens = session.cachedTokens ?? 0;
+  const cacheCreationTokens = session.cacheCreationTokens ?? 0;
 
   return {
     inputTokens,
     outputTokens,
     reasoningTokens,
     cachedTokens,
+    cacheCreationTokens,
     totalTokens:
       session.totalTokens ??
-      inputTokens + outputTokens + reasoningTokens + cachedTokens,
+      inputTokens +
+        outputTokens +
+        reasoningTokens +
+        cachedTokens +
+        cacheCreationTokens,
     primaryModel: session.primaryModel ?? "",
     estimatedCostUsd: null,
   };
@@ -298,6 +321,7 @@ async function upsertSessions(
           outputTokens: tokenCountToBigInt(0),
           reasoningTokens: tokenCountToBigInt(0),
           cachedTokens: tokenCountToBigInt(0),
+          cacheCreationTokens: tokenCountToBigInt(0),
           totalTokens: tokenCountToBigInt(0),
           primaryModel: "",
           estimatedCostUsd: null,

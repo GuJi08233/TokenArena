@@ -18,6 +18,41 @@ const mockReadSqliteRows = vi.mocked(readSqliteRows);
 const mockExistsSync = vi.mocked(existsSync);
 
 describe("MimocodeParser", () => {
+  it("keeps MiMoCode cache creation separate from cache reads", async () => {
+    mockExistsSync.mockReturnValue(true);
+    mockReadSqliteRows
+      .mockResolvedValueOnce([
+        {
+          sessionId: "cache-only",
+          modelID: "mimo-v2.5",
+          inputTokens: 0,
+          outputTokens: 0,
+          reasoningTokens: 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 125,
+          timeCreated: 1768471200000,
+          directory: "/project",
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          sessionId: "cache-only",
+          role: "assistant",
+          timeCreated: 1768471200000,
+        },
+      ]);
+    const result = await new MimocodeParser(() => ["fixture.db"]).parse();
+    expect(result.buckets[0]).toMatchObject({
+      source: "mimocode",
+      cachedTokens: 0,
+      cacheCreationTokens: 125,
+      totalTokens: 125,
+    });
+    expect(result.sessions[0]).toMatchObject({
+      cacheCreationTokens: 125,
+      totalTokens: 125,
+    });
+  });
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -196,6 +231,7 @@ describe("MimocodeParser", () => {
     const result = await parser.parse();
     expect(result.buckets).toEqual([]);
     expect(result.sessions).toEqual([]);
+    expect(result.incomplete).toBe(true);
   });
 
   it("tool definition has correct id and name", () => {

@@ -524,6 +524,7 @@ async function loadPublicProfileUsageSnapshot(input: {
           outputTokens: true,
           reasoningTokens: true,
           cachedTokens: true,
+          cacheCreationTokens: true,
           totalTokens: true,
         },
       }),
@@ -547,6 +548,7 @@ async function loadPublicProfileUsageSnapshot(input: {
       outputTokens: row._sum.outputTokens,
       reasoningTokens: row._sum.reasoningTokens,
       cachedTokens: row._sum.cachedTokens,
+      cacheCreationTokens: row._sum.cacheCreationTokens,
       totalTokens: row._sum.totalTokens,
     });
 
@@ -609,6 +611,7 @@ function normalizeUsageBucketTokenFields<
     outputTokens?: number | bigint | null;
     reasoningTokens?: number | bigint | null;
     cachedTokens?: number | bigint | null;
+    cacheCreationTokens?: number | bigint | null;
   },
 >(bucket: T) {
   return {
@@ -628,6 +631,11 @@ function normalizeUsageBucketTokenFields<
     ...(bucket.cachedTokens === undefined
       ? {}
       : { cachedTokens: tokenCountToNumber(bucket.cachedTokens) }),
+    ...(bucket.cacheCreationTokens === undefined
+      ? {}
+      : {
+          cacheCreationTokens: tokenCountToNumber(bucket.cacheCreationTokens),
+        }),
   };
 }
 

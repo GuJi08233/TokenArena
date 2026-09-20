@@ -62,6 +62,104 @@ describe("ingestUsagePayload achievement synchronization", () => {
     );
   });
 
+  it("persists cache writes in buckets and derives session totals from model usage", async () => {
+    const tx = buildTransactionClient();
+    mocks.prisma.$transaction.mockImplementation(async (callback) =>
+      callback(tx),
+    );
+    const usage = {
+      inputTokens: 100,
+      outputTokens: 50,
+      reasoningTokens: 0,
+      cachedTokens: 200,
+      cacheCreationTokens: 30,
+    };
+    const payload = ingestRequestSchema.parse({
+      ...buildPayload(false),
+      buckets: [
+        {
+          ...usage,
+          source: "claude-code",
+          model: "claude-sonnet-4",
+          projectKey: "project",
+          projectLabel: "Project",
+          bucketStart: "2026-09-21T10:00:00.000Z",
+          totalTokens: 350,
+        },
+      ],
+      sessions: [
+        {
+          source: "claude-code",
+          projectKey: "project",
+          projectLabel: "Project",
+          sessionHash: "session",
+          firstMessageAt: "2026-09-21T10:00:00.000Z",
+          lastMessageAt: "2026-09-21T10:01:00.000Z",
+          durationSeconds: 60,
+          activeSeconds: 30,
+          messageCount: 2,
+          userMessageCount: 1,
+          modelUsages: [
+            { model: "claude-sonnet-4", ...usage, totalTokens: 380 },
+          ],
+        },
+      ],
+    });
+    await ingestUsagePayload({ userId: "user-1", payload });
+    for (const upsert of [tx.usageBucket.upsert, tx.usageSession.upsert]) {
+      expect(upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          create: expect.objectContaining({
+            inputTokens: BigInt(100),
+            cachedTokens: BigInt(200),
+            cacheCreationTokens: BigInt(30),
+            totalTokens: BigInt(380),
+          }),
+          update: expect.objectContaining({ cacheCreationTokens: BigInt(30) }),
+        }),
+      );
+    }
+  });
+
+  it("keeps explicit cache-only session usage when model details are empty", async () => {
+    const tx = buildTransactionClient();
+    mocks.prisma.$transaction.mockImplementation(async (callback) =>
+      callback(tx),
+    );
+    const payload = ingestRequestSchema.parse({
+      ...buildPayload(false),
+      sessions: [
+        {
+          source: "claude-code",
+          projectKey: "project",
+          projectLabel: "Project",
+          sessionHash: "cache-only",
+          firstMessageAt: "2026-09-21T10:00:00.000Z",
+          lastMessageAt: "2026-09-21T10:00:00.000Z",
+          durationSeconds: 0,
+          activeSeconds: 0,
+          messageCount: 1,
+          userMessageCount: 0,
+          cacheCreationTokens: 30,
+          modelUsages: [],
+        },
+      ],
+    });
+    await ingestUsagePayload({ userId: "user-1", payload });
+    expect(tx.usageSession.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          cacheCreationTokens: BigInt(30),
+          totalTokens: BigInt(30),
+        }),
+        update: expect.objectContaining({
+          cacheCreationTokens: BigInt(30),
+          totalTokens: BigInt(30),
+        }),
+      }),
+    );
+  });
+
   it("keeps achievement synchronization enabled for direct API payloads", async () => {
     await ingestUsagePayload({
       userId: "user-1",
@@ -101,6 +199,7 @@ describe("ingestUsagePayload achievement synchronization", () => {
       outputTokens: 50,
       reasoningTokens: 25,
       cachedTokens: 10,
+      cacheCreationTokens: 0,
       totalTokens: 185,
     };
     const payload = ingestRequestSchema.parse({
@@ -130,6 +229,7 @@ describe("ingestUsagePayload achievement synchronization", () => {
               outputTokens: 50,
               reasoningTokens: 25,
               cachedTokens: 10,
+              cacheCreationTokens: 0,
               totalTokens: 185,
             },
           ],

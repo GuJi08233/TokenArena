@@ -100,11 +100,12 @@ describe("DshParser", () => {
     expect(bucket.source).toBe("dsh");
     expect(bucket.model).toBe("deepseek-chat");
     expect(bucket.project).toBe("my-project");
-    // dsh usage counts are disjoint: input excludes cached, cache = read + write
+    // 输入、缓存读取、缓存写入分别计数，拆分后总量保持一致。
     expect(bucket.inputTokens).toBe(42);
     // reasoning is a subset of dsh's outputTokens, so it is split out here
     expect(bucket.outputTokens).toBe(57);
-    expect(bucket.cachedTokens).toBe(14_728);
+    expect(bucket.cachedTokens).toBe(14_720);
+    expect(bucket.cacheCreationTokens).toBe(8);
     expect(bucket.reasoningTokens).toBe(12);
     expect(bucket.totalTokens).toBe(14_839);
 
@@ -114,7 +115,8 @@ describe("DshParser", () => {
     expect(session.primaryModel).toBe("deepseek-chat");
     expect(session.inputTokens).toBe(42);
     expect(session.outputTokens).toBe(57);
-    expect(session.cachedTokens).toBe(14_728);
+    expect(session.cachedTokens).toBe(14_720);
+    expect(session.cacheCreationTokens).toBe(8);
     expect(session.messageCount).toBe(2);
     expect(session.userMessageCount).toBe(1);
   });

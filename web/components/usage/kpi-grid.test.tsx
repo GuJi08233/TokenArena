@@ -81,6 +81,7 @@ describe("KpiGrid", () => {
             delta: 182900000,
           },
           activeSeconds: { current: 41400, previous: 21000, delta: 20400 },
+          cacheCreationTokens: { current: 0, previous: 0, delta: 0 },
           totalSeconds: { current: 62160, previous: 37860, delta: 24300 },
           sessions: { current: 53, previous: 48, delta: 5 },
           messages: { current: 4600, previous: 3617, delta: 983 },

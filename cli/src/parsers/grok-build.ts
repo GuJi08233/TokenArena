@@ -15,6 +15,7 @@ import type { IParser, ToolDefinition } from "./types";
 const TOOL_ID = "grok-build";
 const TOOL_NAME = "Grok Build";
 const DEFAULT_DATA_DIR = join(homedir(), ".grok", "sessions");
+const DEFAULT_ARCHIVE_DIR = join(homedir(), ".grok", "archived_sessions");
 
 /**
  * Grok Build (grok TUI) session storage:
@@ -42,7 +43,9 @@ function createToolDefinition(dataDir: string): ToolDefinition {
 
 function toSafeNumber(value: unknown): number {
   const numberValue = Number(value);
-  return Number.isFinite(numberValue) ? numberValue : 0;
+  return Number.isFinite(numberValue) && numberValue >= 0
+    ? Math.trunc(numberValue)
+    : 0;
 }
 
 export function projectFromEncodedCwd(encoded: string): string {
@@ -64,14 +67,16 @@ function resolveTimestamp(obj: {
   const ms =
     obj._meta?.agentTimestampMs ?? obj.params?.update?._meta?.agentTimestampMs;
   if (typeof ms === "number" && Number.isFinite(ms)) {
-    return new Date(ms);
+    const timestamp = new Date(ms);
+    return Number.isNaN(timestamp.getTime()) ? null : timestamp;
   }
 
   const raw = obj.timestamp;
   if (raw == null) return null;
   if (typeof raw === "number") {
     // Grok uses unix seconds for top-level timestamp
-    return new Date(raw < 1e12 ? raw * 1000 : raw);
+    const timestamp = new Date(raw < 1e12 ? raw * 1000 : raw);
+    return Number.isNaN(timestamp.getTime()) ? null : timestamp;
   }
   const ts = new Date(raw);
   return Number.isNaN(ts.getTime()) ? null : ts;
@@ -93,8 +98,9 @@ interface GrokTurnUsage extends GrokModelUsage {
 }
 
 function pushUsageEntries(
-  entries: TokenUsageEntry[],
+  entries: Map<string, TokenUsageEntry[]>,
   args: {
+    eventKey: string;
     sessionId: string;
     project: string;
     timestamp: Date;
@@ -102,7 +108,8 @@ function pushUsageEntries(
     fallbackModel: string;
   },
 ): void {
-  const { sessionId, project, timestamp, usage, fallbackModel } = args;
+  const { eventKey, sessionId, project, timestamp, usage, fallbackModel } =
+    args;
   const modelUsage = usage.modelUsage;
 
   const models =
@@ -110,11 +117,13 @@ function pushUsageEntries(
       ? Object.entries(modelUsage)
       : ([[fallbackModel, usage]] as Array<[string, GrokModelUsage]>);
 
+  const modelEntries: TokenUsageEntry[] = [];
   for (const [model, mu] of models) {
+    if (!mu || typeof mu !== "object") continue;
     const cached = toSafeNumber(mu.cachedReadTokens);
-    const reasoning = toSafeNumber(mu.reasoningTokens);
     const rawInput = toSafeNumber(mu.inputTokens);
     const rawOutput = toSafeNumber(mu.outputTokens);
+    const reasoning = Math.min(rawOutput, toSafeNumber(mu.reasoningTokens));
     const inputTokens = Math.max(0, rawInput - cached);
     const outputTokens = Math.max(0, rawOutput - reasoning);
 
@@ -127,7 +136,7 @@ function pushUsageEntries(
       continue;
     }
 
-    entries.push({
+    modelEntries.push({
       sessionId,
       source: TOOL_ID,
       model: model || fallbackModel || "unknown",
@@ -139,6 +148,8 @@ function pushUsageEntries(
       cachedTokens: cached,
     });
   }
+  // 重放完整快照时整体替换，不能留下旧快照中已消失的模型条目。
+  entries.set(eventKey, modelEntries);
 }
 
 function findSessionDirs(dataDir: string): Array<{
@@ -205,14 +216,22 @@ function readFallbackModel(sessionDir: string): string {
 export class GrokBuildParser implements IParser {
   readonly tool: ToolDefinition;
 
-  constructor(private readonly dataDir = DEFAULT_DATA_DIR) {
+  constructor(
+    private readonly dataDir = DEFAULT_DATA_DIR,
+    private readonly archiveDir = dataDir === DEFAULT_DATA_DIR
+      ? DEFAULT_ARCHIVE_DIR
+      : undefined,
+  ) {
     this.tool = createToolDefinition(dataDir);
   }
 
   async parse(): Promise<ParseResult> {
-    const entries: TokenUsageEntry[] = [];
-    const sessionEvents: SessionEvent[] = [];
-    const sessions = findSessionDirs(this.dataDir);
+    const entries = new Map<string, TokenUsageEntry[]>();
+    const sessionEvents = new Map<string, SessionEvent>();
+    const sessions = [
+      ...(this.archiveDir ? findSessionDirs(this.archiveDir) : []),
+      ...findSessionDirs(this.dataDir),
+    ];
 
     for (const { sessionDir, project, sessionId } of sessions) {
       const updatesPath = join(sessionDir, "updates.jsonl");
@@ -224,7 +243,7 @@ export class GrokBuildParser implements IParser {
       const seenUserPrompts = new Set<string>();
       const ANON_USER_OPEN = "__anon_user_open";
 
-      for (const line of content.split("\n")) {
+      for (const [lineNumber, line] of content.split("\n").entries()) {
         if (!line.trim()) continue;
         let obj: {
           method?: string;
@@ -252,9 +271,15 @@ export class GrokBuildParser implements IParser {
         } catch {
           continue;
         }
+        if (!obj || typeof obj !== "object") continue;
 
+        if (
+          obj.method !== "session/update" &&
+          obj.method !== "_x.ai/session/update"
+        )
+          continue;
         const update = obj.params?.update;
-        if (!update?.sessionUpdate) continue;
+        if (!update) continue;
 
         const ts = resolveTimestamp(obj);
         if (!ts) continue;
@@ -268,23 +293,42 @@ export class GrokBuildParser implements IParser {
           if (seenUserPrompts.has(key)) continue;
           seenUserPrompts.add(key);
 
-          sessionEvents.push({
-            sessionId: sid,
-            source: TOOL_ID,
-            project,
-            timestamp: ts,
-            role: "user",
-          });
+          sessionEvents.set(
+            JSON.stringify([
+              sid,
+              "user",
+              key,
+              promptId ? null : ts.toISOString(),
+            ]),
+            {
+              sessionId: sid,
+              source: TOOL_ID,
+              project,
+              timestamp: ts,
+              role: "user",
+            },
+          );
           continue;
         }
 
         // turn_completed is the authoritative assistant boundary + usage source.
         // Skip agent_message_chunk to avoid double-counting streaming deltas.
-        if (updateType !== "turn_completed") continue;
+        if (updateType && updateType !== "turn_completed") continue;
+        if (!updateType && !update.usage) continue;
 
         seenUserPrompts.delete(ANON_USER_OPEN);
 
-        sessionEvents.push({
+        // prompt_id 标识一次独立调用；归档副本和重放快照只保留一份最新用量。
+        // 无稳定 prompt ID 时，时间戳不足以区分同秒多轮；保守保留独立事件。
+        const eventKey = promptId
+          ? JSON.stringify([sid, promptId])
+          : JSON.stringify([sid, "anonymous", updatesPath, lineNumber]);
+        if (
+          (sessionEvents.get(eventKey)?.timestamp.getTime() ?? -Infinity) >
+          ts.getTime()
+        )
+          continue;
+        sessionEvents.set(eventKey, {
           sessionId: sid,
           source: TOOL_ID,
           project,
@@ -296,6 +340,7 @@ export class GrokBuildParser implements IParser {
         if (!usage) continue;
 
         pushUsageEntries(entries, {
+          eventKey,
           sessionId: sid,
           project,
           timestamp: ts,
@@ -305,15 +350,17 @@ export class GrokBuildParser implements IParser {
       }
     }
 
+    const usageEntries = [...entries.values()].flat();
     return {
-      buckets: aggregateToBuckets(entries),
-      sessions: extractSessions(sessionEvents, entries),
+      buckets: aggregateToBuckets(usageEntries),
+      sessions: extractSessions([...sessionEvents.values()], usageEntries),
     };
   }
 
   isInstalled(): boolean {
     return (
       existsSync(this.dataDir) ||
+      Boolean(this.archiveDir && existsSync(this.archiveDir)) ||
       existsSync(join(homedir(), ".grok")) ||
       existsSync(join(homedir(), ".local", "bin", "grok"))
     );

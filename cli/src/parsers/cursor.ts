@@ -340,9 +340,10 @@ export class CursorParser implements IParser {
         model,
         project: "unknown",
         timestamp,
-        inputTokens: inputCacheWrite + inputNoCache,
+        inputTokens: inputNoCache,
         outputTokens: output,
         cachedTokens: cacheRead,
+        cacheCreationTokens: inputCacheWrite,
         reasoningTokens: 0,
       });
     }

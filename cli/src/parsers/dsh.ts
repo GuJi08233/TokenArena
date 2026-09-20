@@ -310,18 +310,25 @@ export class DshParser implements IParser {
               : "") || currentModel;
 
           const inputTokens = toNonNegativeNumber(usage.inputTokens);
-          const cachedTokens =
-            toNonNegativeNumber(usage.cacheReadTokens) +
-            toNonNegativeNumber(usage.cacheWriteTokens);
+          const cachedTokens = toNonNegativeNumber(usage.cacheReadTokens);
+          const cacheCreationTokens = toNonNegativeNumber(
+            usage.cacheWriteTokens,
+          );
           const reasoningTokens = toNonNegativeNumber(usage.reasoningTokens);
-          // dsh reports reasoning as a subset of outputTokens; the aggregator
-          // sums all four fields, so split it out to avoid double counting.
+          // 推理量已包含在输出中，拆分后再聚合，避免重复计数。
           const outputTokens = Math.max(
             0,
             toNonNegativeNumber(usage.outputTokens) - reasoningTokens,
           );
 
-          if (inputTokens + outputTokens + cachedTokens + reasoningTokens === 0)
+          if (
+            inputTokens +
+              outputTokens +
+              cachedTokens +
+              cacheCreationTokens +
+              reasoningTokens ===
+            0
+          )
             continue;
 
           const entryKey = [
@@ -331,6 +338,7 @@ export class DshParser implements IParser {
             inputTokens,
             outputTokens,
             cachedTokens,
+            cacheCreationTokens,
             reasoningTokens,
           ].join("|");
           if (seenEntryKeys.has(entryKey)) continue;
@@ -346,6 +354,7 @@ export class DshParser implements IParser {
             outputTokens,
             reasoningTokens,
             cachedTokens,
+            cacheCreationTokens,
           });
         }
       }

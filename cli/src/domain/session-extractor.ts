@@ -13,7 +13,8 @@ function toEntryTotalTokens(entry: TokenUsageEntry) {
     entry.inputTokens +
     entry.outputTokens +
     entry.reasoningTokens +
-    entry.cachedTokens
+    entry.cachedTokens +
+    (entry.cacheCreationTokens ?? 0)
   );
 }
 
@@ -41,6 +42,8 @@ function buildSessionUsage(entries: TokenUsageEntry[]) {
       existing.outputTokens += entry.outputTokens;
       existing.reasoningTokens += entry.reasoningTokens;
       existing.cachedTokens += entry.cachedTokens;
+      existing.cacheCreationTokens =
+        (existing.cacheCreationTokens ?? 0) + (entry.cacheCreationTokens ?? 0);
       existing.totalTokens += toEntryTotalTokens(entry);
       continue;
     }
@@ -51,6 +54,7 @@ function buildSessionUsage(entries: TokenUsageEntry[]) {
       outputTokens: entry.outputTokens,
       reasoningTokens: entry.reasoningTokens,
       cachedTokens: entry.cachedTokens,
+      cacheCreationTokens: entry.cacheCreationTokens ?? 0,
       totalTokens: toEntryTotalTokens(entry),
     });
   }
@@ -151,6 +155,10 @@ export function extractSessions(
       (sum, usage) => sum + usage.cachedTokens,
       0,
     );
+    const cacheCreationTokens = modelUsages.reduce(
+      (sum, usage) => sum + (usage.cacheCreationTokens ?? 0),
+      0,
+    );
     const totalTokens = modelUsages.reduce(
       (sum, usage) => sum + usage.totalTokens,
       0,
@@ -178,6 +186,7 @@ export function extractSessions(
       outputTokens,
       reasoningTokens,
       cachedTokens,
+      cacheCreationTokens,
       totalTokens,
       primaryModel,
       modelUsages,

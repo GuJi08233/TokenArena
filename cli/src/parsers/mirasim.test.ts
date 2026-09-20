@@ -220,7 +220,7 @@ describe("MirasimParser", () => {
     expect(sessions).toHaveLength(0);
   });
 
-  it("splits reasoning out of output and folds cache writes into cached", async () => {
+  it("splits reasoning out of output and keeps cache writes separate", async () => {
     const insightsDir = makeTempDir();
     writeUsageLog(insightsDir, "usage-2026-09.ndjson", [
       usageLine({
@@ -238,9 +238,32 @@ describe("MirasimParser", () => {
       inputTokens: 100,
       outputTokens: 50,
       reasoningTokens: 40,
-      cachedTokens: 2048,
+      cachedTokens: 1536,
+      cacheCreationTokens: 512,
       totalTokens: 2238,
     });
+  });
+
+  it("aggregates cache-write-only calls into buckets and per-model sessions", async () => {
+    const insightsDir = makeTempDir();
+    writeUsageLog(insightsDir, "usage-2026-09.ndjson", [
+      usageLine({ input: 0, output: 0, cacheWrite: 7 }),
+      usageLine({ id: "sess-1:call-2", input: 0, output: 0, cacheWrite: 11 }),
+    ]);
+
+    const { buckets, sessions } = await new MirasimParser({
+      insightsDir,
+    }).parse();
+    const expected = {
+      inputTokens: 0,
+      outputTokens: 0,
+      cachedTokens: 0,
+      cacheCreationTokens: 18,
+      totalTokens: 18,
+    };
+    expect(buckets[0]).toMatchObject(expected);
+    expect(sessions[0]).toMatchObject(expected);
+    expect(sessions[0].modelUsages[0]).toMatchObject(expected);
   });
 
   it("derives session timing from call durations", async () => {

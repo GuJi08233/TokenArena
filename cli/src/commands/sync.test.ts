@@ -49,6 +49,19 @@ describe("runSyncCommand", () => {
     expect(runSync).toHaveBeenCalled();
   });
 
+  it("forwards explicit rebuild without adding an interactive confirmation", async () => {
+    const config = { apiKey: "ta_test", apiUrl: "https://example.com" };
+    vi.mocked(loadConfig).mockReturnValue(config);
+    vi.mocked(isInteractiveTerminal).mockReturnValue(true);
+    await runSyncCommand({ rebuild: true, quiet: true });
+    expect(runSync).toHaveBeenCalledWith(config, {
+      rebuild: true,
+      quiet: true,
+      source: "manual",
+    });
+    expect(promptConfirm).not.toHaveBeenCalled();
+  });
+
   it("exits with error when no config and non-interactive", async () => {
     vi.mocked(loadConfig).mockReturnValue(null);
     vi.mocked(isInteractiveTerminal).mockReturnValue(false);

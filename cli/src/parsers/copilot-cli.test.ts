@@ -103,6 +103,7 @@ describe("CopilotCliParser", () => {
                 inputTokens: 100,
                 outputTokens: 50,
                 cacheReadTokens: 10,
+                cacheWriteTokens: 20,
               },
             },
           },
@@ -116,9 +117,10 @@ describe("CopilotCliParser", () => {
     const bucket = result.buckets[0];
     expect(bucket.source).toBe("copilot-cli");
     expect(bucket.model).toBe("gpt-4");
-    expect(bucket.inputTokens).toBe(90);
+    expect(bucket.inputTokens).toBe(70);
     expect(bucket.outputTokens).toBe(50);
     expect(bucket.cachedTokens).toBe(10);
+    expect(bucket.cacheCreationTokens).toBe(20);
     expect(bucket.totalTokens).toBe(150);
 
     expect(result.sessions).toHaveLength(1);
@@ -127,6 +129,75 @@ describe("CopilotCliParser", () => {
     expect(session.messageCount).toBe(2);
     expect(session.userMessageCount).toBe(1);
     expect(session.primaryModel).toBe("gpt-4");
+  });
+
+  it("counts only new usage when resumed sessions emit cumulative shutdown snapshots", async () => {
+    const sessionDir = join(testDir, "session-resumed");
+    mkdirSync(sessionDir);
+    const shutdown = (timestamp: string, usage: object) => ({
+      type: "session.shutdown",
+      timestamp,
+      data: { modelMetrics: { "claude-sonnet": { usage } } },
+    });
+    const firstUsage = {
+      inputTokens: 100,
+      outputTokens: 50,
+      cacheReadTokens: 10,
+      cacheWriteTokens: 20,
+    };
+    const finalUsage = {
+      inputTokens: 160,
+      outputTokens: 80,
+      cacheReadTokens: 30,
+      cacheWriteTokens: 30,
+    };
+    writeEventsFile(sessionDir, [
+      { type: "user.message", timestamp: "2026-01-01T00:00:00Z" },
+      { type: "assistant.message", timestamp: "2026-01-01T00:00:01Z" },
+      shutdown("2026-01-01T00:01:00Z", firstUsage),
+      { type: "session.resume", timestamp: "2026-01-01T00:30:00Z" },
+      shutdown("2026-01-01T00:31:00Z", finalUsage),
+      shutdown("2026-01-01T00:32:00Z", finalUsage),
+      shutdown("2026-01-01T00:33:00Z", firstUsage),
+      shutdown("2026-01-01T00:34:00Z", finalUsage),
+    ]);
+
+    const result = await parser.parse();
+    expect(result.buckets.map((bucket) => bucket.totalTokens)).toEqual([
+      150, 90,
+    ]);
+    expect(result.sessions[0]).toMatchObject({
+      inputTokens: 100,
+      outputTokens: 80,
+      cachedTokens: 30,
+      cacheCreationTokens: 30,
+      totalTokens: 240,
+    });
+  });
+
+  it("retains cache-write-only usage", async () => {
+    const sessionDir = join(testDir, "session-cache-write");
+    mkdirSync(sessionDir);
+    writeEventsFile(sessionDir, [
+      {
+        type: "session.shutdown",
+        timestamp: "2026-01-01T00:00:03Z",
+        data: {
+          modelMetrics: {
+            "claude-sonnet": {
+              usage: { inputTokens: 20, cacheWriteTokens: 20 },
+            },
+          },
+        },
+      },
+    ]);
+
+    expect((await parser.parse()).buckets[0]).toMatchObject({
+      inputTokens: 0,
+      cachedTokens: 0,
+      cacheCreationTokens: 20,
+      totalTokens: 20,
+    });
   });
 
   it("ignores zero-usage entries", async () => {
