@@ -79,10 +79,14 @@ const kpis: KpiConfig[] = [
     },
   },
   {
-    type: "single",
-    key: "cachedTokens",
-    labelKey: "cachedTokens",
-    kind: "tokens",
+    type: "combined",
+    labelKey: "cacheTokens",
+    primary: { key: "cachedTokens", labelKey: "cachedTokens", kind: "tokens" },
+    secondary: {
+      key: "cacheCreationTokens",
+      labelKey: "cacheCreationTokens",
+      kind: "tokens",
+    },
   },
   {
     type: "single",
@@ -256,7 +260,13 @@ export async function KpiGrid({
                       kind={kpi.secondary.kind}
                       to={secondaryMetric.current}
                     />
-                    <span>{t("reasoningSuffix")}</span>
+                    <span>
+                      {t(
+                        kpi.secondary.key === "reasoningTokens"
+                          ? "reasoningSuffix"
+                          : "cacheCreationSuffix",
+                      )}
+                    </span>
                   </div>
                 </div>
               </CardContent>

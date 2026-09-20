@@ -145,10 +145,11 @@ class ClineParser implements IParser {
                 model,
                 project,
                 timestamp,
-                inputTokens: inputTokens + cacheWrites,
+                inputTokens,
                 outputTokens,
                 reasoningTokens: 0,
                 cachedTokens: cacheReads,
+                cacheCreationTokens: cacheWrites,
               });
             }
 

@@ -142,7 +142,8 @@ function buildSessionUsage(entries: TokenUsageEntry[]) {
       entry.inputTokens +
       entry.outputTokens +
       entry.reasoningTokens +
-      entry.cachedTokens;
+      entry.cachedTokens +
+      (entry.cacheCreationTokens ?? 0);
     const existing = byModel.get(entry.model);
 
     if (existing) {
@@ -150,6 +151,8 @@ function buildSessionUsage(entries: TokenUsageEntry[]) {
       existing.outputTokens += entry.outputTokens;
       existing.reasoningTokens += entry.reasoningTokens;
       existing.cachedTokens += entry.cachedTokens;
+      existing.cacheCreationTokens =
+        (existing.cacheCreationTokens ?? 0) + (entry.cacheCreationTokens ?? 0);
       existing.totalTokens += totalTokens;
       continue;
     }
@@ -160,6 +163,7 @@ function buildSessionUsage(entries: TokenUsageEntry[]) {
       outputTokens: entry.outputTokens,
       reasoningTokens: entry.reasoningTokens,
       cachedTokens: entry.cachedTokens,
+      cacheCreationTokens: entry.cacheCreationTokens ?? 0,
       totalTokens,
     });
   }
@@ -198,6 +202,10 @@ function buildSessions(
     );
     const cachedTokens = modelUsages.reduce(
       (sum, usage) => sum + usage.cachedTokens,
+      0,
+    );
+    const cacheCreationTokens = modelUsages.reduce(
+      (sum, usage) => sum + (usage.cacheCreationTokens ?? 0),
       0,
     );
     const totalTokens = modelUsages.reduce(
@@ -239,6 +247,7 @@ function buildSessions(
       outputTokens,
       reasoningTokens,
       cachedTokens,
+      cacheCreationTokens,
       totalTokens,
       primaryModel: modelUsages[0]?.model ?? "",
       modelUsages,
@@ -283,21 +292,21 @@ export class MirasimParser implements IParser {
           const model = getString(row.model) ?? "unknown";
           const inputTokens = toNonNegativeInteger(row.input);
           const reasoningTokens = toNonNegativeInteger(row.reasoning);
-          // Reasoning is reported as a subset of output and the aggregator
-          // sums all four fields, so split it out like parsers/codex.ts.
+          // 推理量已包含在输出中，拆分后再聚合，避免重复计数。
           const outputTokens = Math.max(
             0,
             toNonNegativeInteger(row.output) - reasoningTokens,
           );
-          // The relay logs cache reads and writes separately; both are billed,
-          // so they fold into cachedTokens like parsers/dsh.ts.
-          const cachedTokens =
-            toNonNegativeInteger(row.cacheRead) +
-            toNonNegativeInteger(row.cacheWrite);
+          const cachedTokens = toNonNegativeInteger(row.cacheRead);
+          const cacheCreationTokens = toNonNegativeInteger(row.cacheWrite);
 
           // Rejected or aborted calls are logged with zeroed counts.
           if (
-            inputTokens + outputTokens + reasoningTokens + cachedTokens ===
+            inputTokens +
+              outputTokens +
+              reasoningTokens +
+              cachedTokens +
+              cacheCreationTokens ===
             0
           ) {
             continue;
@@ -323,6 +332,7 @@ export class MirasimParser implements IParser {
             outputTokens,
             reasoningTokens,
             cachedTokens,
+            cacheCreationTokens,
           });
 
           if (!sessionId) continue;

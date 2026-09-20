@@ -61,6 +61,7 @@ describe("ingestRequestSchema", () => {
           outputTokens: 60,
           reasoningTokens: 10,
           cachedTokens: 25,
+          cacheCreationTokens: 0,
           totalTokens: 185,
         },
       ],
@@ -80,6 +81,7 @@ describe("ingestRequestSchema", () => {
           outputTokens: 60,
           reasoningTokens: 10,
           cachedTokens: 25,
+          cacheCreationTokens: 0,
           totalTokens: 195,
           primaryModel: "gpt-5.4",
           modelUsages: [
@@ -89,6 +91,7 @@ describe("ingestRequestSchema", () => {
               outputTokens: 60,
               reasoningTokens: 10,
               cachedTokens: 25,
+              cacheCreationTokens: 0,
               totalTokens: 195,
             },
           ],
@@ -135,6 +138,7 @@ describe("ingestRequestSchema", () => {
       outputTokens: 60,
       reasoningTokens: 10,
       cachedTokens: 25,
+      cacheCreationTokens: 0,
       totalTokens: 195,
     };
     const session = {

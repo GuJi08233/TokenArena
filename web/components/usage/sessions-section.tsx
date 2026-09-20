@@ -219,6 +219,19 @@ export function SessionsSection({
                                 </div>
                               </>
                             )}
+                            {session.cacheCreationTokens > 0 && (
+                              <>
+                                <div className="text-muted-foreground">
+                                  {t("table.cacheCreation")}
+                                </div>
+                                <div className="text-right font-medium">
+                                  {formatTokenCount(
+                                    session.cacheCreationTokens,
+                                    locale,
+                                  )}
+                                </div>
+                              </>
+                            )}
                           </div>
                         </TooltipContent>
                       </Tooltip>

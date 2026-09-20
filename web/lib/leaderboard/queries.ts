@@ -49,6 +49,7 @@ type LeaderboardEntrySummary = {
   outputTokens: number;
   reasoningTokens: number;
   cachedTokens: number;
+  cacheCreationTokens: number;
   totalTokens: number;
   estimatedCostUsd: number;
   activeSeconds: number;
@@ -68,6 +69,7 @@ type UsageBucketCostGroupRow = {
     outputTokens: number | bigint | null;
     reasoningTokens: number | bigint | null;
     cachedTokens: number | bigint | null;
+    cacheCreationTokens: number | bigint | null;
     totalTokens: number | bigint | null;
   };
 };
@@ -213,6 +215,7 @@ function estimateGroupedRowCostUsd(
       outputTokens: tokenCountToNumber(row._sum.outputTokens),
       reasoningTokens: tokenCountToNumber(row._sum.reasoningTokens),
       cachedTokens: tokenCountToNumber(row._sum.cachedTokens),
+      cacheCreationTokens: tokenCountToNumber(row._sum.cacheCreationTokens),
     },
     match?.cost,
   );
@@ -233,6 +236,7 @@ function buildUserUsageAggregates(
       outputTokens: 0,
       reasoningTokens: 0,
       cachedTokens: 0,
+      cacheCreationTokens: 0,
       totalTokens: 0,
       estimatedCostUsd: 0,
     };
@@ -241,6 +245,9 @@ function buildUserUsageAggregates(
     current.outputTokens += tokenCountToNumber(row._sum.outputTokens);
     current.reasoningTokens += tokenCountToNumber(row._sum.reasoningTokens);
     current.cachedTokens += tokenCountToNumber(row._sum.cachedTokens);
+    current.cacheCreationTokens += tokenCountToNumber(
+      row._sum.cacheCreationTokens,
+    );
     current.totalTokens += tokenCountToNumber(row._sum.totalTokens);
     current.estimatedCostUsd += estimateGroupedRowCostUsd(row, catalog);
 
@@ -324,6 +331,7 @@ async function getEstimatedCostMapForUsers(
         outputTokens: true,
         reasoningTokens: true,
         cachedTokens: true,
+        cacheCreationTokens: true,
         totalTokens: true,
       },
     }),
@@ -389,6 +397,7 @@ function rankSummaries(
     outputTokens: aggregate.outputTokens,
     reasoningTokens: aggregate.reasoningTokens,
     cachedTokens: aggregate.cachedTokens,
+    cacheCreationTokens: aggregate.cacheCreationTokens ?? 0,
     totalTokens: aggregate.totalTokens,
     estimatedCostUsd: aggregate.estimatedCostUsd,
     activeSeconds: statsMap.get(aggregate.userId)?.activeSeconds ?? 0,
@@ -457,6 +466,7 @@ async function hydrateEntries(
       outputTokens: summary.outputTokens,
       reasoningTokens: summary.reasoningTokens,
       cachedTokens: summary.cachedTokens,
+      cacheCreationTokens: summary.cacheCreationTokens ?? 0,
       activeSeconds: summary.activeSeconds,
       sessions: summary.sessions,
       followerCount: user._count.followers,
@@ -502,6 +512,7 @@ async function rebuildGlobalSnapshot(period: LeaderboardPeriod, now: Date) {
       outputTokens: true,
       reasoningTokens: true,
       cachedTokens: true,
+      cacheCreationTokens: true,
       totalTokens: true,
       activeSeconds: true,
       sessions: true,
@@ -530,6 +541,7 @@ async function rebuildGlobalSnapshot(period: LeaderboardPeriod, now: Date) {
           outputTokens: tokenCountToNumber(row._sum.outputTokens),
           reasoningTokens: tokenCountToNumber(row._sum.reasoningTokens),
           cachedTokens: tokenCountToNumber(row._sum.cachedTokens),
+          cacheCreationTokens: tokenCountToNumber(row._sum.cacheCreationTokens),
           totalTokens,
           estimatedCostUsd: 0,
           activeSeconds: coerceInt(row._sum.activeSeconds),
@@ -575,6 +587,7 @@ async function rebuildGlobalSnapshot(period: LeaderboardPeriod, now: Date) {
           outputTokens: tokenCountToBigInt(row.outputTokens),
           reasoningTokens: tokenCountToBigInt(row.reasoningTokens),
           cachedTokens: tokenCountToBigInt(row.cachedTokens),
+          cacheCreationTokens: tokenCountToBigInt(row.cacheCreationTokens),
           totalTokens: tokenCountToBigInt(row.totalTokens),
           activeSeconds: row.activeSeconds,
           sessions: row.sessions,
@@ -632,6 +645,7 @@ async function ensureGlobalSnapshot(period: LeaderboardPeriod, now: Date) {
         outputTokens: tokenCountToNumber(row.outputTokens),
         reasoningTokens: tokenCountToNumber(row.reasoningTokens),
         cachedTokens: tokenCountToNumber(row.cachedTokens),
+        cacheCreationTokens: tokenCountToNumber(row.cacheCreationTokens),
         totalTokens: tokenCountToNumber(row.totalTokens),
         estimatedCostUsd: 0,
         activeSeconds: row.activeSeconds,
@@ -668,6 +682,7 @@ async function getGlobalCostRankedSummaries(
         outputTokens: true,
         reasoningTokens: true,
         cachedTokens: true,
+        cacheCreationTokens: true,
         totalTokens: true,
       },
     }),
@@ -737,6 +752,7 @@ async function getFollowingCostRankedSummaries(input: {
         outputTokens: true,
         reasoningTokens: true,
         cachedTokens: true,
+        cacheCreationTokens: true,
         totalTokens: true,
       },
     }),
@@ -797,6 +813,7 @@ async function getGlobalViewerRankSummary(input: {
       outputTokens: true,
       reasoningTokens: true,
       cachedTokens: true,
+      cacheCreationTokens: true,
       totalTokens: true,
       activeSeconds: true,
       sessions: true,
@@ -811,6 +828,7 @@ async function getGlobalViewerRankSummary(input: {
       outputTokens: tokenCountToNumber(row._sum.outputTokens),
       reasoningTokens: tokenCountToNumber(row._sum.reasoningTokens),
       cachedTokens: tokenCountToNumber(row._sum.cachedTokens),
+      cacheCreationTokens: tokenCountToNumber(row._sum.cacheCreationTokens),
       totalTokens: tokenCountToNumber(row._sum.totalTokens),
       estimatedCostUsd: 0,
       activeSeconds: coerceInt(row._sum.activeSeconds),
@@ -932,6 +950,7 @@ async function getFollowingLeaderboard(input: {
       outputTokens: true,
       reasoningTokens: true,
       cachedTokens: true,
+      cacheCreationTokens: true,
       totalTokens: true,
       activeSeconds: true,
       sessions: true,
@@ -960,6 +979,7 @@ async function getFollowingLeaderboard(input: {
           outputTokens: tokenCountToNumber(row._sum.outputTokens),
           reasoningTokens: tokenCountToNumber(row._sum.reasoningTokens),
           cachedTokens: tokenCountToNumber(row._sum.cachedTokens),
+          cacheCreationTokens: tokenCountToNumber(row._sum.cacheCreationTokens),
           totalTokens,
           estimatedCostUsd: 0,
           activeSeconds: coerceInt(row._sum.activeSeconds),

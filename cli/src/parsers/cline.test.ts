@@ -128,11 +128,11 @@ describe("ClineParser", () => {
     const bucket = result.buckets[0];
     expect(bucket.source).toBe("cline");
     expect(bucket.model).toBe("claude-3");
-    // inputTokens = tokensIn + cacheWrites = 100 + 10 = 110
-    expect(bucket.inputTokens).toBe(110);
+    expect(bucket.inputTokens).toBe(100);
+    expect(bucket.cacheCreationTokens).toBe(10);
     expect(bucket.outputTokens).toBe(50);
     expect(bucket.cachedTokens).toBe(5);
-    expect(bucket.totalTokens).toBe(110 + 50 + 0 + 5);
+    expect(bucket.totalTokens).toBe(100 + 50 + 10 + 5);
   });
 
   // 3. Handles malformed message text

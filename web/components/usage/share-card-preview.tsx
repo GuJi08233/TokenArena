@@ -375,6 +375,12 @@ function CompositionBar({
       share: data.composition.cacheShare,
       color: "#34d399",
     },
+    {
+      key: "cacheCreation" as const,
+      label: t("card.mix.cacheCreation"),
+      share: data.composition.cacheCreationShare,
+      color: "#14b8a6",
+    },
   ].filter((item) => item.share > 0);
 
   return (

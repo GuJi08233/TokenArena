@@ -177,16 +177,16 @@ export class CherryStudioParser implements IParser {
       const timestamp = parseEpochMillis(row.createdAt);
       if (!timestamp) continue;
 
-      // Both cache reads and writes are billed, so they fold together.
-      const cachedTokens =
-        toSafeCount(row.cacheReadTokens) + toSafeCount(row.cacheWriteTokens);
-      // `input_tokens` already covers the cached tokens and the aggregator sums
-      // all four fields, so the uncached remainder is what belongs in
-      // inputTokens. Prefer the recorded breakdown; migrated rows have none.
+      const cachedTokens = toSafeCount(row.cacheReadTokens);
+      const cacheCreationTokens = toSafeCount(row.cacheWriteTokens);
+      // 原始输入包含缓存读写，优先采用无缓存明细，否则扣除两类缓存。
       const noCacheTokens = toOptionalCount(row.noCacheTokens);
       const inputTokens =
         noCacheTokens ??
-        Math.max(0, toSafeCount(row.inputTokens) - cachedTokens);
+        Math.max(
+          0,
+          toSafeCount(row.inputTokens) - cachedTokens - cacheCreationTokens,
+        );
       // Reasoning is reported as a subset of output, like parsers/mirasim.ts.
       const reasoningTokens = toSafeCount(row.reasoningTokens);
       const outputTokens = Math.max(
@@ -195,7 +195,14 @@ export class CherryStudioParser implements IParser {
       );
 
       // Cancelled and failed requests are recorded with every count empty.
-      if (inputTokens + outputTokens + reasoningTokens + cachedTokens === 0) {
+      if (
+        inputTokens +
+          outputTokens +
+          reasoningTokens +
+          cachedTokens +
+          cacheCreationTokens ===
+        0
+      ) {
         continue;
       }
 
@@ -211,6 +218,7 @@ export class CherryStudioParser implements IParser {
         outputTokens,
         reasoningTokens,
         cachedTokens,
+        cacheCreationTokens,
       });
     }
 

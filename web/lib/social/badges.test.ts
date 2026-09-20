@@ -171,11 +171,12 @@ describe("social badges", () => {
       {
         model: "gpt-x",
         _sum: {
-          totalTokens: 100n,
-          inputTokens: 100n,
-          outputTokens: 0n,
-          reasoningTokens: 0n,
-          cachedTokens: 0n,
+          totalTokens: BigInt(100),
+          inputTokens: BigInt(100),
+          outputTokens: BigInt(0),
+          reasoningTokens: BigInt(0),
+          cachedTokens: BigInt(0),
+          cacheCreationTokens: BigInt(0),
         },
       },
     ]);

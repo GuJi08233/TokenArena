@@ -269,6 +269,7 @@ function estimateBucketCostUsd(
     outputTokens: number;
     reasoningTokens: number;
     cachedTokens: number;
+    cacheCreationTokens: number;
   },
   catalog: Awaited<ReturnType<typeof getPricingCatalog>>,
 ) {
@@ -279,6 +280,7 @@ function estimateBucketCostUsd(
       outputTokens: bucket.outputTokens,
       reasoningTokens: bucket.reasoningTokens,
       cachedTokens: bucket.cachedTokens,
+      cacheCreationTokens: bucket.cacheCreationTokens ?? 0,
     },
     match?.cost,
   );
@@ -363,6 +365,7 @@ export async function getPublicBadgeData(input: {
           outputTokens: true,
           reasoningTokens: true,
           cachedTokens: true,
+          cacheCreationTokens: true,
         },
       }),
       loadActiveUsageDates({ userId: user.id, timezone }),
@@ -389,6 +392,7 @@ export async function getPublicBadgeData(input: {
       outputTokens: tokenCountToNumber(row._sum.outputTokens),
       reasoningTokens: tokenCountToNumber(row._sum.reasoningTokens),
       cachedTokens: tokenCountToNumber(row._sum.cachedTokens),
+      cacheCreationTokens: tokenCountToNumber(row._sum.cacheCreationTokens),
     };
 
     totalTokens += normalized.totalTokens;
@@ -399,6 +403,7 @@ export async function getPublicBadgeData(input: {
         outputTokens: normalized.outputTokens,
         reasoningTokens: normalized.reasoningTokens,
         cachedTokens: normalized.cachedTokens,
+        cacheCreationTokens: normalized.cacheCreationTokens ?? 0,
       },
       catalog,
     );

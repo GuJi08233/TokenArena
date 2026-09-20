@@ -2,10 +2,15 @@ import { prisma } from "@/lib/prisma";
 import { tokenCountToBigInt, tokenCountToNumber } from "@/lib/token-counts";
 import { getShanghaiDateKey, startOfShanghaiDay } from "./date";
 
-type LeaderboardAggregateWriteClient = Pick<
-  typeof prisma,
-  "usageBucket" | "usageSession" | "leaderboardUserDay" | "leaderboardSnapshot"
->;
+type LeaderboardAggregateWriteClient = {
+  usageBucket: Pick<typeof prisma.usageBucket, "findMany">;
+  usageSession: Pick<typeof prisma.usageSession, "findMany">;
+  leaderboardUserDay: Pick<
+    typeof prisma.leaderboardUserDay,
+    "upsert" | "deleteMany"
+  >;
+  leaderboardSnapshot: Pick<typeof prisma.leaderboardSnapshot, "deleteMany">;
+};
 
 type LeaderboardAccumulator = {
   statDate: Date;
@@ -13,6 +18,7 @@ type LeaderboardAccumulator = {
   outputTokens: number;
   reasoningTokens: number;
   cachedTokens: number;
+  cacheCreationTokens: number;
   totalTokens: number;
   activeSeconds: number;
   sessions: number;
@@ -27,6 +33,7 @@ function createAccumulator(statDate: Date): LeaderboardAccumulator {
     outputTokens: 0,
     reasoningTokens: 0,
     cachedTokens: 0,
+    cacheCreationTokens: 0,
     totalTokens: 0,
     activeSeconds: 0,
     sessions: 0,
@@ -73,7 +80,7 @@ export function collectAffectedLeaderboardDates(input: {
 }
 
 export async function findExistingSessionStartDates(
-  db: Pick<typeof prisma, "usageSession">,
+  db: Pick<LeaderboardAggregateWriteClient, "usageSession">,
   input: {
     userId: string;
     deviceId: string;
@@ -105,7 +112,7 @@ export async function findExistingSessionStartDates(
 }
 
 export async function invalidateLeaderboardSnapshots(
-  db: Pick<typeof prisma, "leaderboardSnapshot"> = prisma,
+  db: Pick<LeaderboardAggregateWriteClient, "leaderboardSnapshot"> = prisma,
 ) {
   await db.leaderboardSnapshot.deleteMany({});
 }
@@ -143,6 +150,7 @@ export async function recomputeLeaderboardUserDays(
         outputTokens: true,
         reasoningTokens: true,
         cachedTokens: true,
+        cacheCreationTokens: true,
         totalTokens: true,
       },
     }),
@@ -171,6 +179,7 @@ export async function recomputeLeaderboardUserDays(
     row.outputTokens += tokenCountToNumber(bucket.outputTokens);
     row.reasoningTokens += tokenCountToNumber(bucket.reasoningTokens);
     row.cachedTokens += tokenCountToNumber(bucket.cachedTokens);
+    row.cacheCreationTokens += tokenCountToNumber(bucket.cacheCreationTokens);
     row.totalTokens += tokenCountToNumber(bucket.totalTokens);
   }
 
@@ -209,6 +218,7 @@ export async function recomputeLeaderboardUserDays(
           outputTokens: tokenCountToBigInt(row.outputTokens),
           reasoningTokens: tokenCountToBigInt(row.reasoningTokens),
           cachedTokens: tokenCountToBigInt(row.cachedTokens),
+          cacheCreationTokens: tokenCountToBigInt(row.cacheCreationTokens),
           totalTokens: tokenCountToBigInt(row.totalTokens),
           activeSeconds: row.activeSeconds,
           sessions: row.sessions,
@@ -222,6 +232,7 @@ export async function recomputeLeaderboardUserDays(
           outputTokens: tokenCountToBigInt(row.outputTokens),
           reasoningTokens: tokenCountToBigInt(row.reasoningTokens),
           cachedTokens: tokenCountToBigInt(row.cachedTokens),
+          cacheCreationTokens: tokenCountToBigInt(row.cacheCreationTokens),
           totalTokens: tokenCountToBigInt(row.totalTokens),
           activeSeconds: row.activeSeconds,
           sessions: row.sessions,

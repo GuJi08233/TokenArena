@@ -1,6 +1,6 @@
 [![tokenarena](assets/banner.png)](https://token.guji.uno)
 
-[![Docker Image](https://img.shields.io/badge/Docker%20Image-tokenarena%3Alatest-blue?logo=docker&logoColor=white)](https://github.com/GuJi08233/TokenArena/pkgs/container/tokenarena) [![pnpm](https://img.shields.io/badge/pnpm-monorepo-blue?logo=pnpm)](https://pnpm.io/) [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square)](https://github.com/GuJi08233/TokenArena/pulls) [![License](https://img.shields.io/github/license/GuJi08233/TokenArena)](LICENSE) [![React Doctor](https://www.react.doctor/share/badge?p=web&s=91&e=0&w=28&f=23)](https://www.react.doctor/share?p=web&s=91&e=0&w=28&f=23)
+[![Docker Image](https://img.shields.io/badge/Docker%20Image-tokenarena%3Alatest-blue?logo=docker&logoColor=white)](https://github.com/GuJi08233/TokenArena/pkgs/container/tokenarena) [![pnpm](https://img.shields.io/badge/pnpm-monorepo-blue?logo=pnpm)](https://pnpm.io/) [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square)](https://github.com/GuJi08233/TokenArena/pulls) [![License](https://img.shields.io/github/license/GuJi08233/TokenArena)](LICENSE) [![React Doctor](https://www.react.doctor/share/badge?p=web&s=99&e=0&w=2&f=1)](https://www.react.doctor/share?p=web&s=99&e=0&w=2&f=1)
 
 你有没有好奇过：
 
@@ -39,7 +39,7 @@
 > [!TIP]
 >
 > - **手动同步**：运行 `tokenarena sync`，手动将本地数据上传至 Web 端。
-> - **持续同步**：运行 `tokenarena daemon`，保持 CLI 运行，实现数据定时自动同步（默认每 5 分钟）。
+> - **持续同步**：运行 `tokenarena daemon`，保持 CLI 运行，实现数据定时自动同步（默认每 30 分钟）。
 > - **后台服务（Linux / macOS）**：运行 `tokenarena service setup`，将 daemon 注册为用户级后台服务，登录后自动启动、异常退出自动拉起。
 
 **后台服务管理（Linux / macOS）**
@@ -177,6 +177,20 @@ git add --renormalize .
 - `WATCHA_CLIENT_ID` / `WATCHA_CLIENT_SECRET`
 
 `GITLAB_BASE_URL` 可指向 `https://gitlab.com` 或你的自建 GitLab；GitLab OAuth 回调地址为 `/api/auth/oauth2/callback/gitlab`。
+
+## 用量统计口径与升级
+
+用量由新输入、输出、推理、缓存读取、缓存写入五个不重叠的计数构成。
+本地日志的扫描范围、去重规则及与 CC Switch 的差异见 [用量对照说明](docs/usage-reconciliation.md)。
+
+MiniMax Code（`mcode`）与 MiMoCode 是不同工具。CLI 默认读取 `~/.minimax/v2/sqlite/runtime-state.sqlite`；
+可在运行 CLI 的宿主机设置 `MINIMAX_DATA_DIR`，未设置时回退到 `MAVIS_DATA_DIR`，以覆盖数据根目录。
+这两个变量不需要配置到 Web 服务容器中。
+
+本次缓存写入字段需要先部署 Web 数据库迁移，再升级 CLI。普通同步会重新上传变化的计数。
+若需修正旧版会话身份、去重规则留下的历史记录，在确认本机历史日志完整后显式运行
+`tokenarena sync --rebuild`；它会用本机现有日志替换当前设备的云端历史，其它设备不受影响。
+日志不完整时应保留普通同步，避免丢失仅存在于云端的历史数据。
 
 ## 技术栈
 

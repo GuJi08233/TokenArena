@@ -21,15 +21,17 @@ const TOOL: ToolDefinition = {
 };
 
 interface OpenCodeMessage {
+  id?: string;
   sessionID?: string;
   role?: string;
-  created?: string;
+  created?: string | number;
   modelID?: string;
   tokens?: {
     input?: number;
     output?: number;
     cache?: {
       read?: number;
+      write?: number;
     };
     reasoning?: number;
   };
@@ -37,17 +39,42 @@ interface OpenCodeMessage {
     root?: string;
   };
   time?: {
-    created?: string;
+    created?: string | number;
   };
 }
 
 interface SqliteRow {
+  messageId?: string | null;
   sessionID: string;
   role: string;
-  created: string;
+  created: string | number;
   modelID: string | null;
   tokens: string | null;
   rootPath: string | null;
+}
+
+// OpenCode 的 input、output、reasoning 和缓存读写均为独立计数。
+function hasTokens(tokens: NonNullable<OpenCodeMessage["tokens"]>): boolean {
+  return [
+    tokens.input,
+    tokens.output,
+    tokens.reasoning,
+    tokens.cache?.read,
+    tokens.cache?.write,
+  ].some((value) => typeof value === "number" && value !== 0);
+}
+
+function seenMessage(
+  seen: Set<string>,
+  sessionId: string | undefined,
+  messageId: string | null | undefined,
+): boolean {
+  // 只有原生会话/消息身份可跨根去重；缺失 ID 时不能用相同用量推定同一请求。
+  if (!sessionId || !messageId) return false;
+  const key = JSON.stringify([sessionId, messageId]);
+  if (seen.has(key)) return true;
+  seen.add(key);
+  return false;
 }
 
 function getOpenCodeDataDirs(env: NodeJS.ProcessEnv = process.env): string[] {
@@ -185,14 +212,21 @@ export class OpenCodeParser implements IParser {
 
   constructor(
     private readonly resolveRoots: () => string[] = getOpenCodeDataDirs,
+    private readonly queryRows?: (
+      dbPath: string,
+      query: string,
+    ) => Promise<SqliteRow[]>,
   ) {}
 
   async parse(): Promise<ParseResult> {
     const buckets: ParseResult["buckets"] = [];
     const sessions: ParseResult["sessions"] = [];
+    const seen = new Set<string>();
+    let incomplete = false;
 
-    for (const rootDir of this.resolveRoots()) {
-      const result = await this.parseRoot(rootDir);
+    for (const rootDir of new Set(this.resolveRoots())) {
+      const result = await this.parseRoot(rootDir, seen);
+      incomplete ||= Boolean(result.incomplete);
       if (result.buckets.length > 0) {
         buckets.push(...result.buckets);
       }
@@ -201,32 +235,40 @@ export class OpenCodeParser implements IParser {
       }
     }
 
-    return { buckets, sessions };
+    return { buckets, sessions, ...(incomplete ? { incomplete: true } : {}) };
   }
 
   isInstalled(): boolean {
     return this.resolveRoots().some((dir) => existsSync(dir));
   }
 
-  private async parseRoot(rootDir: string): Promise<ParseResult> {
+  private async parseRoot(
+    rootDir: string,
+    seen: Set<string>,
+  ): Promise<ParseResult> {
     const dbPath = join(rootDir, "opencode.db");
     const messagesDir = join(rootDir, "storage", "message");
 
     if (existsSync(dbPath)) {
       try {
-        return await this.parseFromSqlite(dbPath);
+        return await this.parseFromSqlite(dbPath, seen);
       } catch (err) {
         process.stderr.write(
           `warn: opencode sqlite parse failed (${(err as Error).message}), trying legacy json...\n`,
         );
+        return { ...this.parseFromJson(messagesDir, seen), incomplete: true };
       }
     }
 
-    return this.parseFromJson(messagesDir);
+    return this.parseFromJson(messagesDir, seen);
   }
 
-  private async parseFromSqlite(dbPath: string): Promise<ParseResult> {
+  private async parseFromSqlite(
+    dbPath: string,
+    seen: Set<string>,
+  ): Promise<ParseResult> {
     const query = `SELECT
+      id as messageId,
       session_id as sessionID,
       json_extract(data, '$.role') as role,
       json_extract(data, '$.time.created') as created,
@@ -235,7 +277,9 @@ export class OpenCodeParser implements IParser {
       json_extract(data, '$.path.root') as rootPath
       FROM message`;
 
-    const builtinRows = await readSqliteRowsWithBuiltin(dbPath, query);
+    const builtinRows = this.queryRows
+      ? await this.queryRows(dbPath, query)
+      : await readSqliteRowsWithBuiltin(dbPath, query);
     const rows = builtinRows ?? readSqliteRowsWithCli(dbPath, query);
 
     if (rows.length === 0) {
@@ -252,6 +296,7 @@ export class OpenCodeParser implements IParser {
       const project = row.rootPath ? basename(row.rootPath) : "unknown";
       const sessionId = row.sessionID || "unknown";
       if (row.role !== "user" && row.role !== "assistant") continue;
+      if (seenMessage(seen, row.sessionID, row.messageId)) continue;
 
       sessionEvents.push({
         sessionId,
@@ -261,7 +306,7 @@ export class OpenCodeParser implements IParser {
         role: row.role === "user" ? "user" : "assistant",
       });
 
-      if (!row.modelID) continue;
+      if (row.role !== "assistant") continue;
 
       let tokens: OpenCodeMessage["tokens"];
       try {
@@ -270,7 +315,7 @@ export class OpenCodeParser implements IParser {
       } catch {
         continue;
       }
-      if (!tokens || (!tokens.input && !tokens.output)) continue;
+      if (!tokens || !hasTokens(tokens)) continue;
 
       entries.push({
         sessionId,
@@ -282,6 +327,7 @@ export class OpenCodeParser implements IParser {
         outputTokens: tokens.output || 0,
         reasoningTokens: tokens.reasoning || 0,
         cachedTokens: tokens.cache?.read || 0,
+        cacheCreationTokens: tokens.cache?.write || 0,
       });
     }
 
@@ -291,7 +337,7 @@ export class OpenCodeParser implements IParser {
     };
   }
 
-  private parseFromJson(messagesDir: string): ParseResult {
+  private parseFromJson(messagesDir: string, seen: Set<string>): ParseResult {
     if (!existsSync(messagesDir)) return { buckets: [], sessions: [] };
 
     const entries: TokenUsageEntry[] = [];
@@ -335,6 +381,8 @@ export class OpenCodeParser implements IParser {
         const rootPath = data.path?.root;
         const project = rootPath ? basename(rootPath) : "unknown";
         if (data.role !== "user" && data.role !== "assistant") continue;
+        if (seenMessage(seen, data.sessionID || sessionDir.name, data.id))
+          continue;
 
         sessionEvents.push({
           sessionId: sessionDir.name,
@@ -344,9 +392,9 @@ export class OpenCodeParser implements IParser {
           role: data.role === "user" ? "user" : "assistant",
         });
 
-        if (!data.modelID) continue;
+        if (data.role !== "assistant") continue;
         const tokens = data.tokens;
-        if (!tokens || (!tokens.input && !tokens.output)) continue;
+        if (!tokens || !hasTokens(tokens)) continue;
 
         entries.push({
           sessionId: sessionDir.name,
@@ -358,6 +406,7 @@ export class OpenCodeParser implements IParser {
           outputTokens: tokens.output || 0,
           reasoningTokens: tokens.reasoning || 0,
           cachedTokens: tokens.cache?.read || 0,
+          cacheCreationTokens: tokens.cache?.write || 0,
         });
       }
     }

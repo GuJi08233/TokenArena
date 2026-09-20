@@ -139,6 +139,7 @@ describe("estimateCostUsd", () => {
         outputTokens: 50_000,
         reasoningTokens: 25_000,
         cachedTokens: 0,
+        cacheCreationTokens: 0,
       },
       match?.cost,
     );
@@ -159,6 +160,7 @@ describe("estimateCostUsd", () => {
           outputTokens: 50,
           reasoningTokens: 25,
           cachedTokens: 10,
+          cacheCreationTokens: 0,
         },
         null,
       ),
@@ -172,6 +174,7 @@ describe("estimateCostUsd", () => {
         outputTokens: 0,
         reasoningTokens: 0,
         cachedTokens: 0,
+        cacheCreationTokens: 0,
       },
       { input: 1, output: 2 },
     );
@@ -186,6 +189,22 @@ describe("estimateCostUsd", () => {
 });
 
 describe("buildModelLookupCandidates", () => {
+  it("prices cache reads and writes independently without charging fresh input twice", () => {
+    const result = estimateCostUsd(
+      {
+        inputTokens: 100_000,
+        outputTokens: 50_000,
+        reasoningTokens: 0,
+        cachedTokens: 200_000,
+        cacheCreationTokens: 30_000,
+      },
+      { input: 3, output: 15, cache_read: 0.3, cache_write: 3.75 },
+    );
+    expect(result?.inputUsd).toBeCloseTo(0.3);
+    expect(result?.cacheUsd).toBeCloseTo(0.06);
+    expect(result?.cacheCreationUsd).toBeCloseTo(0.1125);
+    expect(result?.totalUsd).toBeCloseTo(1.2225);
+  });
   it("returns an empty array for an empty string", () => {
     expect(buildModelLookupCandidates("")).toEqual([]);
   });

@@ -14,6 +14,7 @@ function createEntry(
     outputTokens: 0,
     reasoningTokens: 0,
     cachedTokens: 0,
+    cacheCreationTokens: 0,
     totalTokens: 100,
     activeSeconds: 60,
     sessions: 1,

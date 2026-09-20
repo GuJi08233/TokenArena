@@ -150,13 +150,13 @@ model UsagePreference {
 }
 
 model Follow {
-  id          String   @id @default(cuid())
+  id          String     @id @default(cuid())
   followerId  String
   followingId String
   tag         FollowTag?
-  createdAt   DateTime @default(now())
-  follower    User     @relation("FollowFollower", fields: [followerId], references: [id], onDelete: Cascade)
-  following   User     @relation("FollowFollowing", fields: [followingId], references: [id], onDelete: Cascade)
+  createdAt   DateTime   @default(now())
+  follower    User       @relation("FollowFollower", fields: [followerId], references: [id], onDelete: Cascade)
+  following   User       @relation("FollowFollowing", fields: [followingId], references: [id], onDelete: Cascade)
 
   @@unique([followerId, followingId])
   @@index([followerId, createdAt])
@@ -208,6 +208,7 @@ model UsageBucket {
   outputTokens          BigInt
   reasoningTokens       BigInt   @default(0)
   cachedTokens          BigInt
+  cacheCreationTokens   BigInt   @default(0)
   totalTokens           BigInt
   estimatedCostUsd      Float?
   estimatedInputUsd     Float?
@@ -223,51 +224,53 @@ model UsageBucket {
 }
 
 model UsageSession {
-  id               String   @id @default(cuid())
-  userId           String
-  apiKeyId         String?
-  deviceId         String
-  source           String
-  projectKey       String
-  projectLabel     String
-  sessionHash      String
-  firstMessageAt   DateTime
-  lastMessageAt    DateTime
-  durationSeconds  Int
-  activeSeconds    Int
-  inputTokens      BigInt   @default(0)
-  outputTokens     BigInt   @default(0)
-  reasoningTokens  BigInt   @default(0)
-  cachedTokens     BigInt   @default(0)
-  totalTokens      BigInt   @default(0)
-  primaryModel     String   @default("")
-  estimatedCostUsd Float?
-  messageCount     Int
-  userMessageCount Int
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                  String   @id @default(cuid())
+  userId              String
+  apiKeyId            String?
+  deviceId            String
+  source              String
+  projectKey          String
+  projectLabel        String
+  sessionHash         String
+  firstMessageAt      DateTime
+  lastMessageAt       DateTime
+  durationSeconds     Int
+  activeSeconds       Int
+  inputTokens         BigInt   @default(0)
+  outputTokens        BigInt   @default(0)
+  reasoningTokens     BigInt   @default(0)
+  cachedTokens        BigInt   @default(0)
+  cacheCreationTokens BigInt   @default(0)
+  totalTokens         BigInt   @default(0)
+  primaryModel        String   @default("")
+  estimatedCostUsd    Float?
+  messageCount        Int
+  userMessageCount    Int
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, deviceId, source, sessionHash])
   @@index([userId, firstMessageAt])
 }
 
 model LeaderboardUserDay {
-  id              String   @id @default(cuid())
-  userId          String
-  statDate        DateTime
-  inputTokens     BigInt   @default(0)
-  outputTokens    BigInt   @default(0)
-  reasoningTokens BigInt   @default(0)
-  cachedTokens    BigInt   @default(0)
-  totalTokens     BigInt   @default(0)
-  activeSeconds   Int      @default(0)
-  sessions        Int      @default(0)
-  messages        Int      @default(0)
-  userMessages    Int      @default(0)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                  String   @id @default(cuid())
+  userId              String
+  statDate            DateTime
+  inputTokens         BigInt   @default(0)
+  outputTokens        BigInt   @default(0)
+  reasoningTokens     BigInt   @default(0)
+  cachedTokens        BigInt   @default(0)
+  cacheCreationTokens BigInt   @default(0)
+  totalTokens         BigInt   @default(0)
+  activeSeconds       Int      @default(0)
+  sessions            Int      @default(0)
+  messages            Int      @default(0)
+  userMessages        Int      @default(0)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, statDate])
   @@index([statDate, userId])
@@ -288,20 +291,21 @@ model LeaderboardSnapshot {
 }
 
 model LeaderboardSnapshotEntry {
-  id              String              @id @default(cuid())
-  snapshotId      String
-  userId          String
-  rank            Int
-  inputTokens     BigInt              @default(0)
-  outputTokens    BigInt              @default(0)
-  reasoningTokens BigInt              @default(0)
-  cachedTokens    BigInt              @default(0)
-  totalTokens     BigInt              @default(0)
-  activeSeconds   Int                 @default(0)
-  sessions        Int                 @default(0)
-  createdAt       DateTime            @default(now())
-  snapshot        LeaderboardSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
-  user            User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                  String              @id @default(cuid())
+  snapshotId          String
+  userId              String
+  rank                Int
+  inputTokens         BigInt              @default(0)
+  outputTokens        BigInt              @default(0)
+  reasoningTokens     BigInt              @default(0)
+  cachedTokens        BigInt              @default(0)
+  cacheCreationTokens BigInt              @default(0)
+  totalTokens         BigInt              @default(0)
+  activeSeconds       Int                 @default(0)
+  sessions            Int                 @default(0)
+  createdAt           DateTime            @default(now())
+  snapshot            LeaderboardSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  user                User                @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([snapshotId, userId])
   @@unique([snapshotId, rank])
@@ -313,13 +317,13 @@ model LeaderboardSnapshotEntry {
 model UserAchievement {
   userId         String
   code           String
-  awardCount     Int      @default(0)
+  awardCount     Int       @default(0)
   firstAwardedAt DateTime?
   lastAwardedAt  DateTime?
   state          Json?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@id([userId, code])
   @@index([userId, lastAwardedAt])
@@ -362,20 +366,21 @@ model LeaderboardPeriodResult {
 }
 
 model LeaderboardPeriodEntry {
-  id              String                @id @default(cuid())
-  resultId        String
-  userId          String
-  rank            Int
-  inputTokens     BigInt                @default(0)
-  outputTokens    BigInt                @default(0)
-  reasoningTokens BigInt                @default(0)
-  cachedTokens    BigInt                @default(0)
-  totalTokens     BigInt                @default(0)
-  activeSeconds   Int                   @default(0)
-  sessions        Int                   @default(0)
-  createdAt       DateTime              @default(now())
-  result          LeaderboardPeriodResult @relation(fields: [resultId], references: [id], onDelete: Cascade)
-  user            User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                  String                  @id @default(cuid())
+  resultId            String
+  userId              String
+  rank                Int
+  inputTokens         BigInt                  @default(0)
+  outputTokens        BigInt                  @default(0)
+  reasoningTokens     BigInt                  @default(0)
+  cachedTokens        BigInt                  @default(0)
+  cacheCreationTokens BigInt                  @default(0)
+  totalTokens         BigInt                  @default(0)
+  activeSeconds       Int                     @default(0)
+  sessions            Int                     @default(0)
+  createdAt           DateTime                @default(now())
+  result              LeaderboardPeriodResult @relation(fields: [resultId], references: [id], onDelete: Cascade)
+  user                User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([resultId, userId])
   @@unique([resultId, rank])

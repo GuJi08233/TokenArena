@@ -97,6 +97,7 @@ export type CostEstimate = {
   outputUsd: number;
   reasoningUsd: number;
   cacheUsd: number;
+  cacheCreationUsd: number;
 };
 
 function _unique(values: string[]) {
@@ -232,6 +233,7 @@ export function estimateCostUsd(
     outputTokens: number;
     reasoningTokens: number;
     cachedTokens: number;
+    cacheCreationTokens?: number;
   },
   cost: PricingCost | null | undefined,
 ): CostEstimate | null {
@@ -244,12 +246,17 @@ export function estimateCostUsd(
   const reasoningUsd =
     (input.reasoningTokens / 1_000_000) * (cost.reasoning ?? cost.output ?? 0);
   const cacheUsd = (input.cachedTokens / 1_000_000) * (cost.cache_read ?? 0);
+  // 缓存写入单独计价；目录缺失写入价时保守使用输入价。
+  const cacheCreationUsd =
+    ((input.cacheCreationTokens ?? 0) / 1_000_000) *
+    (cost.cache_write ?? cost.input ?? 0);
 
   return {
-    totalUsd: inputUsd + outputUsd + reasoningUsd + cacheUsd,
+    totalUsd: inputUsd + outputUsd + reasoningUsd + cacheUsd + cacheCreationUsd,
     inputUsd,
     outputUsd,
     reasoningUsd,
     cacheUsd,
+    cacheCreationUsd,
   };
 }

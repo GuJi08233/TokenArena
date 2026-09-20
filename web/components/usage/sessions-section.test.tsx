@@ -61,6 +61,7 @@ describe("SessionsSection", () => {
       outputTokens: 5000,
       reasoningTokens: 1500,
       cachedTokens: 500,
+      cacheCreationTokens: 0,
       primaryModel: "claude-sonnet-4-20250514",
     },
   ];

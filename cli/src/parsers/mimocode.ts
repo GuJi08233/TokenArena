@@ -113,6 +113,7 @@ export class MimocodeParser implements IParser {
   async parse(): Promise<ParseResult> {
     const allEntries: TokenUsageEntry[] = [];
     const allSessionEvents: SessionEvent[] = [];
+    let incomplete = false;
 
     for (const dbPath of this.resolveDbPaths()) {
       if (!existsSync(dbPath)) continue;
@@ -122,6 +123,7 @@ export class MimocodeParser implements IParser {
         allEntries.push(...entries);
         allSessionEvents.push(...sessionEvents);
       } catch (err) {
+        incomplete = true;
         process.stderr.write(
           `warn: mimocode parse failed for ${dbPath} (${(err as Error).message})\n`,
         );
@@ -131,6 +133,7 @@ export class MimocodeParser implements IParser {
     return {
       buckets: aggregateToBuckets(allEntries),
       sessions: extractSessions(allSessionEvents, allEntries),
+      ...(incomplete ? { incomplete: true } : {}),
     };
   }
 
@@ -165,8 +168,16 @@ export class MimocodeParser implements IParser {
       const outputTokens = toSafeNumber(row.outputTokens);
       const reasoningTokens = toSafeNumber(row.reasoningTokens);
       const cachedTokens = toSafeNumber(row.cacheReadTokens);
+      const cacheCreationTokens = toSafeNumber(row.cacheWriteTokens);
 
-      if (inputTokens + outputTokens + reasoningTokens + cachedTokens === 0) {
+      if (
+        inputTokens +
+          outputTokens +
+          reasoningTokens +
+          cachedTokens +
+          cacheCreationTokens ===
+        0
+      ) {
         continue;
       }
 
@@ -180,6 +191,7 @@ export class MimocodeParser implements IParser {
         outputTokens,
         reasoningTokens,
         cachedTokens,
+        cacheCreationTokens,
       });
     }
 

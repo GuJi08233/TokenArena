@@ -90,6 +90,9 @@ export function PricingMatchDialog({ rows }: PricingMatchDialogProps) {
                   <TableHead className="text-right">
                     {t("table.cache")}
                   </TableHead>
+                  <TableHead className="text-right">
+                    {t("table.cacheCreation")}
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -129,6 +132,9 @@ export function PricingMatchDialog({ rows }: PricingMatchDialogProps) {
                       ) : null}
                       <TableCell className="text-right text-muted-foreground">
                         {formatRate(row.cacheRateUsdPerMillion)}
+                      </TableCell>
+                      <TableCell className="text-right text-muted-foreground">
+                        {formatRate(row.cacheCreationRateUsdPerMillion)}
                       </TableCell>
                     </TableRow>
                   );

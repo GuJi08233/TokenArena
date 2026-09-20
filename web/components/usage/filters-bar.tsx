@@ -124,7 +124,8 @@ function getPresetLabel(
   value: DashboardPreset,
   t: ReturnType<typeof useTranslations<"usage.filters">>,
 ) {
-  return value === "custom" ? t("custom") : value.toUpperCase();
+  if (value === "custom") return t("custom");
+  return value === "1d" ? t("today") : value.toUpperCase();
 }
 
 function FiltersBarInner({

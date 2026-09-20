@@ -59,6 +59,7 @@ function collectChatFiles(dir: string, out: string[], depth: number): void {
 }
 
 interface GeminiMessage {
+  id?: string;
   type?: string;
   role?: string;
   timestamp?: string;
@@ -75,6 +76,7 @@ interface GeminiMessage {
     candidatesTokenCount?: number;
     cachedContentTokenCount?: number;
     thoughtsTokenCount?: number;
+    totalTokenCount?: number;
     input_tokens?: number;
     output_tokens?: number;
   };
@@ -83,6 +85,7 @@ interface GeminiMessage {
 }
 
 interface GeminiRecord {
+  sessionId: string | null;
   messages: GeminiMessage[];
   directories: string[] | null;
   model: string | null;
@@ -104,6 +107,7 @@ function readRecord(filePath: string): GeminiRecord | null {
     let directories: string[] | null = null;
     let model: string | null = null;
     let createTime: string | null = null;
+    let sessionId: string | null = null;
     for (const line of raw.split("\n")) {
       const trimmed = line.trim();
       if (!trimmed) continue;
@@ -113,6 +117,8 @@ function readRecord(filePath: string): GeminiRecord | null {
       } catch {
         continue;
       }
+      if (!obj || typeof obj !== "object" || Array.isArray(obj)) continue;
+      if (typeof obj.sessionId === "string") sessionId = obj.sessionId;
       if (!directories && Array.isArray(obj.directories)) {
         directories = obj.directories as string[];
         if (typeof obj.model === "string") model = obj.model;
@@ -123,10 +129,11 @@ function readRecord(filePath: string): GeminiRecord | null {
         messages.push(obj as GeminiMessage);
       }
     }
-    return { messages, directories, model, createTime };
+    return { messages, directories, model, createTime, sessionId };
   }
 
   let data: {
+    sessionId?: string;
     messages?: GeminiMessage[];
     history?: GeminiMessage[];
     directories?: string[];
@@ -139,6 +146,7 @@ function readRecord(filePath: string): GeminiRecord | null {
     return null;
   }
   return {
+    sessionId: typeof data?.sessionId === "string" ? data.sessionId : null,
     messages: Array.isArray(data?.messages)
       ? data.messages
       : Array.isArray(data?.history)
@@ -166,6 +174,36 @@ function projectFromDirectories(directories: string[] | null): string {
   return basename(String(first).replace(/[\\/]+$/, "")) || "unknown";
 }
 
+function tokenCount(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? Math.trunc(value)
+    : 0;
+}
+
+function selectUsageSnapshot(
+  current: TokenUsageEntry | undefined,
+  candidate: TokenUsageEntry,
+): TokenUsageEntry {
+  if (!current) return candidate;
+  const total = (entry: TokenUsageEntry) =>
+    entry.inputTokens +
+    entry.outputTokens +
+    entry.reasoningTokens +
+    entry.cachedTokens;
+  const currentTotal = total(current);
+  const candidateTotal = total(candidate);
+  // 空占位快照不能覆盖已有计费量；其余优先有效新时间，同时间保留更完整的量。
+  if (candidateTotal === 0 && currentTotal > 0) return current;
+  if (candidate.timestamp.getTime() !== current.timestamp.getTime()) {
+    return candidate.timestamp > current.timestamp ? candidate : current;
+  }
+  if (candidateTotal !== currentTotal)
+    return candidateTotal > currentTotal ? candidate : current;
+  return current.model === "unknown" && candidate.model !== "unknown"
+    ? candidate
+    : current;
+}
+
 class GeminiCliParser implements IParser {
   readonly tool = TOOL;
 
@@ -175,16 +213,21 @@ class GeminiCliParser implements IParser {
       return { buckets: [], sessions: [] };
     }
 
-    const entries: TokenUsageEntry[] = [];
-    const sessionEvents: SessionEvent[] = [];
+    const entries = new Map<string, TokenUsageEntry>();
+    const sessionEvents = new Map<string, SessionEvent>();
+    const storeEntry = (key: string, entry: TokenUsageEntry) => {
+      entries.set(key, selectUsageSnapshot(entries.get(key), entry));
+    };
 
     for (const filePath of sessionFiles) {
       const record = readRecord(filePath);
       if (!record) continue;
 
       const project = projectFromDirectories(record.directories);
+      const sessionId = record.sessionId || filePath;
 
-      for (const msg of record.messages) {
+      for (const [index, msg] of record.messages.entries()) {
+        if (!msg || typeof msg !== "object") continue;
         const role = classifyRole(msg);
         if (!role) continue;
 
@@ -193,48 +236,65 @@ class GeminiCliParser implements IParser {
         const ts = new Date(timestamp);
         if (Number.isNaN(ts.getTime())) continue;
 
-        sessionEvents.push({
-          sessionId: filePath,
-          source: "gemini-cli",
-          project,
-          timestamp: ts,
-          role,
-        });
+        // 稳定会话和消息 ID 合并副本，快照选择不得依赖文件遍历顺序。
+        const key = JSON.stringify([
+          sessionId,
+          msg.id || `${filePath}:${index}`,
+        ]);
+        if (
+          (sessionEvents.get(key)?.timestamp.getTime() ?? -Infinity) <=
+          ts.getTime()
+        )
+          sessionEvents.set(key, {
+            sessionId,
+            source: "gemini-cli",
+            project,
+            timestamp: ts,
+            role,
+          });
+        if (role !== "assistant") continue;
 
         const tokens = msg.tokens;
         const usage = msg.usage || msg.usageMetadata || msg.token_count;
         if (!tokens && !usage) continue;
 
-        // Gemini's `output` already includes thoughts and `input` already
-        // includes cached — subtract to avoid double-counting reasoning/cached.
+        // Gemini 的 output/candidates 与 thoughts 分开上报，只有输入含缓存。
         if (tokens) {
-          const cached = tokens.cached || 0;
-          const thoughts = tokens.thoughts || 0;
-          entries.push({
-            sessionId: filePath,
+          const cached = tokenCount(tokens.cached);
+          const input = tokenCount(tokens.input);
+          const thoughts = tokenCount(tokens.thoughts);
+          storeEntry(key, {
+            sessionId,
             source: "gemini-cli",
             model: msg.model || record.model || "unknown",
             project,
             timestamp: ts,
-            inputTokens: (tokens.input || 0) - cached,
-            outputTokens: (tokens.output || 0) - thoughts,
+            inputTokens: input >= cached ? input - cached : input,
+            outputTokens: tokenCount(tokens.output),
             reasoningTokens: thoughts,
             cachedTokens: cached,
           });
         } else if (usage) {
-          const cached = usage.cachedContentTokenCount || 0;
-          const thoughts = usage.thoughtsTokenCount || 0;
-          entries.push({
-            sessionId: filePath,
+          const cached = tokenCount(usage.cachedContentTokenCount);
+          const thoughts = tokenCount(usage.thoughtsTokenCount);
+          const input = tokenCount(
+            usage.promptTokenCount ?? usage.input_tokens,
+          );
+          const output = usage.candidatesTokenCount ?? usage.output_tokens;
+          storeEntry(key, {
+            sessionId,
             source: "gemini-cli",
             model: msg.model || record.model || "unknown",
             project,
             timestamp: ts,
-            inputTokens:
-              (usage.promptTokenCount || usage.input_tokens || 0) - cached,
+            inputTokens: input >= cached ? input - cached : input,
             outputTokens:
-              (usage.candidatesTokenCount || usage.output_tokens || 0) -
-              thoughts,
+              output !== undefined
+                ? tokenCount(output)
+                : Math.max(
+                    0,
+                    tokenCount(usage.totalTokenCount) - input - thoughts,
+                  ),
             reasoningTokens: thoughts,
             cachedTokens: cached,
           });
@@ -243,8 +303,11 @@ class GeminiCliParser implements IParser {
     }
 
     return {
-      buckets: aggregateToBuckets(entries),
-      sessions: extractSessions(sessionEvents, entries),
+      buckets: aggregateToBuckets([...entries.values()]),
+      sessions: extractSessions(
+        [...sessionEvents.values()],
+        [...entries.values()],
+      ),
     };
   }
 }

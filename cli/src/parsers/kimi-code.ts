@@ -277,8 +277,16 @@ export class KimiCodeParser implements IParser {
           const cachedTokens = toSafeNumber(
             usage.input_cache_read ?? usage.inputCacheRead,
           );
+          const cacheCreationTokens = toSafeNumber(
+            usage.input_cache_creation ?? usage.inputCacheCreation,
+          );
 
-          if (inputTokens === 0 && outputTokens === 0 && cachedTokens === 0) {
+          if (
+            inputTokens === 0 &&
+            outputTokens === 0 &&
+            cachedTokens === 0 &&
+            cacheCreationTokens === 0
+          ) {
             continue;
           }
 
@@ -305,6 +313,7 @@ export class KimiCodeParser implements IParser {
             outputTokens,
             reasoningTokens: 0,
             cachedTokens,
+            cacheCreationTokens,
           });
           continue;
         }
@@ -346,13 +355,15 @@ export class KimiCodeParser implements IParser {
         const inputTokens = toSafeNumber(tokenUsage.input_other);
         const outputTokens = toSafeNumber(tokenUsage.output);
         const cachedTokens = toSafeNumber(tokenUsage.input_cache_read);
-        const cacheCreateTokens = toSafeNumber(tokenUsage.input_cache_creation);
+        const cacheCreationTokens = toSafeNumber(
+          tokenUsage.input_cache_creation,
+        );
 
         if (
           inputTokens === 0 &&
           outputTokens === 0 &&
           cachedTokens === 0 &&
-          cacheCreateTokens === 0
+          cacheCreationTokens === 0
         ) {
           continue;
         }
@@ -382,6 +393,7 @@ export class KimiCodeParser implements IParser {
           outputTokens,
           reasoningTokens: 0,
           cachedTokens,
+          cacheCreationTokens,
         });
       }
     }

@@ -183,10 +183,11 @@ class RooCodeParser implements IParser {
               model,
               project,
               timestamp,
-              inputTokens: inputTokens + cacheWrites,
+              inputTokens,
               outputTokens,
               reasoningTokens: 0,
               cachedTokens: cacheReads,
+              cacheCreationTokens: cacheWrites,
             });
             events.push({
               sessionId: taskId,

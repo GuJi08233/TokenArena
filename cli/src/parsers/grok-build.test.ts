@@ -15,6 +15,163 @@ describe("projectFromEncodedCwd", () => {
 });
 
 describe("GrokBuildParser", () => {
+  it("keeps distinct anonymous completed turns sharing the same second", async () => {
+    const root = makeTempDir("tokenarena-grok-anonymous-");
+    const sessionDir = join(root, "%2Fwork%2Fproject", "same-second");
+    mkdirSync(sessionDir, { recursive: true });
+    writeFileSync(
+      join(sessionDir, "updates.jsonl"),
+      [10, 20]
+        .map((inputTokens) =>
+          JSON.stringify({
+            method: "_x.ai/session/update",
+            timestamp: 1784875700,
+            params: {
+              update: {
+                sessionUpdate: "turn_completed",
+                usage: { inputTokens },
+              },
+            },
+          }),
+        )
+        .join("\n"),
+    );
+    const result = await new GrokBuildParser(root).parse();
+    expect(result.buckets[0]).toMatchObject({
+      inputTokens: 30,
+      totalTokens: 30,
+    });
+    expect(result.sessions[0].messageCount).toBe(2);
+  });
+  it("replaces the full model breakdown when a completed prompt is replayed", async () => {
+    const root = makeTempDir("tokenarena-grok-replay-");
+    const sessionDir = join(root, "%2Fwork%2Fproject", "replayed");
+    mkdirSync(sessionDir, { recursive: true });
+    const event = (model: string, timestamp: number) => ({
+      method: "_x.ai/session/update",
+      timestamp,
+      params: {
+        update: {
+          sessionUpdate: "turn_completed",
+          prompt_id: "same-prompt",
+          usage: {
+            modelUsage: { [model]: { inputTokens: 100, outputTokens: 20 } },
+          },
+        },
+      },
+    });
+    writeFileSync(
+      join(sessionDir, "updates.jsonl"),
+      [
+        event("old-model", 1784875700),
+        event("new-model", 1784875701),
+        event("old-model", 1784875700),
+      ]
+        .map((row) => JSON.stringify(row))
+        .join("\n"),
+    );
+    const result = await new GrokBuildParser(root).parse();
+    expect(result.buckets).toHaveLength(1);
+    expect(result.buckets[0]).toMatchObject({
+      model: "new-model",
+      totalTokens: 120,
+    });
+  });
+  it("counts independent turns once across active and archived copies", async () => {
+    const root = makeTempDir("tokenarena-grok-archive-");
+    const active = join(root, "sessions");
+    const archived = join(root, "archived_sessions");
+    const turn = (prompt: string, timestamp: number) => ({
+      method: "_x.ai/session/update",
+      timestamp,
+      params: {
+        sessionId: "shared-session",
+        update: {
+          sessionUpdate: "turn_completed",
+          prompt_id: prompt,
+          usage: {
+            modelUsage: {
+              "grok-build": {
+                inputTokens: 100,
+                outputTokens: 30,
+                cachedReadTokens: 40,
+                reasoningTokens: 20,
+              },
+            },
+          },
+        },
+      },
+    });
+    for (const dataDir of [active, archived]) {
+      const sessionDir = join(dataDir, "%2Fwork%2Fproject", "shared-session");
+      mkdirSync(sessionDir, { recursive: true });
+      writeFileSync(
+        join(sessionDir, "updates.jsonl"),
+        [
+          turn("first", 1784875700),
+          turn("first", 1784875700),
+          turn("second", 1784875701),
+        ]
+          .map((row) => JSON.stringify(row))
+          .join("\n"),
+      );
+    }
+    const result = await new GrokBuildParser(active, archived).parse();
+    expect(result.buckets[0]).toMatchObject({
+      inputTokens: 120,
+      outputTokens: 20,
+      reasoningTokens: 40,
+      cachedTokens: 80,
+      totalTokens: 260,
+    });
+    expect(result.sessions).toHaveLength(1);
+    expect(result.sessions[0].messageCount).toBe(2);
+  });
+
+  it("imports archived-only turns and ignores intermediate snapshots", async () => {
+    const root = makeTempDir("tokenarena-grok-archived-only-");
+    const active = join(root, "sessions");
+    const archived = join(root, "archived_sessions");
+    const sessionDir = join(archived, "%2Fwork%2Fproject", "archived");
+    mkdirSync(sessionDir, { recursive: true });
+    const update = {
+      usage: {
+        inputTokens: 20,
+        outputTokens: 7,
+        cachedReadTokens: 5,
+        reasoningTokens: 2,
+      },
+    };
+    writeFileSync(
+      join(sessionDir, "updates.jsonl"),
+      [
+        {
+          timestamp: 1784875700,
+          method: "_x.ai/session/update",
+          params: {
+            update: { ...update, sessionUpdate: "agent_message_chunk" },
+          },
+        },
+        {
+          timestamp: 1784875701,
+          method: "_x.ai/session/update",
+          params: { update },
+        },
+      ]
+        .map((row) => JSON.stringify(row))
+        .join("\n"),
+    );
+    const parser = new GrokBuildParser(active, archived);
+    expect(parser.isInstalled()).toBe(true);
+    const result = await parser.parse();
+    expect(result.buckets[0]).toMatchObject({
+      inputTokens: 15,
+      outputTokens: 5,
+      reasoningTokens: 2,
+      cachedTokens: 5,
+      totalTokens: 27,
+    });
+  });
   it("parses turn_completed usage with modelUsage breakdown", async () => {
     const dataDir = makeTempDir("tokenarena-grok-");
     const sessionDir = join(

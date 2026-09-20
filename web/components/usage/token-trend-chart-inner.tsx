@@ -35,6 +35,13 @@ const TOKEN_TREND_SERIES = [
     radius: [0, 0, 0, 0] as [number, number, number, number],
   },
   {
+    dataKey: "cacheCreationTokens",
+    labelKey: "cacheCreation",
+    color: "var(--chart-1)",
+    opacity: 0.86,
+    radius: [0, 0, 0, 0] as [number, number, number, number],
+  },
+  {
     dataKey: "inputTokens",
     labelKey: "input",
     color: "var(--chart-1)",

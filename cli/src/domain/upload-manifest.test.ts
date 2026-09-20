@@ -26,6 +26,7 @@ function makeBucket(
   return {
     bucketStart: "2026-03-31T10:00:00.000Z",
     cachedTokens: 5,
+    cacheCreationTokens: 0,
     deviceId: "device-1",
     hostname: "host-1",
     inputTokens: 10,
@@ -46,6 +47,7 @@ function makeSession(
   return {
     activeSeconds: 180,
     cachedTokens: 5,
+    cacheCreationTokens: 0,
     deviceId: "device-1",
     durationSeconds: 240,
     firstMessageAt: "2026-03-31T10:00:00.000Z",
@@ -56,6 +58,7 @@ function makeSession(
     modelUsages: [
       {
         cachedTokens: 5,
+        cacheCreationTokens: 0,
         inputTokens: 10,
         model: "gpt-5.4",
         outputTokens: 20,

@@ -37,6 +37,7 @@ export function aggregateToBuckets(entries: TokenUsageEntry[]): TokenBucket[] {
         outputTokens: 0,
         reasoningTokens: 0,
         cachedTokens: 0,
+        cacheCreationTokens: 0,
         totalTokens: 0,
       });
     }
@@ -47,11 +48,14 @@ export function aggregateToBuckets(entries: TokenUsageEntry[]): TokenBucket[] {
     b.outputTokens += e.outputTokens || 0;
     b.reasoningTokens += e.reasoningTokens || 0;
     b.cachedTokens += e.cachedTokens || 0;
+    b.cacheCreationTokens =
+      (b.cacheCreationTokens ?? 0) + (e.cacheCreationTokens ?? 0);
     b.totalTokens +=
       (e.inputTokens || 0) +
       (e.outputTokens || 0) +
       (e.reasoningTokens || 0) +
-      (e.cachedTokens || 0);
+      (e.cachedTokens || 0) +
+      (e.cacheCreationTokens ?? 0);
   }
 
   return Array.from(map.values());

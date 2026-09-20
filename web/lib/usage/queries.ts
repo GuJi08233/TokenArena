@@ -31,8 +31,23 @@ import type {
   UsageSessionRow,
 } from "./types";
 
-const MAX_BUCKET_ROWS = 10_000;
-const MAX_SESSION_ROWS = 5_000;
+const USAGE_READ_PAGE_SIZE = 1_000;
+
+async function loadUsagePages<T extends { id: string }>(
+  fetchPage: (cursor?: string) => Promise<T[]>,
+): Promise<T[]> {
+  const rows: T[] = [];
+  let cursor: string | undefined;
+  while (true) {
+    const page = await fetchPage(cursor);
+    rows.push(...page);
+    if (page.length < USAGE_READ_PAGE_SIZE) return rows;
+    const nextCursor = page.at(-1)?.id;
+    if (!nextCursor || nextCursor === cursor)
+      throw new Error("Usage pagination did not advance");
+    cursor = nextCursor;
+  }
+}
 const DASHBOARD_SESSION_PAGE_SIZE = 50;
 
 type UsageQueryInput = {
@@ -74,33 +89,38 @@ async function loadBuckets(input: {
   range: DashboardRange;
   filters: UsageFilters;
 }) {
-  const rows = await prisma.usageBucket.findMany({
-    where: applyBucketFilters(
-      {
-        userId: input.userId,
-        bucketStart: {
-          gte: input.range.from,
-          lte: input.range.to,
+  const rows = await loadUsagePages((cursor) =>
+    prisma.usageBucket.findMany({
+      where: applyBucketFilters(
+        {
+          userId: input.userId,
+          bucketStart: {
+            gte: input.range.from,
+            lte: input.range.to,
+          },
         },
+        input.filters,
+      ),
+      select: {
+        id: true,
+        deviceId: true,
+        source: true,
+        model: true,
+        projectKey: true,
+        projectLabel: true,
+        bucketStart: true,
+        totalTokens: true,
+        inputTokens: true,
+        outputTokens: true,
+        reasoningTokens: true,
+        cachedTokens: true,
+        cacheCreationTokens: true,
       },
-      input.filters,
-    ),
-    select: {
-      deviceId: true,
-      source: true,
-      model: true,
-      projectKey: true,
-      projectLabel: true,
-      bucketStart: true,
-      totalTokens: true,
-      inputTokens: true,
-      outputTokens: true,
-      reasoningTokens: true,
-      cachedTokens: true,
-    },
-    orderBy: { bucketStart: "asc" },
-    take: MAX_BUCKET_ROWS,
-  });
+      orderBy: { id: "asc" },
+      take: USAGE_READ_PAGE_SIZE,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+    }),
+  );
 
   return rows.map((bucket) => ({
     ...bucket,
@@ -109,6 +129,7 @@ async function loadBuckets(input: {
     outputTokens: tokenCountToNumber(bucket.outputTokens),
     reasoningTokens: tokenCountToNumber(bucket.reasoningTokens),
     cachedTokens: tokenCountToNumber(bucket.cachedTokens),
+    cacheCreationTokens: tokenCountToNumber(bucket.cacheCreationTokens),
   }));
 }
 
@@ -117,31 +138,35 @@ async function loadSessions(input: {
   range: DashboardRange;
   filters: UsageFilters;
 }) {
-  return prisma.usageSession.findMany({
-    where: applySessionFilters(
-      {
-        userId: input.userId,
-        firstMessageAt: {
-          gte: input.range.from,
-          lte: input.range.to,
+  return loadUsagePages((cursor) =>
+    prisma.usageSession.findMany({
+      where: applySessionFilters(
+        {
+          userId: input.userId,
+          firstMessageAt: {
+            gte: input.range.from,
+            lte: input.range.to,
+          },
         },
+        input.filters,
+      ),
+      select: {
+        id: true,
+        deviceId: true,
+        source: true,
+        projectKey: true,
+        projectLabel: true,
+        firstMessageAt: true,
+        durationSeconds: true,
+        activeSeconds: true,
+        messageCount: true,
+        userMessageCount: true,
       },
-      input.filters,
-    ),
-    select: {
-      deviceId: true,
-      source: true,
-      projectKey: true,
-      projectLabel: true,
-      firstMessageAt: true,
-      durationSeconds: true,
-      activeSeconds: true,
-      messageCount: true,
-      userMessageCount: true,
-    },
-    orderBy: { firstMessageAt: "asc" },
-    take: MAX_SESSION_ROWS,
-  });
+      orderBy: { id: "asc" },
+      take: USAGE_READ_PAGE_SIZE,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+    }),
+  );
 }
 
 async function loadRecentSessions(input: UsageQueryInput) {
@@ -173,6 +198,7 @@ async function loadRecentSessions(input: UsageQueryInput) {
       outputTokens: true,
       reasoningTokens: true,
       cachedTokens: true,
+      cacheCreationTokens: true,
       totalTokens: true,
       primaryModel: true,
       estimatedCostUsd: true,
@@ -193,6 +219,7 @@ function estimateBucketCostUsd(
     | "outputTokens"
     | "reasoningTokens"
     | "cachedTokens"
+    | "cacheCreationTokens"
   >,
   catalog: Awaited<ReturnType<typeof getPricingCatalog>>,
 ) {
@@ -203,6 +230,7 @@ function estimateBucketCostUsd(
       outputTokens: bucket.outputTokens,
       reasoningTokens: bucket.reasoningTokens,
       cachedTokens: bucket.cachedTokens,
+      cacheCreationTokens: bucket.cacheCreationTokens ?? 0,
     },
     match?.cost,
   );
@@ -217,6 +245,7 @@ function emptyTotals(): UsageMetricTotals {
     outputTokens: 0,
     reasoningTokens: 0,
     cachedTokens: 0,
+    cacheCreationTokens: 0,
     activeSeconds: 0,
     totalSeconds: 0,
     sessions: 0,
@@ -237,6 +266,7 @@ function summarizeTotals(input: {
     totals.outputTokens += bucket.outputTokens;
     totals.reasoningTokens += bucket.reasoningTokens;
     totals.cachedTokens += bucket.cachedTokens;
+    totals.cacheCreationTokens += bucket.cacheCreationTokens ?? 0;
   }
 
   totals.sessions = input.sessions.length;
@@ -280,6 +310,11 @@ function toOverview(
       current: current.cachedTokens,
       previous: previous.cachedTokens,
       delta: current.cachedTokens - previous.cachedTokens,
+    },
+    cacheCreationTokens: {
+      current: current.cacheCreationTokens,
+      previous: previous.cacheCreationTokens,
+      delta: current.cacheCreationTokens - previous.cacheCreationTokens,
     },
     activeSeconds: {
       current: current.activeSeconds,
@@ -376,6 +411,7 @@ function buildTokenTrend(
         outputTokens: 0,
         reasoningTokens: 0,
         cachedTokens: 0,
+        cacheCreationTokens: 0,
         estimatedCostUsd: 0,
         totalSeconds: 0,
       },
@@ -395,6 +431,7 @@ function buildTokenTrend(
     point.outputTokens += bucket.outputTokens;
     point.reasoningTokens += bucket.reasoningTokens;
     point.cachedTokens += bucket.cachedTokens;
+    point.cacheCreationTokens += bucket.cacheCreationTokens ?? 0;
     point.estimatedCostUsd += estimateBucketCostUsd(bucket, catalog);
   }
 
@@ -567,6 +604,7 @@ function ensureBreakdownRow(
     outputTokens: 0,
     reasoningTokens: 0,
     cachedTokens: 0,
+    cacheCreationTokens: 0,
     estimatedCostUsd: 0,
     activeSeconds: 0,
     totalSeconds: 0,
@@ -657,6 +695,7 @@ function buildBreakdowns(
       row.outputTokens += bucket.outputTokens;
       row.reasoningTokens += bucket.reasoningTokens;
       row.cachedTokens += bucket.cachedTokens;
+      row.cacheCreationTokens += bucket.cacheCreationTokens ?? 0;
       row.estimatedCostUsd += estimatedCostUsd;
     }
   }
@@ -706,6 +745,7 @@ function buildModelPricingRows(
       existing.outputTokens += bucket.outputTokens;
       existing.reasoningTokens += bucket.reasoningTokens;
       existing.cachedTokens += bucket.cachedTokens;
+      existing.cacheCreationTokens += bucket.cacheCreationTokens ?? 0;
       continue;
     }
 
@@ -719,16 +759,19 @@ function buildModelPricingRows(
       outputRateUsdPerMillion: null,
       reasoningRateUsdPerMillion: null,
       cacheRateUsdPerMillion: null,
+      cacheCreationRateUsdPerMillion: null,
       totalTokens: bucket.totalTokens,
       inputTokens: bucket.inputTokens,
       outputTokens: bucket.outputTokens,
       reasoningTokens: bucket.reasoningTokens,
       cachedTokens: bucket.cachedTokens,
+      cacheCreationTokens: bucket.cacheCreationTokens ?? 0,
       estimatedCostUsd: null,
       estimatedInputUsd: null,
       estimatedOutputUsd: null,
       estimatedReasoningUsd: null,
       estimatedCacheUsd: null,
+      estimatedCacheCreationUsd: null,
     });
   }
 
@@ -751,6 +794,7 @@ function buildModelPricingRows(
         outputTokens: row.outputTokens,
         reasoningTokens: row.reasoningTokens,
         cachedTokens: row.cachedTokens,
+        cacheCreationTokens: row.cacheCreationTokens ?? 0,
       },
       match.cost,
     );
@@ -763,11 +807,14 @@ function buildModelPricingRows(
     row.outputRateUsdPerMillion = match.cost?.output ?? null;
     row.reasoningRateUsdPerMillion = match.cost?.reasoning ?? null;
     row.cacheRateUsdPerMillion = match.cost?.cache_read ?? null;
+    row.cacheCreationRateUsdPerMillion =
+      match.cost?.cache_write ?? match.cost?.input ?? null;
     row.estimatedCostUsd = estimate?.totalUsd ?? null;
     row.estimatedInputUsd = estimate?.inputUsd ?? null;
     row.estimatedOutputUsd = estimate?.outputUsd ?? null;
     row.estimatedReasoningUsd = estimate?.reasoningUsd ?? null;
     row.estimatedCacheUsd = estimate?.cacheUsd ?? null;
+    row.estimatedCacheCreationUsd = estimate?.cacheCreationUsd ?? null;
   }
 
   return rows.sort((left, right) => {
@@ -858,6 +905,7 @@ function mapSessionRows(
     outputTokens: tokenCountToNumber(session.outputTokens),
     reasoningTokens: tokenCountToNumber(session.reasoningTokens),
     cachedTokens: tokenCountToNumber(session.cachedTokens),
+    cacheCreationTokens: tokenCountToNumber(session.cacheCreationTokens),
     primaryModel: session.primaryModel,
   }));
 }

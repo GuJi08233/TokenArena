@@ -212,7 +212,8 @@
       "allDevices": "All devices",
       "allTools": "All tools",
       "allModels": "All models",
-      "allProjects": "All projects"
+      "allProjects": "All projects",
+      "today": "Today"
     },
     "kpis": {
       "estimatedCost": "Est. Cost",
@@ -222,7 +223,7 @@
       "reasoningTokens": "Reasoning Tokens",
       "reasoningIncluded": "{value} reasoning",
       "reasoningSuffix": " reasoning",
-      "cachedTokens": "Cached Tokens",
+      "cachedTokens": "Cache Read Tokens",
       "activeTime": "Active Time",
       "totalTime": "Total Time",
       "sessions": "Sessions",
@@ -242,7 +243,10 @@
           "summary": "Total time sums each session from its first message to its last message.",
           "details": "Idle time inside a session is included, but gaps between separate sessions are not."
         }
-      }
+      },
+      "cacheTokens": "Cache Tokens",
+      "cacheCreationTokens": "Cache Write Tokens",
+      "cacheCreationSuffix": " cache write"
     },
     "trend": {
       "title": "Daily Trend",
@@ -257,13 +261,14 @@
         "totalTime": "Time"
       },
       "total": "Total",
-      "cache": "Cache",
+      "cache": "Cache read",
       "input": "Input",
       "output": "Output",
       "reasoning": "Reasoning",
       "cost": "Est. Cost",
       "totalTime": "Total Time",
-      "emptyCost": "No priced usage in this range."
+      "emptyCost": "No priced usage in this range.",
+      "cacheCreation": "Cache write"
     },
     "hourlyHeatmap": {
       "title": "Hourly Activity",
@@ -313,7 +318,8 @@
         "input": "Input",
         "output": "Output",
         "reasoning": "Reasoning",
-        "cache": "Cache"
+        "cache": "Cache read",
+        "cacheCreation": "Cache write"
       }
     },
     "breakdowns": {
@@ -360,7 +366,8 @@
         "messages": "Messages",
         "userMessages": "User Messages",
         "share": "Share",
-        "reasoning": "Reasoning {value}"
+        "reasoning": "Reasoning {value}",
+        "cacheCreation": "Cache write"
       }
     },
     "sessions": {
@@ -379,7 +386,8 @@
         "input": "Input",
         "output": "Output",
         "reasoning": "Reasoning",
-        "cache": "Cache"
+        "cache": "Cache",
+        "cacheCreation": "Cache write"
       },
       "pagination": {
         "prev": "Previous",
@@ -506,7 +514,8 @@
           "input": "Input",
           "output": "Output",
           "reasoning": "Reasoning",
-          "cache": "Cache"
+          "cache": "Cache",
+          "cacheCreation": "Cache write"
         }
       },
       "captions": {

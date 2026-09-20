@@ -87,6 +87,7 @@ export type UsageShareCardData = {
     outputShare: number;
     reasoningShare: number;
     cacheShare: number;
+    cacheCreationShare: number;
   };
   leaders: {
     model: UsageShareCardLeader;
@@ -283,6 +284,10 @@ export function buildUsageShareCardData(input: {
     input.overview.cachedTokens.current,
     totalTokens,
   );
+  const cacheCreationShare = safeRatio(
+    input.overview.cacheCreationTokens.current,
+    totalTokens,
+  );
   const topProject = getLeader(input.breakdowns.projects);
   const topModel = getLeader(input.breakdowns.models);
   const topTool = getLeader(input.breakdowns.tools);
@@ -330,6 +335,7 @@ export function buildUsageShareCardData(input: {
       outputShare,
       reasoningShare,
       cacheShare,
+      cacheCreationShare,
     },
     leaders: {
       model: topModel,

@@ -29,6 +29,7 @@ function createOverview(
     outputTokens: base,
     reasoningTokens: base,
     cachedTokens: base,
+    cacheCreationTokens: base,
     activeSeconds: base,
     totalSeconds: base,
     sessions: base,
@@ -59,12 +60,44 @@ function createTrend(count: number): TokenTrendPoint[] {
     outputTokens: 20,
     reasoningTokens: 10,
     cachedTokens: 10,
+    cacheCreationTokens: 0,
     estimatedCostUsd: 0.1,
     totalSeconds: 60,
   }));
 }
 
 describe("buildUsageShareCardData", () => {
+  it("includes cache writes in the composition so its shares sum to one", () => {
+    const metric = (current: number) => ({
+      current,
+      previous: 0,
+      delta: current,
+    });
+    const data = buildUsageShareCardData({
+      username: "cache-test",
+      range: {
+        preset: "1d",
+        granularity: "hour",
+        timezone: "UTC",
+        from: new Date("2026-09-21T00:00:00Z"),
+        to: new Date("2026-09-21T12:00:00Z"),
+      },
+      filters: {},
+      overview: createOverview({
+        totalTokens: metric(380),
+        inputTokens: metric(100),
+        outputTokens: metric(50),
+        cachedTokens: metric(200),
+        cacheCreationTokens: metric(30),
+      }),
+      breakdowns: createBreakdowns(),
+      tokenTrend: [],
+    });
+    expect(data.composition.cacheCreationShare).toBeCloseTo(30 / 380);
+    expect(
+      Object.values(data.composition).reduce((sum, share) => sum + share, 0),
+    ).toBeCloseTo(1);
+  });
   it("includes the receipt share template", () => {
     expect(usageShareCardTemplates).toContain("receipt");
   });
@@ -90,6 +123,7 @@ describe("buildUsageShareCardData", () => {
           delta: 200_000,
         },
         cachedTokens: { current: 150_000, previous: 100_000, delta: 50_000 },
+        cacheCreationTokens: { current: 0, previous: 0, delta: 0 },
         activeSeconds: { current: 20_000, previous: 10_000, delta: 10_000 },
         totalSeconds: { current: 25_000, previous: 12_000, delta: 13_000 },
         sessions: { current: 6, previous: 4, delta: 2 },
@@ -115,6 +149,7 @@ describe("buildUsageShareCardData", () => {
             outputTokens: 0,
             reasoningTokens: 0,
             cachedTokens: 0,
+            cacheCreationTokens: 0,
             estimatedCostUsd: 0,
             activeSeconds: 0,
             totalSeconds: 0,
@@ -153,6 +188,7 @@ describe("buildUsageShareCardData", () => {
         outputTokens: { current: 300_000, previous: 250_000, delta: 50_000 },
         reasoningTokens: { current: 80_000, previous: 70_000, delta: 10_000 },
         cachedTokens: { current: 120_000, previous: 130_000, delta: -10_000 },
+        cacheCreationTokens: { current: 0, previous: 0, delta: 0 },
         activeSeconds: { current: 30_000, previous: 28_000, delta: 2_000 },
         totalSeconds: { current: 36_000, previous: 34_000, delta: 2_000 },
         sessions: { current: 8, previous: 7, delta: 1 },
@@ -169,6 +205,7 @@ describe("buildUsageShareCardData", () => {
             outputTokens: 0,
             reasoningTokens: 0,
             cachedTokens: 0,
+            cacheCreationTokens: 0,
             estimatedCostUsd: 0,
             activeSeconds: 0,
             totalSeconds: 0,
@@ -185,6 +222,7 @@ describe("buildUsageShareCardData", () => {
             outputTokens: 0,
             reasoningTokens: 0,
             cachedTokens: 0,
+            cacheCreationTokens: 0,
             estimatedCostUsd: 0,
             activeSeconds: 0,
             totalSeconds: 0,
@@ -201,6 +239,7 @@ describe("buildUsageShareCardData", () => {
             outputTokens: 0,
             reasoningTokens: 0,
             cachedTokens: 0,
+            cacheCreationTokens: 0,
             estimatedCostUsd: 0,
             activeSeconds: 0,
             totalSeconds: 0,
@@ -244,6 +283,7 @@ describe("buildUsageShareCardData", () => {
         outputTokens: { current: 300_000, previous: 240_000, delta: 60_000 },
         reasoningTokens: { current: 100_000, previous: 80_000, delta: 20_000 },
         cachedTokens: { current: 200_000, previous: 160_000, delta: 40_000 },
+        cacheCreationTokens: { current: 0, previous: 0, delta: 0 },
         activeSeconds: { current: 10_000, previous: 8_000, delta: 2_000 },
         totalSeconds: { current: 15_000, previous: 12_000, delta: 3_000 },
         sessions: { current: 5, previous: 4, delta: 1 },
@@ -259,6 +299,7 @@ describe("buildUsageShareCardData", () => {
             outputTokens: 0,
             reasoningTokens: 0,
             cachedTokens: 0,
+            cacheCreationTokens: 0,
             estimatedCostUsd: 0,
             activeSeconds: 0,
             totalSeconds: 0,
@@ -296,6 +337,7 @@ describe("buildUsageShareCardData", () => {
         outputTokens: { current: 400_000, previous: 360_000, delta: 40_000 },
         reasoningTokens: { current: 50_000, previous: 40_000, delta: 10_000 },
         cachedTokens: { current: 50_000, previous: 50_000, delta: 0 },
+        cacheCreationTokens: { current: 0, previous: 0, delta: 0 },
         activeSeconds: { current: 12_000, previous: 10_000, delta: 2_000 },
         totalSeconds: { current: 18_000, previous: 15_000, delta: 3_000 },
         sessions: { current: 4, previous: 3, delta: 1 },
@@ -311,6 +353,7 @@ describe("buildUsageShareCardData", () => {
             outputTokens: 0,
             reasoningTokens: 0,
             cachedTokens: 0,
+            cacheCreationTokens: 0,
             estimatedCostUsd: 0,
             activeSeconds: 0,
             totalSeconds: 0,
@@ -349,6 +392,7 @@ describe("buildUsageShareCardData", () => {
         outputTokens: { current: 400_000, previous: 360_000, delta: 40_000 },
         reasoningTokens: { current: 50_000, previous: 40_000, delta: 10_000 },
         cachedTokens: { current: 50_000, previous: 50_000, delta: 0 },
+        cacheCreationTokens: { current: 0, previous: 0, delta: 0 },
         activeSeconds: { current: 5_000, previous: 4_000, delta: 1_000 },
         totalSeconds: { current: 8_000, previous: 7_000, delta: 1_000 },
         sessions: { current: 12, previous: 10, delta: 2 },
@@ -364,6 +408,7 @@ describe("buildUsageShareCardData", () => {
             outputTokens: 0,
             reasoningTokens: 0,
             cachedTokens: 0,
+            cacheCreationTokens: 0,
             estimatedCostUsd: 0,
             activeSeconds: 0,
             totalSeconds: 0,
@@ -401,6 +446,7 @@ describe("buildUsageShareCardData", () => {
         outputTokens: { current: 150_000, previous: 120_000, delta: 30_000 },
         reasoningTokens: { current: 50_000, previous: 40_000, delta: 10_000 },
         cachedTokens: { current: 50_000, previous: 40_000, delta: 10_000 },
+        cacheCreationTokens: { current: 0, previous: 0, delta: 0 },
         activeSeconds: { current: 7200, previous: 5000, delta: 2200 },
         totalSeconds: { current: 10_000, previous: 8_000, delta: 2_000 },
         sessions: { current: 3, previous: 2, delta: 1 },
@@ -416,6 +462,7 @@ describe("buildUsageShareCardData", () => {
             outputTokens: 0,
             reasoningTokens: 0,
             cachedTokens: 0,
+            cacheCreationTokens: 0,
             estimatedCostUsd: 0,
             activeSeconds: 0,
             totalSeconds: 0,

@@ -1,4 +1,5 @@
-import { existsSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { aggregateToBuckets } from "../domain/aggregator";
@@ -28,6 +29,9 @@ interface PiUsage {
   cacheRead?: number;
   cacheReadTokens?: number;
   cache_read?: number;
+  cacheWrite?: number;
+  cacheWriteTokens?: number;
+  cache_write?: number;
   reasoningOutputTokens?: number;
   thinkingTokens?: number;
   thoughts?: number;
@@ -36,12 +40,23 @@ interface PiUsage {
 interface PiEvent {
   type?: string;
   id?: string;
-  timestamp?: string;
+  timestamp?: string | number;
   cwd?: string;
+  usage?: PiUsage;
+  summary?: unknown;
   message?: {
     role?: string;
-    timestamp?: string;
+    timestamp?: string | number;
     model?: string;
+    responseModel?: string;
+    provider?: string;
+    responseId?: string;
+    api?: string;
+    toolCallId?: string;
+    toolName?: string;
+    stopReason?: string;
+    errorMessage?: string;
+    content?: unknown;
     usage?: PiUsage;
   };
 }
@@ -56,7 +71,9 @@ function createToolDefinition(dataDir: string): ToolDefinition {
 
 function toSafeNumber(value: unknown): number {
   const numberValue = Number(value);
-  return Number.isFinite(numberValue) ? numberValue : 0;
+  return Number.isFinite(numberValue) && numberValue >= 0
+    ? Math.trunc(numberValue)
+    : 0;
 }
 
 function getPathLeaf(value: string): string {
@@ -72,13 +89,63 @@ function normalizeForPrefix(value: string): string {
 function getUsageNumber(usage: PiUsage, ...keys: Array<keyof PiUsage>): number {
   for (const key of keys) {
     const value = usage[key];
-    const numberValue = toSafeNumber(value);
-    if (numberValue > 0) {
-      return numberValue;
+    if (value !== undefined && value !== null) {
+      return toSafeNumber(value);
     }
   }
 
   return 0;
+}
+
+function parseTimestamp(value: string | number | undefined): Date | null {
+  if (value === undefined) return null;
+  const timestamp = new Date(
+    typeof value === "number" && Math.abs(value) <= 100_000_000_000
+      ? value * 1000
+      : value,
+  );
+  return Number.isNaN(timestamp.getTime()) ? null : timestamp;
+}
+
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.entries(value)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, item]) => `${JSON.stringify(key)}:${canonicalJson(item)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+}
+
+function usageIdentity(row: PiEvent, kind: string, usage: PiUsage) {
+  const message = row.message;
+  const semantic = createHash("sha256")
+    .update(
+      canonicalJson({
+        kind,
+        timestamp: row.timestamp,
+        messageTimestamp: message?.timestamp,
+        provider: message?.provider,
+        model: message?.model,
+        responseModel: message?.responseModel,
+        responseId: message?.responseId,
+        api: message?.api,
+        toolCallId: message?.toolCallId,
+        toolName: message?.toolName,
+        stopReason: message?.stopReason,
+        errorMessage: message?.errorMessage,
+        content: message?.content,
+        summary: row.summary,
+        usage,
+      }),
+    )
+    .digest("hex");
+  return {
+    semantic,
+    request: row.id ? JSON.stringify([kind, row.id, row.timestamp]) : semantic,
+    hasId: Boolean(row.id),
+  };
 }
 
 export function extractPiProjectFromCwd(cwd: string): string {
@@ -131,7 +198,9 @@ export class PiCodingAgentParser implements IParser {
 
     const entries: TokenUsageEntry[] = [];
     const sessionEvents: SessionEvent[] = [];
-    const seenEntryIds = new Set<string>();
+    const seenRequests = new Set<string>();
+    const seenSemantics = new Set<string>();
+    const legacySemantics = new Set<string>();
 
     for (const filePath of sessionFiles) {
       const content = readFileSafe(filePath);
@@ -142,8 +211,10 @@ export class PiCodingAgentParser implements IParser {
 
       let sessionId = filePath;
       let project = extractPiProjectFromDir(filePath, this.sessionsDir);
+      let sessionTimestamp: Date | null = null;
 
       for (const row of rows) {
+        if (!row || typeof row !== "object") continue;
         if (row.type !== "session") continue;
         if (row.id) {
           sessionId = row.id;
@@ -151,75 +222,135 @@ export class PiCodingAgentParser implements IParser {
         if (row.cwd) {
           project = extractPiProjectFromCwd(row.cwd);
         }
+        sessionTimestamp = parseTimestamp(row.timestamp);
         break;
       }
 
+      let fallbackTimestamp = sessionTimestamp;
+      if (!fallbackTimestamp) {
+        try {
+          fallbackTimestamp = statSync(filePath).mtime;
+        } catch {
+          // 扫描途中被删除的文件只能使用行内时间，不能伪造当前时间。
+        }
+      }
       for (const row of rows) {
-        if (row.type !== "message") continue;
-
+        if (!row || typeof row !== "object") continue;
         const message = row.message;
-        if (!message) continue;
-
-        const rawTimestamp = row.timestamp || message.timestamp;
-        if (!rawTimestamp) continue;
-
-        const timestamp = new Date(rawTimestamp);
-        if (Number.isNaN(timestamp.getTime())) continue;
-
-        if (message.role === "user" || message.role === "assistant") {
+        const timestamp =
+          parseTimestamp(row.timestamp) ??
+          parseTimestamp(message?.timestamp) ??
+          fallbackTimestamp;
+        if (!timestamp) continue;
+        if (row.type === "message" && message?.role === "user") {
           sessionEvents.push({
             sessionId,
             source: TOOL_ID,
             project,
             timestamp,
-            role: message.role,
+            role: "user",
           });
+          continue;
+        }
+        const kind = row.type === "message" ? message?.role : row.type;
+        if (
+          kind !== "assistant" &&
+          kind !== "toolResult" &&
+          kind !== "compaction" &&
+          kind !== "branch_summary"
+        )
+          continue;
+        const usage = row.type === "message" ? message?.usage : row.usage;
+        if (!usage) {
+          if (kind === "assistant")
+            sessionEvents.push({
+              sessionId,
+              source: TOOL_ID,
+              project,
+              timestamp,
+              role: "assistant",
+            });
+          continue;
         }
 
-        if (message.role !== "assistant") continue;
-
-        const usage = message.usage;
-        if (!usage) continue;
-
         const inputTokens = getUsageNumber(usage, "input", "inputTokens");
-        const outputTokens = getUsageNumber(usage, "output", "outputTokens");
+        const rawOutput = getUsageNumber(usage, "output", "outputTokens");
         const cachedTokens = getUsageNumber(
           usage,
           "cacheRead",
           "cacheReadTokens",
           "cache_read",
         );
-        const reasoningTokens = getUsageNumber(
+        const cacheCreationTokens = getUsageNumber(
           usage,
-          "reasoningOutputTokens",
-          "thinkingTokens",
-          "thoughts",
+          "cacheWrite",
+          "cacheWriteTokens",
+          "cache_write",
         );
+        const reasoningTokens = Math.min(
+          rawOutput,
+          getUsageNumber(
+            usage,
+            "reasoningOutputTokens",
+            "thinkingTokens",
+            "thoughts",
+          ),
+        );
+        const outputTokens = rawOutput - reasoningTokens;
 
         if (
           inputTokens === 0 &&
           outputTokens === 0 &&
           cachedTokens === 0 &&
+          cacheCreationTokens === 0 &&
           reasoningTokens === 0
         ) {
+          if (kind === "assistant")
+            sessionEvents.push({
+              sessionId,
+              source: TOOL_ID,
+              project,
+              timestamp,
+              role: "assistant",
+            });
           continue;
         }
 
-        if (row.id) {
-          if (seenEntryIds.has(row.id)) continue;
-          seenEntryIds.add(row.id);
-        }
+        // 分叉会话会复制 entry；仅按裸 ID 会误丢同 ID 不同时间的真实请求。
+        // 无 ID 的旧格式用语义指纹去重，有不同稳定 ID 的相同用量保留两笔。
+        const identity = usageIdentity(row, kind, usage);
+        if (
+          seenRequests.has(identity.request) ||
+          (identity.hasId ? legacySemantics : seenSemantics).has(
+            identity.semantic,
+          )
+        )
+          continue;
+        seenRequests.add(identity.request);
+        seenSemantics.add(identity.semantic);
+        if (!identity.hasId) legacySemantics.add(identity.semantic);
+        sessionEvents.push({
+          sessionId,
+          source: TOOL_ID,
+          project,
+          timestamp,
+          role: "assistant",
+        });
 
         entries.push({
           sessionId,
           source: TOOL_ID,
-          model: message.model || "unknown",
+          model:
+            kind === "assistant"
+              ? message?.responseModel || message?.model || "unknown"
+              : "unknown",
           project,
           timestamp,
           inputTokens,
           outputTokens,
           reasoningTokens,
           cachedTokens,
+          cacheCreationTokens,
         });
       }
     }

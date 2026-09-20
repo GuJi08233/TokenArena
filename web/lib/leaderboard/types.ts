@@ -23,6 +23,7 @@ export type LeaderboardEntry = {
   outputTokens: number;
   reasoningTokens: number;
   cachedTokens: number;
+  cacheCreationTokens: number;
   activeSeconds: number;
   sessions: number;
   followerCount: number;

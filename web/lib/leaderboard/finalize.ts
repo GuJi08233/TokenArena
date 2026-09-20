@@ -13,6 +13,7 @@ export type RankedLeaderboardEntry = {
   outputTokens: number;
   reasoningTokens: number;
   cachedTokens: number;
+  cacheCreationTokens: number;
   totalTokens: number;
   activeSeconds: number;
   sessions: number;
@@ -138,6 +139,7 @@ export async function finalizePendingLeaderboardPeriods(now = new Date()) {
           outputTokens: true,
           reasoningTokens: true,
           cachedTokens: true,
+          cacheCreationTokens: true,
           totalTokens: true,
           activeSeconds: true,
           sessions: true,
@@ -166,6 +168,9 @@ export async function finalizePendingLeaderboardPeriods(now = new Date()) {
               outputTokens: tokenCountToNumber(row._sum.outputTokens),
               reasoningTokens: tokenCountToNumber(row._sum.reasoningTokens),
               cachedTokens: tokenCountToNumber(row._sum.cachedTokens),
+              cacheCreationTokens: tokenCountToNumber(
+                row._sum.cacheCreationTokens,
+              ),
               totalTokens,
               activeSeconds: row._sum.activeSeconds ?? 0,
               sessions: row._sum.sessions ?? 0,
@@ -221,6 +226,9 @@ export async function finalizePendingLeaderboardPeriods(now = new Date()) {
               outputTokens: tokenCountToBigInt(entry.outputTokens),
               reasoningTokens: tokenCountToBigInt(entry.reasoningTokens),
               cachedTokens: tokenCountToBigInt(entry.cachedTokens),
+              cacheCreationTokens: tokenCountToBigInt(
+                entry.cacheCreationTokens,
+              ),
               totalTokens: tokenCountToBigInt(entry.totalTokens),
               activeSeconds: entry.activeSeconds,
               sessions: entry.sessions,

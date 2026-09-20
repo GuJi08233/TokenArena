@@ -49,7 +49,7 @@ describe("KimiCodeParser", () => {
             inputOther: 2000,
             output: 500,
             inputCacheRead: 15000,
-            inputCacheCreation: 0,
+            inputCacheCreation: 120,
           },
           usageScope: "turn",
           time: 1784233181220,
@@ -73,7 +73,8 @@ describe("KimiCodeParser", () => {
       outputTokens: 500,
       reasoningTokens: 0,
       cachedTokens: 15000,
-      totalTokens: 17500,
+      cacheCreationTokens: 120,
+      totalTokens: 17620,
     });
 
     expect(result.sessions).toHaveLength(1);
@@ -86,7 +87,8 @@ describe("KimiCodeParser", () => {
       outputTokens: 500,
       reasoningTokens: 0,
       cachedTokens: 15000,
-      totalTokens: 17500,
+      cacheCreationTokens: 120,
+      totalTokens: 17620,
       primaryModel: "moonshot-cn/kimi-k3",
     });
   });
@@ -126,6 +128,7 @@ describe("KimiCodeParser", () => {
               input_other: 90,
               output: 40,
               input_cache_read: 10,
+              input_cache_creation: 20,
             },
           },
         }),
@@ -148,7 +151,8 @@ describe("KimiCodeParser", () => {
       outputTokens: 40,
       reasoningTokens: 0,
       cachedTokens: 10,
-      totalTokens: 140,
+      cacheCreationTokens: 20,
+      totalTokens: 160,
     });
 
     expect(result.sessions).toHaveLength(1);
@@ -162,7 +166,8 @@ describe("KimiCodeParser", () => {
       outputTokens: 40,
       reasoningTokens: 0,
       cachedTokens: 10,
-      totalTokens: 140,
+      cacheCreationTokens: 20,
+      totalTokens: 160,
       primaryModel: "kimi-k2.5",
     });
   });

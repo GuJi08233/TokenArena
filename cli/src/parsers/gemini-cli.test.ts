@@ -54,6 +54,22 @@ function addFile(path: string, content: string) {
   fileContents.set(path, content);
 }
 
+function addSessions(records: unknown[]) {
+  const projectDir = join(DATA_DIR, "fixtures");
+  const chatsDir = join(projectDir, "chats");
+  addDir(DATA_DIR, [{ name: "fixtures", isDirectory: () => true }]);
+  addDir(
+    chatsDir,
+    records.map((_, i) => ({
+      name: `session-${i}.json`,
+      isDirectory: () => false,
+    })),
+  );
+  records.forEach((record, i) => {
+    addFile(join(chatsDir, `session-${i}.json`), JSON.stringify(record));
+  });
+}
+
 async function getParser() {
   await import("./gemini-cli");
   const { getParser: lookup } = await import("./registry");
@@ -71,6 +87,164 @@ describe("GeminiCliParser", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it("preserves native output when thoughts exceed candidate output", async () => {
+    addSessions([
+      {
+        sessionId: "native",
+        messages: [
+          {
+            id: "g1",
+            type: "gemini",
+            timestamp: "2026-01-01T00:00:00Z",
+            tokens: { input: 8522, output: 29, cached: 3138, thoughts: 405 },
+          },
+        ],
+      },
+    ]);
+    const result = await (await getParser()).parse();
+    expect(result.buckets[0]).toMatchObject({
+      inputTokens: 5384,
+      outputTokens: 29,
+      reasoningTokens: 405,
+      cachedTokens: 3138,
+      totalTokens: 8956,
+    });
+  });
+
+  it.each([
+    false,
+    true,
+  ])("selects the newest copied snapshot regardless of file order (reverse=%s)", async (reverse) => {
+    const newer = {
+      sessionId: "copied",
+      messages: [
+        {
+          id: "msg",
+          type: "gemini",
+          timestamp: "2026-01-01T00:00:02Z",
+          tokens: { input: 100 },
+        },
+      ],
+    };
+    const older = {
+      sessionId: "copied",
+      messages: [
+        {
+          id: "msg",
+          type: "gemini",
+          timestamp: "2026-01-01T00:00:01Z",
+          tokens: { input: 10 },
+        },
+      ],
+    };
+    addSessions(reverse ? [older, newer] : [newer, older]);
+    const result = await (await getParser()).parse();
+    expect(result.buckets[0]).toMatchObject({
+      inputTokens: 100,
+      totalTokens: 100,
+    });
+    expect(result.sessions[0].firstMessageAt).toBe("2026-01-01T00:00:02.000Z");
+  });
+
+  it("keeps complete usage when equal-time or empty copies follow it", async () => {
+    const message = {
+      id: "msg",
+      type: "gemini",
+      timestamp: "2026-01-01T00:00:01Z",
+      tokens: { input: 100, output: 20, thoughts: 5 },
+    };
+    addSessions([
+      { sessionId: "copied", messages: [message] },
+      {
+        sessionId: "copied",
+        messages: [
+          { ...message, tokens: { input: 10 } },
+          { ...message, timestamp: "2026-01-01T00:00:02Z", tokens: {} },
+        ],
+      },
+    ]);
+    const result = await (await getParser()).parse();
+    expect(result.buckets[0]).toMatchObject({
+      inputTokens: 100,
+      outputTokens: 20,
+      reasoningTokens: 5,
+      totalTokens: 125,
+    });
+  });
+
+  it("retains cache-only usage and excludes usage attached to user messages", async () => {
+    addSessions([
+      {
+        messages: [
+          {
+            type: "user",
+            timestamp: "2026-01-01T00:00:00Z",
+            tokens: { input: 999 },
+          },
+          {
+            type: "gemini",
+            timestamp: "2026-01-01T00:00:01Z",
+            tokens: { input: 0, output: 0, cached: 5000 },
+          },
+        ],
+      },
+    ]);
+    const result = await (await getParser()).parse();
+    expect(result.buckets[0]).toMatchObject({
+      inputTokens: 0,
+      cachedTokens: 5000,
+      totalTokens: 5000,
+    });
+  });
+
+  it("deduplicates copied session messages while retaining distinct identical turns", async () => {
+    const message = {
+      id: "g1",
+      type: "gemini",
+      timestamp: "2026-01-01T00:00:00Z",
+      tokens: { input: 10, output: 5, thoughts: 2 },
+    };
+    addSessions([
+      { sessionId: "same", messages: [message] },
+      { sessionId: "same", messages: [message, { ...message, id: "g2" }] },
+    ]);
+    const result = await (await getParser()).parse();
+    expect(result.buckets[0]).toMatchObject({
+      inputTokens: 20,
+      outputTokens: 10,
+      reasoningTokens: 4,
+      totalTokens: 34,
+    });
+    expect(result.sessions[0].messageCount).toBe(2);
+  });
+
+  it("uses totalTokenCount when candidate usage is absent without counting thoughts twice", async () => {
+    addSessions([
+      {
+        messages: [
+          {
+            type: "gemini",
+            timestamp: "2026-01-01T00:00:00Z",
+            usageMetadata: {
+              promptTokenCount: 100,
+              totalTokenCount: 160,
+              thoughtsTokenCount: 40,
+              cachedContentTokenCount: 20,
+            },
+          },
+        ],
+      },
+    ]);
+    const result = await (await getParser()).parse();
+    expect(result.buckets[0]).toMatchObject({
+      inputTokens: 80,
+      outputTokens: 20,
+      reasoningTokens: 40,
+      cachedTokens: 20,
+      totalTokens: 160,
+    });
   });
 
   it("returns empty when no data dir", async () => {
@@ -117,7 +291,7 @@ describe("GeminiCliParser", () => {
       model: "gemini-pro",
       project: "unknown",
       inputTokens: 90, // 100 - 10 cached
-      outputTokens: 45, // 50 - 5 thoughts
+      outputTokens: 50,
       reasoningTokens: 5,
       cachedTokens: 10,
     });
@@ -165,7 +339,7 @@ describe("GeminiCliParser", () => {
       model: "gemini-2.5-flash",
       project: "unknown",
       inputTokens: 180, // 200 - 20 cached
-      outputTokens: 70, // 80 - 10 thoughts
+      outputTokens: 80,
       reasoningTokens: 10,
       cachedTokens: 20,
     });
@@ -300,7 +474,7 @@ describe("GeminiCliParser", () => {
       model: "gemini-2.5-pro",
       project: "MyProject",
       inputTokens: 105, // 120 - 15 cached
-      outputTokens: 52, // 60 - 8 thoughts
+      outputTokens: 60,
       reasoningTokens: 8,
       cachedTokens: 15,
     });

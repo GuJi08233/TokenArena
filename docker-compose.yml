@@ -1,3 +1,5 @@
+# CLI 采集在宿主机运行：MiniMax Code 支持 MINIMAX_DATA_DIR / MAVIS_DATA_DIR。
+# 这两个本地目录变量无需注入 Web 容器；详见 .env.example 和 README。
 services:
   migrate:
     image: ghcr.io/guji08233/tokenarena:migrate

@@ -150,7 +150,8 @@ describe("RooCodeParser", () => {
       source: "roo-code",
       model: "claude-3",
       project: "my-app",
-      inputTokens: 110, // tokensIn(100) + cacheWrites(10)
+      inputTokens: 100,
+      cacheCreationTokens: 10,
       outputTokens: 50,
       cachedTokens: 5,
     });
@@ -206,7 +207,8 @@ describe("RooCodeParser", () => {
       source: "roo-code",
       model: "gpt-4o",
       project: "fallback-proj",
-      inputTokens: 220, // 200 + 20
+      inputTokens: 200,
+      cacheCreationTokens: 20,
       outputTokens: 100,
       cachedTokens: 10,
     });
@@ -282,9 +284,13 @@ describe("RooCodeParser", () => {
     const totalOutput = result.buckets.reduce((s, b) => s + b.outputTokens, 0);
     const totalCached = result.buckets.reduce((s, b) => s + b.cachedTokens, 0);
 
-    // First: inputTokens=500+50=550, outputTokens=250, cachedTokens=25
-    // Fourth: inputTokens=100+0=100, outputTokens=80, cachedTokens=0
-    expect(totalInput).toBe(650);
+    expect(totalInput).toBe(600);
+    expect(
+      result.buckets.reduce(
+        (sum, bucket) => sum + (bucket.cacheCreationTokens ?? 0),
+        0,
+      ),
+    ).toBe(50);
     expect(totalOutput).toBe(330);
     expect(totalCached).toBe(25);
   });
