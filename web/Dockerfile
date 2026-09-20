@@ -58,7 +58,7 @@ COPY --from=builder /app/web/prisma.config.ts ./web/prisma.config.ts
 WORKDIR /app/web
 CMD ["npx", "prisma", "migrate", "deploy"]
 
-# Stage 4: Production runner (minimal, standalone only)
+# Stage 4: Production runner
 FROM node:22-alpine AS runner
 WORKDIR /app
 
@@ -72,11 +72,24 @@ ENV NODE_OPTIONS="--max-old-space-size=512"
 RUN addgroup --system --gid 1001 nodejs \
     && adduser --system --uid 1001 nextjs
 
+# Keep the Prisma CLI and migration files in the web image as a startup
+# safety net. The compose migrate service remains useful for deployments that
+# run migrations separately, while this also covers direct image upgrades and
+# stale one-shot migrate containers.
+COPY --from=deps --chown=nextjs:nodejs /app/node_modules ./node_modules
+COPY --from=deps --chown=nextjs:nodejs /app/web/node_modules ./web/node_modules
+COPY --from=builder --chown=nextjs:nodejs /app/web/package.json ./web/package.json
+COPY --from=builder --chown=nextjs:nodejs /app/web/prisma ./web/prisma
+COPY --from=builder --chown=nextjs:nodejs /app/web/prisma.config.ts ./web/prisma.config.ts
+
 # Copy standalone server output (includes minimal node_modules)
 COPY --from=builder --chown=nextjs:nodejs /app/web/.next/standalone ./
 # Next serves static assets relative to /app/web/server.js inside standalone
 COPY --from=builder --chown=nextjs:nodejs /app/web/.next/static ./web/.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/web/public ./web/public
+
+COPY --chown=nextjs:nodejs web/docker-entrypoint.sh ./docker-entrypoint.sh
+RUN chmod +x ./docker-entrypoint.sh
 
 USER nextjs
 
@@ -85,4 +98,4 @@ EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-CMD ["node", "web/server.js"]
+CMD ["./docker-entrypoint.sh"]

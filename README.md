@@ -126,6 +126,11 @@ Docker Compose 启动时，根目录 `.env` 里的 `DATABASE_URL` 应使用 `db`
 DATABASE_URL=postgresql://postgres:postgres@db:5432/tokens_burned
 ```
 
+Web 容器启动前会执行 `prisma migrate deploy`，迁移失败时不会启动应用；这同时覆盖
+直接更新 Web 镜像和旧的已完成 migrate 容器。Compose 中的 migrate 服务仍会先执行一次，
+Prisma 会安全地协调重复执行。更新镜像后使用 `docker compose pull && docker compose up -d`，
+再通过 `docker compose logs migrate web` 确认迁移和应用均已正常启动。
+
 ### Windows 换行与提交说明
 
 仓库根目录的 `.gitattributes` 已统一约束换行符，避免 Windows 下因为 `CRLF` / `LF` 差异导致 `Biome`、`Husky` 或 Git diff 异常：
