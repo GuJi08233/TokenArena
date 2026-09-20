@@ -103,24 +103,24 @@ jobs:
   react-doctor:
     name: React Doctor
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - name: Scan React code health
-        uses: millionco/react-doctor@main
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v4
         with:
-          directory: web
-          diff: ${{ github.event_name == 'pull_request' && github.base_ref || '' }}
-          fail-on: error
-          github-token: ${{ secrets.GITHUB_TOKEN }}
           node-version: 22
-          offline: true
-          project: token-arena-web
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # 使用锁文件中的 CLI，与本地完整离线扫描和错误门禁保持一致。
+      - name: Scan React code health
+        run: pnpm react-doctor
 
   build:
     name: Build
