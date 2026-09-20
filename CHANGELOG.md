@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.16.0](https://github.com/GuJi08233/TokenArena/compare/v0.15.0...v0.16.0) (2026-09-20)
+
+
+### Features
+
+* 对齐多工具用量统计并补齐缓存写入 ([#28](https://github.com/GuJi08233/TokenArena/issues/28)) ([e8f12e8](https://github.com/GuJi08233/TokenArena/commit/e8f12e838b72e9002c553a11fc30040e87225c94))
+
+
+### Bug Fixes
+
+* **cli:** clear 20 latent type errors and gate typechecking in CI ([976455f](https://github.com/GuJi08233/TokenArena/commit/976455f89ea592e11b8921463f2e06963d005319))
+* **cli:** report an honest version and fail loudly on unbundled entry points ([ba68d8e](https://github.com/GuJi08233/TokenArena/commit/ba68d8e0d5abb4f792ccc57a95c4ca235929cf82))
+* **cli:** run entry point and resolve version when sources are unbundled ([98a4b21](https://github.com/GuJi08233/TokenArena/commit/98a4b21266cd389ebd4e4637a2cc37760187a58e))
+
 ## [0.15.0](https://github.com/GuJi08233/TokenArena/compare/v0.14.2...v0.15.0) (2026-09-12)
 
 
