@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.2](https://github.com/GuJi08233/TokenArena/compare/v0.16.1...v0.16.2) (2026-09-20)
+
+
+### Bug Fixes
+
+* **cli:** verify codex fork coverage by parent line count ([#31](https://github.com/GuJi08233/TokenArena/issues/31)) ([0ee12a3](https://github.com/GuJi08233/TokenArena/commit/0ee12a39d7324eb4d50c1fe7d181418d8ecd0a75))
+
 ## [0.16.1](https://github.com/GuJi08233/TokenArena/compare/v0.16.0...v0.16.1) (2026-09-20)
 
 
