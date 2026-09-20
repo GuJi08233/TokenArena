@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.1](https://github.com/GuJi08233/TokenArena/compare/v0.16.0...v0.16.1) (2026-09-20)
+
+
+### Bug Fixes
+
+* **docker:** run database migrations before web startup ([30a9c4d](https://github.com/GuJi08233/TokenArena/commit/30a9c4d1ea1a9a418b0922ad06687a397664a17f))
+
 ## [0.16.0](https://github.com/GuJi08233/TokenArena/compare/v0.15.0...v0.16.0) (2026-09-20)
 
 
