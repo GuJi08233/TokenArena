@@ -121,8 +121,37 @@ function selectSnapshot(
   };
 }
 
+/**
+ * Every directory `parse()` walks, in the same order.
+ *
+ * `parse()` and `listSourceFiles()` must agree on this set — a directory listed
+ * in one but not the other either hides a change from the cache or invalidates
+ * it for no reason.
+ */
+function getScanDirectories(): string[] {
+  const directories: string[] = [];
+
+  for (const root of getClaudeRoots()) {
+    directories.push(join(root, "projects"));
+  }
+
+  for (const root of getClaudeRoots()) {
+    for (const directory of ["transcripts", "sessions"]) {
+      directories.push(join(root, directory));
+    }
+  }
+
+  return directories;
+}
+
 class ClaudeCodeParser implements IParser {
   readonly tool = TOOL;
+
+  listSourceFiles(): string[] {
+    return getScanDirectories().flatMap((directory) =>
+      findJsonlFiles(directory),
+    );
+  }
 
   async parse(): Promise<ParseResult> {
     const snapshots = new Map<string, Map<string, UsageSnapshot>>();

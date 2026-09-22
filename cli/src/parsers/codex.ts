@@ -314,12 +314,17 @@ export class CodexParser implements IParser {
     return this.dataDirs.some((directory) => existsSync(directory));
   }
 
+  /** The same list `parse()` reads, so the two can never drift apart. */
+  listSourceFiles(): string[] {
+    return [...new Set(this.dataDirs.flatMap(findJsonlFiles))].sort();
+  }
+
   async parse(): Promise<ParseResult> {
     const entries: TokenUsageEntry[] = [];
     const sessionEvents: SessionEvent[] = [];
     const threads = new Map<string, Thread>();
     const threadIndex = new Map<string, Thread>();
-    const files = [...new Set(this.dataDirs.flatMap(findJsonlFiles))].sort();
+    const files = this.listSourceFiles();
     for (const path of files) {
       const file = readRollout(path);
       if (!file) continue;

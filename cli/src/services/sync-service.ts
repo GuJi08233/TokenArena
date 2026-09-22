@@ -393,7 +393,9 @@ export async function runSync(
         const parts: string[] = [];
         if (p.buckets > 0) parts.push(`${p.buckets} buckets`);
         if (p.sessions > 0) parts.push(`${p.sessions} sessions`);
-        logger.info(`  ${p.source}: ${parts.join(", ")}`);
+        // 标出复用的工具，否则一次很快的同步看不出是跳过了重扫还是没数据。
+        const suffix = p.cached ? " (unchanged)" : "";
+        logger.info(`  ${p.source}: ${parts.join(", ")}${suffix}`);
       }
     }
 
