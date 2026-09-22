@@ -44,11 +44,23 @@ function buildPayload(syncAchievements?: boolean) {
 
 function buildTransactionClient() {
   return {
+    $executeRaw: vi.fn().mockResolvedValue(1),
     device: { upsert: vi.fn().mockResolvedValue({}) },
     usageApiKey: { update: vi.fn().mockResolvedValue({}) },
     usageBucket: { upsert: vi.fn().mockResolvedValue({}) },
     usageSession: { upsert: vi.fn().mockResolvedValue({}) },
   };
+}
+
+/**
+ * Bound parameters across every `$executeRaw` call.
+ *
+ * Buckets and sessions are written as tagged-template statements now, so the
+ * values that used to be asserted on a Prisma `upsert` argument live in the
+ * statement's parameter list.
+ */
+function boundValues(executeRaw: ReturnType<typeof vi.fn>): unknown[] {
+  return executeRaw.mock.calls.flatMap(([statement]) => statement.values);
 }
 
 describe("ingestUsagePayload achievement synchronization", () => {
@@ -106,19 +118,48 @@ describe("ingestUsagePayload achievement synchronization", () => {
       ],
     });
     await ingestUsagePayload({ userId: "user-1", payload });
-    for (const upsert of [tx.usageBucket.upsert, tx.usageSession.upsert]) {
-      expect(upsert).toHaveBeenCalledWith(
-        expect.objectContaining({
-          create: expect.objectContaining({
-            inputTokens: BigInt(100),
-            cachedTokens: BigInt(200),
-            cacheCreationTokens: BigInt(30),
-            totalTokens: BigInt(380),
-          }),
-          update: expect.objectContaining({ cacheCreationTokens: BigInt(30) }),
-        }),
-      );
-    }
+    const values = boundValues(tx.$executeRaw);
+
+    expect(values).toContain(BigInt(100));
+    expect(values).toContain(BigInt(200));
+    expect(values).toContain(BigInt(30));
+    // Both rows total 380: the bucket re-derives it from the parts rather than
+    // trusting the payload's 350, and the session sums modelUsages.
+    expect(values.filter((value) => value === BigInt(380))).toHaveLength(2);
+  });
+
+  it("collapses duplicate buckets to the last one, as row-wise upserts did", async () => {
+    const tx = buildTransactionClient();
+    mocks.prisma.$transaction.mockImplementation(async (callback) =>
+      callback(tx),
+    );
+    const base = {
+      source: "codex",
+      model: "gpt-5.4",
+      projectKey: "project-a",
+      projectLabel: "Project A",
+      bucketStart: "2026-04-01T12:00:00.000Z",
+      outputTokens: 0,
+      reasoningTokens: 0,
+      cachedTokens: 0,
+      cacheCreationTokens: 0,
+      totalTokens: 0,
+    };
+    const payload = ingestRequestSchema.parse({
+      ...buildPayload(false),
+      buckets: [
+        { ...base, inputTokens: 11 },
+        // Same conflict target, different value — Postgres would reject a
+        // statement that tried to update this row twice.
+        { ...base, inputTokens: 22 },
+      ],
+    });
+
+    await ingestUsagePayload({ userId: "user-1", payload });
+    const values = boundValues(tx.$executeRaw);
+
+    expect(values).toContain(BigInt(22));
+    expect(values).not.toContain(BigInt(11));
   });
 
   it("keeps explicit cache-only session usage when model details are empty", async () => {
@@ -146,18 +187,10 @@ describe("ingestUsagePayload achievement synchronization", () => {
       ],
     });
     await ingestUsagePayload({ userId: "user-1", payload });
-    expect(tx.usageSession.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        create: expect.objectContaining({
-          cacheCreationTokens: BigInt(30),
-          totalTokens: BigInt(30),
-        }),
-        update: expect.objectContaining({
-          cacheCreationTokens: BigInt(30),
-          totalTokens: BigInt(30),
-        }),
-      }),
-    );
+    const values = boundValues(tx.$executeRaw);
+
+    // Cache-creation tokens alone still count toward the session total.
+    expect(values.filter((value) => value === BigInt(30))).toHaveLength(2);
   });
 
   it("keeps achievement synchronization enabled for direct API payloads", async () => {
@@ -245,8 +278,9 @@ describe("ingestUsagePayload achievement synchronization", () => {
     });
 
     expect(tx.usageApiKey.update).toHaveBeenCalledOnce();
-    expect(tx.usageBucket.upsert).toHaveBeenCalledTimes(25);
-    expect(tx.usageSession.upsert).toHaveBeenCalledOnce();
+    // The 25 buckets share one conflict key and collapse into a single row, and
+    // both tables are written with one statement each rather than per row.
+    expect(tx.$executeRaw).toHaveBeenCalledTimes(2);
     expect(mocks.recomputeLeaderboardUserDays).toHaveBeenCalledOnce();
     expect(mocks.invalidateLeaderboardSnapshots).toHaveBeenCalledOnce();
     expect(mocks.synchronizeAchievementsForUser).not.toHaveBeenCalled();

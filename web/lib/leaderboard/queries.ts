@@ -8,8 +8,10 @@ import {
 import { prisma } from "@/lib/prisma";
 import type { FollowTagFilter } from "@/lib/social/follow-tags";
 import { tokenCountToBigInt, tokenCountToNumber } from "@/lib/token-counts";
+import { Prisma } from "../../generated/prisma/client";
 import { resolveLeaderboardWindow, sameLeaderboardWindow } from "./date";
 import { finalizePendingLeaderboardPeriods } from "./finalize";
+import { LEADERBOARD_SNAPSHOT_TTL_MS } from "./snapshot";
 import type {
   LeaderboardDataset,
   LeaderboardEntry,
@@ -21,7 +23,13 @@ import type {
 
 const LEADERBOARD_PAGE_LIMIT = 50;
 const LEADERBOARD_SNAPSHOT_LIMIT = 100;
-const LEADERBOARD_SNAPSHOT_TTL_MS = 5 * 60 * 1000;
+
+/** The board metric and the persisted snapshot metric share their names. */
+function toSnapshotMetric(metric: LeaderboardMetric) {
+  return metric === "estimated_cost"
+    ? ("estimated_cost" as const)
+    : ("total_tokens" as const);
+}
 
 const leaderboardUserSelect = {
   id: true,
@@ -493,8 +501,69 @@ function isSnapshotFresh(input: {
   );
 }
 
-async function rebuildGlobalSnapshot(period: LeaderboardPeriod, now: Date) {
-  const window = resolveLeaderboardWindow(period, now);
+/**
+ * Top `limit` entries for a board, computed from scratch.
+ *
+ * The token board pushes the ordering and the limit into the database. The cost
+ * board cannot: ranking needs the pricing catalog to turn per-model tokens into
+ * dollars, which only exists in the application, so it aggregates the window
+ * and ranks in memory. That is exactly why the cost board must be cached — see
+ * `ensureGlobalSnapshot`.
+ */
+async function computeGlobalSummaries(input: {
+  period: LeaderboardPeriod;
+  metric: LeaderboardMetric;
+  now: Date;
+  limit: number;
+}): Promise<{
+  window: LeaderboardWindow;
+  summaries: LeaderboardEntrySummary[];
+}> {
+  const window = resolveLeaderboardWindow(input.period, input.now);
+
+  if (input.metric === "estimated_cost") {
+    const [catalog, groupedRows] = await Promise.all([
+      getPricingCatalog(),
+      prisma.usageBucket.groupBy({
+        by: ["userId", "model"],
+        where: {
+          ...buildBucketWindowWhere(window),
+          user: {
+            usagePreference: {
+              is: {
+                publicProfileEnabled: true,
+              },
+            },
+          },
+        },
+        _sum: {
+          inputTokens: true,
+          outputTokens: true,
+          reasoningTokens: true,
+          cachedTokens: true,
+          cacheCreationTokens: true,
+          totalTokens: true,
+        },
+      }),
+    ]);
+
+    const aggregates = buildUserUsageAggregates(groupedRows, catalog);
+    const statsMap = await getLeaderboardDayStatsMap(
+      Array.from(aggregates.keys()),
+      window,
+    );
+
+    return {
+      window,
+      summaries: rankSummaries(
+        aggregates.values(),
+        statsMap,
+        "estimated_cost",
+        input.limit,
+      ),
+    };
+  }
+
   const rows = await prisma.leaderboardUserDay.groupBy({
     by: ["userId"],
     where: {
@@ -527,7 +596,7 @@ async function rebuildGlobalSnapshot(period: LeaderboardPeriod, now: Date) {
         userId: "asc",
       },
     ],
-    take: LEADERBOARD_SNAPSHOT_LIMIT,
+    take: input.limit,
   });
 
   const summaries = rows.reduce<LeaderboardEntrySummary[]>(
@@ -553,10 +622,57 @@ async function rebuildGlobalSnapshot(period: LeaderboardPeriod, now: Date) {
     [],
   );
 
+  return { window, summaries };
+}
+
+function snapshotEntryToSummary(row: {
+  rank: number;
+  userId: string;
+  inputTokens: bigint;
+  outputTokens: bigint;
+  reasoningTokens: bigint;
+  cachedTokens: bigint;
+  cacheCreationTokens: bigint;
+  totalTokens: bigint;
+  estimatedCostUsd: number;
+  activeSeconds: number;
+  sessions: number;
+}): LeaderboardEntrySummary {
+  return {
+    rank: row.rank,
+    userId: row.userId,
+    inputTokens: tokenCountToNumber(row.inputTokens),
+    outputTokens: tokenCountToNumber(row.outputTokens),
+    reasoningTokens: tokenCountToNumber(row.reasoningTokens),
+    cachedTokens: tokenCountToNumber(row.cachedTokens),
+    cacheCreationTokens: tokenCountToNumber(row.cacheCreationTokens),
+    totalTokens: tokenCountToNumber(row.totalTokens),
+    estimatedCostUsd: row.estimatedCostUsd,
+    activeSeconds: row.activeSeconds,
+    sessions: row.sessions,
+  };
+}
+
+async function rebuildGlobalSnapshot(
+  period: LeaderboardPeriod,
+  metric: LeaderboardMetric,
+  now: Date,
+) {
+  const { window, summaries } = await computeGlobalSummaries({
+    period,
+    metric,
+    now,
+    limit: LEADERBOARD_SNAPSHOT_LIMIT,
+  });
+  const snapshotMetric = toSnapshotMetric(metric);
+
   const snapshot = await prisma.$transaction(async (tx) => {
     const nextSnapshot = await tx.leaderboardSnapshot.upsert({
       where: {
-        period,
+        period_metric: {
+          period,
+          metric: snapshotMetric,
+        },
       },
       update: {
         windowStart: window.start,
@@ -565,6 +681,7 @@ async function rebuildGlobalSnapshot(period: LeaderboardPeriod, now: Date) {
       },
       create: {
         period,
+        metric: snapshotMetric,
         windowStart: window.start,
         windowEnd: window.end,
         generatedAt: now,
@@ -589,6 +706,7 @@ async function rebuildGlobalSnapshot(period: LeaderboardPeriod, now: Date) {
           cachedTokens: tokenCountToBigInt(row.cachedTokens),
           cacheCreationTokens: tokenCountToBigInt(row.cacheCreationTokens),
           totalTokens: tokenCountToBigInt(row.totalTokens),
+          estimatedCostUsd: row.estimatedCostUsd,
           activeSeconds: row.activeSeconds,
           sessions: row.sessions,
         })),
@@ -600,16 +718,29 @@ async function rebuildGlobalSnapshot(period: LeaderboardPeriod, now: Date) {
 
   return {
     snapshot,
-    summaries,
+    summaries: summaries.slice(0, LEADERBOARD_PAGE_LIMIT),
     window,
   };
 }
 
-async function ensureGlobalSnapshot(period: LeaderboardPeriod, now: Date) {
+/**
+ * Cached top of a board, rebuilt when the window rolls over or the TTL lapses.
+ *
+ * Both metrics go through here. The cost board especially: without it, every
+ * request aggregated the whole window per user and model.
+ */
+async function ensureGlobalSnapshot(
+  period: LeaderboardPeriod,
+  metric: LeaderboardMetric,
+  now: Date,
+) {
   const requestedWindow = resolveLeaderboardWindow(period, now);
   const existing = await prisma.leaderboardSnapshot.findUnique({
     where: {
-      period,
+      period_metric: {
+        period,
+        metric: toSnapshotMetric(metric),
+      },
     },
   });
 
@@ -638,72 +769,11 @@ async function ensureGlobalSnapshot(period: LeaderboardPeriod, now: Date) {
     return {
       snapshot: existing,
       window: requestedWindow,
-      summaries: rows.map((row) => ({
-        rank: row.rank,
-        userId: row.userId,
-        inputTokens: tokenCountToNumber(row.inputTokens),
-        outputTokens: tokenCountToNumber(row.outputTokens),
-        reasoningTokens: tokenCountToNumber(row.reasoningTokens),
-        cachedTokens: tokenCountToNumber(row.cachedTokens),
-        cacheCreationTokens: tokenCountToNumber(row.cacheCreationTokens),
-        totalTokens: tokenCountToNumber(row.totalTokens),
-        estimatedCostUsd: 0,
-        activeSeconds: row.activeSeconds,
-        sessions: row.sessions,
-      })),
+      summaries: rows.map(snapshotEntryToSummary),
     };
   }
 
-  return rebuildGlobalSnapshot(period, now);
-}
-
-async function getGlobalCostRankedSummaries(
-  period: LeaderboardPeriod,
-  now: Date,
-  limit = LEADERBOARD_PAGE_LIMIT,
-) {
-  const window = resolveLeaderboardWindow(period, now);
-  const [catalog, groupedRows] = await Promise.all([
-    getPricingCatalog(),
-    prisma.usageBucket.groupBy({
-      by: ["userId", "model"],
-      where: {
-        ...buildBucketWindowWhere(window),
-        user: {
-          usagePreference: {
-            is: {
-              publicProfileEnabled: true,
-            },
-          },
-        },
-      },
-      _sum: {
-        inputTokens: true,
-        outputTokens: true,
-        reasoningTokens: true,
-        cachedTokens: true,
-        cacheCreationTokens: true,
-        totalTokens: true,
-      },
-    }),
-  ]);
-
-  const aggregates = buildUserUsageAggregates(groupedRows, catalog);
-  const statsMap = await getLeaderboardDayStatsMap(
-    Array.from(aggregates.keys()),
-    window,
-  );
-
-  return {
-    generatedAt: now,
-    window,
-    summaries: rankSummaries(
-      aggregates.values(),
-      statsMap,
-      "estimated_cost",
-      limit,
-    ),
-  };
+  return rebuildGlobalSnapshot(period, metric, now);
 }
 
 async function getFollowingCostRankedSummaries(input: {
@@ -776,17 +846,101 @@ async function getFollowingCostRankedSummaries(input: {
   };
 }
 
+type GlobalTokenRankRow = {
+  rank: bigint;
+  inputTokens: bigint | null;
+  outputTokens: bigint | null;
+  reasoningTokens: bigint | null;
+  cachedTokens: bigint | null;
+  cacheCreationTokens: bigint | null;
+  totalTokens: bigint | null;
+  activeSeconds: bigint | null;
+  sessions: bigint | null;
+};
+
+/**
+ * One viewer's row and rank on the token board, ranked in the database.
+ *
+ * Ranking in the application would mean aggregating and sorting every user just
+ * to read one position off the result.
+ */
+async function fetchGlobalTokenRankSummary(input: {
+  userId: string;
+  window: LeaderboardWindow;
+}): Promise<LeaderboardEntrySummary | null> {
+  const dateFilter =
+    input.window.start && input.window.end
+      ? Prisma.sql`AND l."statDate" >= ${input.window.start} AND l."statDate" < ${input.window.end}`
+      : Prisma.empty;
+
+  const rows = await prisma.$queryRaw<GlobalTokenRankRow[]>(Prisma.sql`
+    WITH sums AS (
+      SELECT
+        l."userId",
+        SUM(l."inputTokens")::bigint AS "inputTokens",
+        SUM(l."outputTokens")::bigint AS "outputTokens",
+        SUM(l."reasoningTokens")::bigint AS "reasoningTokens",
+        SUM(l."cachedTokens")::bigint AS "cachedTokens",
+        SUM(l."cacheCreationTokens")::bigint AS "cacheCreationTokens",
+        SUM(l."totalTokens")::bigint AS "totalTokens",
+        SUM(l."activeSeconds")::bigint AS "activeSeconds",
+        SUM(l."sessions")::bigint AS "sessions"
+      FROM leaderboard_user_day l
+      INNER JOIN "UsagePreference" up ON up."userId" = l."userId"
+      WHERE up."publicProfileEnabled" = true
+      ${dateFilter}
+      GROUP BY l."userId"
+      HAVING SUM(l."totalTokens") > 0
+    ),
+    ranked AS (
+      SELECT
+        sums.*,
+        ROW_NUMBER() OVER (
+          ORDER BY sums."totalTokens" DESC, sums."userId" ASC
+        ) AS rank
+      FROM sums
+    )
+    SELECT * FROM ranked WHERE "userId" = ${input.userId}
+  `);
+
+  const row = rows[0];
+
+  if (!row) {
+    return null;
+  }
+
+  return {
+    rank: Number(row.rank),
+    userId: input.userId,
+    inputTokens: tokenCountToNumber(row.inputTokens),
+    outputTokens: tokenCountToNumber(row.outputTokens),
+    reasoningTokens: tokenCountToNumber(row.reasoningTokens),
+    cachedTokens: tokenCountToNumber(row.cachedTokens),
+    cacheCreationTokens: tokenCountToNumber(row.cacheCreationTokens),
+    totalTokens: tokenCountToNumber(row.totalTokens),
+    estimatedCostUsd: 0,
+    activeSeconds: Number(row.activeSeconds ?? 0),
+    sessions: Number(row.sessions ?? 0),
+  };
+}
+
 async function getGlobalViewerRankSummary(input: {
   period: LeaderboardPeriod;
   metric: LeaderboardMetric;
   viewerUserId: string;
   now: Date;
 }) {
+  const window = resolveLeaderboardWindow(input.period, input.now);
+
   if (input.metric === "estimated_cost") {
-    const { summaries, window } = await getGlobalCostRankedSummaries(
+    // Cost ordering only exists in the cached snapshot — reproducing it for an
+    // arbitrary rank would mean pricing every user's buckets on this request.
+    // Viewers outside the cached depth simply get no standalone row, the same
+    // as a viewer with no qualifying usage.
+    const { summaries } = await ensureGlobalSnapshot(
       input.period,
+      input.metric,
       input.now,
-      Number.MAX_SAFE_INTEGER,
     );
     const summary = summaries.find(
       (entry) => entry.userId === input.viewerUserId,
@@ -795,51 +949,10 @@ async function getGlobalViewerRankSummary(input: {
     return summary ? { summary, window } : null;
   }
 
-  const window = resolveLeaderboardWindow(input.period, input.now);
-  const rows = await prisma.leaderboardUserDay.groupBy({
-    by: ["userId"],
-    where: {
-      ...buildWindowWhere(window),
-      user: {
-        usagePreference: {
-          is: {
-            publicProfileEnabled: true,
-          },
-        },
-      },
-    },
-    _sum: {
-      inputTokens: true,
-      outputTokens: true,
-      reasoningTokens: true,
-      cachedTokens: true,
-      cacheCreationTokens: true,
-      totalTokens: true,
-      activeSeconds: true,
-      sessions: true,
-    },
+  const summary = await fetchGlobalTokenRankSummary({
+    userId: input.viewerUserId,
+    window,
   });
-
-  const summaries = rankLeaderboardSummaries(
-    rows.map((row) => ({
-      rank: 0,
-      userId: row.userId,
-      inputTokens: tokenCountToNumber(row._sum.inputTokens),
-      outputTokens: tokenCountToNumber(row._sum.outputTokens),
-      reasoningTokens: tokenCountToNumber(row._sum.reasoningTokens),
-      cachedTokens: tokenCountToNumber(row._sum.cachedTokens),
-      cacheCreationTokens: tokenCountToNumber(row._sum.cacheCreationTokens),
-      totalTokens: tokenCountToNumber(row._sum.totalTokens),
-      estimatedCostUsd: 0,
-      activeSeconds: coerceInt(row._sum.activeSeconds),
-      sessions: coerceInt(row._sum.sessions),
-    })),
-    "total_tokens",
-    Number.MAX_SAFE_INTEGER,
-  );
-  const summary = summaries.find(
-    (entry) => entry.userId === input.viewerUserId,
-  );
 
   return summary ? { summary, window } : null;
 }
@@ -851,23 +964,9 @@ async function getGlobalLeaderboard(input: {
   now?: Date;
 }) {
   const now = input.now ?? new Date();
-
-  if (input.metric === "estimated_cost") {
-    const { generatedAt, summaries, window } =
-      await getGlobalCostRankedSummaries(input.period, now);
-    const entries = await hydrateEntries(summaries, window, input.viewerUserId);
-
-    return toDataset({
-      scope: "global",
-      period: input.period,
-      generatedAt,
-      window,
-      entries,
-    });
-  }
-
   const { snapshot, summaries, window } = await ensureGlobalSnapshot(
     input.period,
+    input.metric,
     now,
   );
   const entries = await hydrateEntries(summaries, window, input.viewerUserId);

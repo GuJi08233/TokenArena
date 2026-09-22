@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => ({
   usagePreferenceCreate: vi.fn(),
   usagePreferenceFindUniqueOrThrow: vi.fn(),
   usagePreferenceUpdate: vi.fn(),
-  invalidateLeaderboardSnapshots: vi.fn(),
+  expireLeaderboardSnapshots: vi.fn(),
   prismaTransaction: vi.fn(),
 }));
 
@@ -22,7 +22,7 @@ vi.mock("@/lib/prisma", () => ({
 }));
 
 vi.mock("@/lib/leaderboard/aggregates", () => ({
-  invalidateLeaderboardSnapshots: mocks.invalidateLeaderboardSnapshots,
+  expireLeaderboardSnapshots: mocks.expireLeaderboardSnapshots,
 }));
 
 import {
@@ -160,10 +160,10 @@ describe("updateUsagePreference", () => {
     const result = await updateUsagePreference("user_123", { locale: "zh" });
 
     expect(result).toEqual(updated);
-    expect(mocks.invalidateLeaderboardSnapshots).not.toHaveBeenCalled();
+    expect(mocks.expireLeaderboardSnapshots).not.toHaveBeenCalled();
   });
 
-  it("triggers invalidateLeaderboardSnapshots when publicProfileEnabled changes", async () => {
+  it("triggers expireLeaderboardSnapshots when publicProfileEnabled changes", async () => {
     const existing = createPreference({ publicProfileEnabled: false });
     const updated = createPreference({ publicProfileEnabled: true });
 
@@ -183,17 +183,17 @@ describe("updateUsagePreference", () => {
         return fn(tx);
       },
     );
-    mocks.invalidateLeaderboardSnapshots.mockResolvedValueOnce(undefined);
+    mocks.expireLeaderboardSnapshots.mockResolvedValueOnce(undefined);
 
     const result = await updateUsagePreference("user_123", {
       publicProfileEnabled: true,
     });
 
     expect(result).toEqual(updated);
-    expect(mocks.invalidateLeaderboardSnapshots).toHaveBeenCalledTimes(1);
+    expect(mocks.expireLeaderboardSnapshots).toHaveBeenCalledTimes(1);
   });
 
-  it("does not trigger invalidateLeaderboardSnapshots when publicProfileEnabled stays the same", async () => {
+  it("does not trigger expireLeaderboardSnapshots when publicProfileEnabled stays the same", async () => {
     const existing = createPreference({ publicProfileEnabled: true });
     const updated = createPreference({
       publicProfileEnabled: true,
@@ -219,6 +219,6 @@ describe("updateUsagePreference", () => {
     });
 
     expect(result).toEqual(updated);
-    expect(mocks.invalidateLeaderboardSnapshots).not.toHaveBeenCalled();
+    expect(mocks.expireLeaderboardSnapshots).not.toHaveBeenCalled();
   });
 });

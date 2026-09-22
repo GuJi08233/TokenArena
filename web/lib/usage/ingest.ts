@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { synchronizeAchievementsForUser } from "@/lib/achievements/queries";
 import {
   collectAffectedLeaderboardDates,
@@ -12,11 +13,13 @@ import {
 } from "@/lib/pricing/resolve";
 import { prisma } from "@/lib/prisma";
 import { tokenCountToBigInt } from "@/lib/token-counts";
+import { Prisma } from "../../generated/prisma/client";
 import type { ingestRequestSchema } from "./contracts";
 
 type IngestPayload = ReturnType<typeof ingestRequestSchema.parse>;
 type UsageWriteClient = Pick<
   typeof prisma,
+  | "$executeRaw"
   | "device"
   | "usageApiKey"
   | "usageBucket"
@@ -54,24 +57,35 @@ type NormalizedSessionUsage = {
   estimatedCostUsd: number | null;
 };
 
-// Prisma queues interactive-transaction queries on a single connection. A
-// large Promise.all therefore adds memory pressure without making the writes
-// meaningfully faster. Keep a small amount of concurrency while avoiding a
-// promise/query object for every item in a large upload at once.
-const INGEST_WRITE_CONCURRENCY = 24;
+/**
+ * Keep the last write for each conflict target.
+ *
+ * Row-at-a-time upserts let a later duplicate overwrite an earlier one. A single
+ * `ON CONFLICT` statement cannot touch the same row twice, so the same
+ * last-one-wins collapse has to happen before the statement is built.
+ */
+function dedupeByConflictKey<T>(items: T[], key: (item: T) => string): T[] {
+  const byKey = new Map<string, T>();
 
-async function runIngestWrites<T>(
-  items: T[],
-  write: (item: T) => Promise<unknown>,
-): Promise<void> {
-  for (
-    let offset = 0;
-    offset < items.length;
-    offset += INGEST_WRITE_CONCURRENCY
-  ) {
-    const chunk = items.slice(offset, offset + INGEST_WRITE_CONCURRENCY);
-    await Promise.all(chunk.map((item) => write(item)));
+  for (const item of items) {
+    byKey.set(key(item), item);
   }
+
+  return Array.from(byKey.values());
+}
+
+/**
+ * Bind a timestamp as an explicit UTC literal.
+ *
+ * `DateTime` lives in a `timestamp(3)` column — no time zone — holding the UTC
+ * wall-clock value, and `::timestamp` ignores any offset in its input rather
+ * than applying it. An ISO string therefore casts to exactly the value Prisma
+ * writes. A bound `Date` lands on the same value today because the adapter
+ * serializes via `getUTC*`, but that is its internal detail; spelling the
+ * intent out keeps these statements correct regardless.
+ */
+function toUtcTimestampLiteral(value: Date | string) {
+  return (value instanceof Date ? value : new Date(value)).toISOString();
 }
 
 function buildUsageSessionWriteInput(input: NormalizedSessionUsage) {
@@ -233,40 +247,200 @@ async function upsertDevice(db: UsageWriteClient, input: UpsertDeviceInput) {
   });
 }
 
+/**
+ * Write every bucket in the payload with one `INSERT ... ON CONFLICT`.
+ *
+ * Prisma serializes interactive-transaction queries onto a single connection,
+ * so a per-row upsert cost one round trip each — a full batch spent hundreds of
+ * them inside the transaction timeout.
+ */
 async function upsertBuckets(
   db: UsageWriteClient,
   input: IngestUsagePayloadInput,
 ) {
-  await runIngestWrites(input.payload.buckets, (bucket) => {
-    const bucketWrite = buildUsageBucketWriteInput(bucket);
+  const buckets = dedupeByConflictKey(
+    input.payload.buckets,
+    (bucket) =>
+      `${bucket.source}\u0000${bucket.model}\u0000${bucket.projectKey}\u0000${new Date(
+        bucket.bucketStart,
+      ).toISOString()}`,
+  );
 
-    return db.usageBucket.upsert({
-      where: {
-        userId_deviceId_source_model_projectKey_bucketStart: {
-          userId: input.userId,
-          deviceId: input.payload.device.deviceId,
-          source: bucket.source,
-          model: bucket.model,
-          projectKey: bucket.projectKey,
-          bucketStart: new Date(bucket.bucketStart),
-        },
-      },
-      update: {
-        apiKeyId: input.apiKeyId ?? undefined,
-        ...bucketWrite,
-      },
-      create: {
-        userId: input.userId,
-        apiKeyId: input.apiKeyId ?? undefined,
-        deviceId: input.payload.device.deviceId,
-        source: bucket.source,
-        model: bucket.model,
-        projectKey: bucket.projectKey,
-        bucketStart: new Date(bucket.bucketStart),
-        ...bucketWrite,
-      },
-    });
+  if (buckets.length === 0) {
+    return;
+  }
+
+  const nowLiteral = toUtcTimestampLiteral(new Date());
+  const apiKeyId = input.apiKeyId ?? null;
+  const rows = buckets.map((bucket) => {
+    const write = buildUsageBucketWriteInput(bucket);
+
+    return Prisma.sql`(
+      ${randomUUID()}::text,
+      ${bucket.source}::text,
+      ${bucket.model}::text,
+      ${bucket.projectKey}::text,
+      ${write.projectLabel}::text,
+      ${toUtcTimestampLiteral(bucket.bucketStart)}::timestamp(3),
+      ${write.inputTokens}::bigint,
+      ${write.outputTokens}::bigint,
+      ${write.reasoningTokens}::bigint,
+      ${write.cachedTokens}::bigint,
+      ${write.cacheCreationTokens}::bigint,
+      ${write.totalTokens}::bigint
+    )`;
   });
+
+  await db.$executeRaw(Prisma.sql`
+    INSERT INTO "UsageBucket" (
+      "id", "userId", "apiKeyId", "deviceId", "source", "model", "projectKey",
+      "projectLabel", "bucketStart", "inputTokens", "outputTokens",
+      "reasoningTokens", "cachedTokens", "cacheCreationTokens", "totalTokens",
+      "createdAt", "updatedAt"
+    )
+    SELECT
+      v."id",
+      ${input.userId}::text,
+      ${apiKeyId}::text,
+      ${input.payload.device.deviceId}::text,
+      v."source", v."model", v."projectKey", v."projectLabel", v."bucketStart",
+      v."inputTokens", v."outputTokens", v."reasoningTokens", v."cachedTokens",
+      v."cacheCreationTokens", v."totalTokens",
+      ${nowLiteral}::timestamp(3), ${nowLiteral}::timestamp(3)
+    FROM (VALUES ${Prisma.join(rows)}) AS v(
+      "id", "source", "model", "projectKey", "projectLabel", "bucketStart",
+      "inputTokens", "outputTokens", "reasoningTokens", "cachedTokens",
+      "cacheCreationTokens", "totalTokens"
+    )
+    ON CONFLICT ("userId", "deviceId", "source", "model", "projectKey", "bucketStart")
+    DO UPDATE SET
+      -- Matches the previous \`apiKeyId: input.apiKeyId ?? undefined\`, which
+      -- left the stored key untouched when the request carried none.
+      "apiKeyId" = COALESCE(EXCLUDED."apiKeyId", "UsageBucket"."apiKeyId"),
+      "projectLabel" = EXCLUDED."projectLabel",
+      "inputTokens" = EXCLUDED."inputTokens",
+      "outputTokens" = EXCLUDED."outputTokens",
+      "reasoningTokens" = EXCLUDED."reasoningTokens",
+      "cachedTokens" = EXCLUDED."cachedTokens",
+      "cacheCreationTokens" = EXCLUDED."cacheCreationTokens",
+      "totalTokens" = EXCLUDED."totalTokens",
+      "updatedAt" = EXCLUDED."updatedAt"
+  `);
+}
+
+const EMPTY_SESSION_USAGE = {
+  inputTokens: tokenCountToBigInt(0),
+  outputTokens: tokenCountToBigInt(0),
+  reasoningTokens: tokenCountToBigInt(0),
+  cachedTokens: tokenCountToBigInt(0),
+  cacheCreationTokens: tokenCountToBigInt(0),
+  totalTokens: tokenCountToBigInt(0),
+  primaryModel: "",
+  estimatedCostUsd: null,
+} as const;
+
+/**
+ * Write one group of sessions with a single `INSERT ... ON CONFLICT`.
+ *
+ * `withUsage` selects the update shape. A session that carries no usage must
+ * refresh only its metadata and leave the stored token counts alone — the
+ * per-row upsert expressed that by omitting the fields, which a statement
+ * shared with usage-carrying rows cannot do.
+ */
+async function upsertSessionGroup(
+  db: UsageWriteClient,
+  input: IngestUsagePayloadInput,
+  sessions: Array<{
+    session: IngestPayload["sessions"][number];
+    usage: ReturnType<typeof buildUsageSessionWriteInput> | null;
+  }>,
+  withUsage: boolean,
+) {
+  if (sessions.length === 0) {
+    return;
+  }
+
+  const nowLiteral = toUtcTimestampLiteral(new Date());
+  const apiKeyId = input.apiKeyId ?? null;
+  const rows = sessions.map(({ session, usage }) => {
+    const write = usage ?? EMPTY_SESSION_USAGE;
+
+    return Prisma.sql`(
+      ${randomUUID()}::text,
+      ${session.source}::text,
+      ${session.projectKey}::text,
+      ${session.projectLabel}::text,
+      ${session.sessionHash}::text,
+      ${toUtcTimestampLiteral(session.firstMessageAt)}::timestamp(3),
+      ${toUtcTimestampLiteral(session.lastMessageAt)}::timestamp(3),
+      ${session.durationSeconds}::integer,
+      ${session.activeSeconds}::integer,
+      ${session.messageCount}::integer,
+      ${session.userMessageCount}::integer,
+      ${write.inputTokens}::bigint,
+      ${write.outputTokens}::bigint,
+      ${write.reasoningTokens}::bigint,
+      ${write.cachedTokens}::bigint,
+      ${write.cacheCreationTokens}::bigint,
+      ${write.totalTokens}::bigint,
+      ${write.primaryModel}::text,
+      ${write.estimatedCostUsd}::double precision
+    )`;
+  });
+
+  const usageUpdates = withUsage
+    ? Prisma.sql`,
+      "inputTokens" = EXCLUDED."inputTokens",
+      "outputTokens" = EXCLUDED."outputTokens",
+      "reasoningTokens" = EXCLUDED."reasoningTokens",
+      "cachedTokens" = EXCLUDED."cachedTokens",
+      "cacheCreationTokens" = EXCLUDED."cacheCreationTokens",
+      "totalTokens" = EXCLUDED."totalTokens",
+      "primaryModel" = EXCLUDED."primaryModel",
+      "estimatedCostUsd" = EXCLUDED."estimatedCostUsd"`
+    : Prisma.empty;
+
+  await db.$executeRaw(Prisma.sql`
+    INSERT INTO "UsageSession" (
+      "id", "userId", "apiKeyId", "deviceId", "source", "projectKey",
+      "projectLabel", "sessionHash", "firstMessageAt", "lastMessageAt",
+      "durationSeconds", "activeSeconds", "messageCount", "userMessageCount",
+      "inputTokens", "outputTokens", "reasoningTokens", "cachedTokens",
+      "cacheCreationTokens", "totalTokens", "primaryModel", "estimatedCostUsd",
+      "createdAt", "updatedAt"
+    )
+    SELECT
+      v."id",
+      ${input.userId}::text,
+      ${apiKeyId}::text,
+      ${input.payload.device.deviceId}::text,
+      v."source", v."projectKey", v."projectLabel", v."sessionHash",
+      v."firstMessageAt", v."lastMessageAt", v."durationSeconds",
+      v."activeSeconds", v."messageCount", v."userMessageCount",
+      v."inputTokens", v."outputTokens", v."reasoningTokens", v."cachedTokens",
+      v."cacheCreationTokens", v."totalTokens", v."primaryModel",
+      v."estimatedCostUsd",
+      ${nowLiteral}::timestamp(3), ${nowLiteral}::timestamp(3)
+    FROM (VALUES ${Prisma.join(rows)}) AS v(
+      "id", "source", "projectKey", "projectLabel", "sessionHash",
+      "firstMessageAt", "lastMessageAt", "durationSeconds", "activeSeconds",
+      "messageCount", "userMessageCount", "inputTokens", "outputTokens",
+      "reasoningTokens", "cachedTokens", "cacheCreationTokens", "totalTokens",
+      "primaryModel", "estimatedCostUsd"
+    )
+    ON CONFLICT ("userId", "deviceId", "source", "sessionHash")
+    DO UPDATE SET
+      "apiKeyId" = COALESCE(EXCLUDED."apiKeyId", "UsageSession"."apiKeyId"),
+      "projectKey" = EXCLUDED."projectKey",
+      "projectLabel" = EXCLUDED."projectLabel",
+      "firstMessageAt" = EXCLUDED."firstMessageAt",
+      "lastMessageAt" = EXCLUDED."lastMessageAt",
+      "durationSeconds" = EXCLUDED."durationSeconds",
+      "activeSeconds" = EXCLUDED."activeSeconds",
+      "messageCount" = EXCLUDED."messageCount",
+      "userMessageCount" = EXCLUDED."userMessageCount",
+      "updatedAt" = EXCLUDED."updatedAt"${usageUpdates}
+  `);
 }
 
 async function upsertSessions(
@@ -274,61 +448,33 @@ async function upsertSessions(
   input: IngestUsagePayloadInput,
   catalog: Awaited<ReturnType<typeof getPricingCatalog>>,
 ) {
-  await runIngestWrites(input.payload.sessions, (session) => {
+  const sessions = dedupeByConflictKey(
+    input.payload.sessions,
+    (session) => `${session.source}\u0000${session.sessionHash}`,
+  ).map((session) => {
     const normalizedUsage = normalizeSessionUsage(session, catalog);
-    const sessionUsageWrite =
-      normalizedUsage == null
-        ? null
-        : buildUsageSessionWriteInput(normalizedUsage);
 
-    return db.usageSession.upsert({
-      where: {
-        userId_deviceId_source_sessionHash: {
-          userId: input.userId,
-          deviceId: input.payload.device.deviceId,
-          source: session.source,
-          sessionHash: session.sessionHash,
-        },
-      },
-      update: {
-        apiKeyId: input.apiKeyId ?? undefined,
-        projectKey: session.projectKey,
-        projectLabel: session.projectLabel,
-        firstMessageAt: new Date(session.firstMessageAt),
-        lastMessageAt: new Date(session.lastMessageAt),
-        durationSeconds: session.durationSeconds,
-        activeSeconds: session.activeSeconds,
-        messageCount: session.messageCount,
-        userMessageCount: session.userMessageCount,
-        ...(sessionUsageWrite ?? {}),
-      },
-      create: {
-        userId: input.userId,
-        apiKeyId: input.apiKeyId ?? undefined,
-        deviceId: input.payload.device.deviceId,
-        source: session.source,
-        projectKey: session.projectKey,
-        projectLabel: session.projectLabel,
-        sessionHash: session.sessionHash,
-        firstMessageAt: new Date(session.firstMessageAt),
-        lastMessageAt: new Date(session.lastMessageAt),
-        durationSeconds: session.durationSeconds,
-        activeSeconds: session.activeSeconds,
-        messageCount: session.messageCount,
-        userMessageCount: session.userMessageCount,
-        ...(sessionUsageWrite ?? {
-          inputTokens: tokenCountToBigInt(0),
-          outputTokens: tokenCountToBigInt(0),
-          reasoningTokens: tokenCountToBigInt(0),
-          cachedTokens: tokenCountToBigInt(0),
-          cacheCreationTokens: tokenCountToBigInt(0),
-          totalTokens: tokenCountToBigInt(0),
-          primaryModel: "",
-          estimatedCostUsd: null,
-        }),
-      },
-    });
+    return {
+      session,
+      usage:
+        normalizedUsage == null
+          ? null
+          : buildUsageSessionWriteInput(normalizedUsage),
+    };
   });
+
+  await upsertSessionGroup(
+    db,
+    input,
+    sessions.filter((row) => row.usage !== null),
+    true,
+  );
+  await upsertSessionGroup(
+    db,
+    input,
+    sessions.filter((row) => row.usage === null),
+    false,
+  );
 }
 
 export async function deleteUsageDeviceSnapshot(
@@ -381,7 +527,7 @@ export async function deleteUsageDeviceSnapshot(
         userId: input.userId,
         dates: affectedDates,
       });
-      await invalidateLeaderboardSnapshots(tx);
+      await invalidateLeaderboardSnapshots(tx, { dates: affectedDates });
     }
 
     return {
@@ -444,7 +590,7 @@ export async function ingestUsagePayload(input: IngestUsagePayloadInput) {
           userId: input.userId,
           dates: affectedDates,
         });
-        await invalidateLeaderboardSnapshots(tx);
+        await invalidateLeaderboardSnapshots(tx, { dates: affectedDates });
       }
 
       return {

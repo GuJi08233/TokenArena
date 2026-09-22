@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   collectAffectedLeaderboardDates,
+  expireLeaderboardSnapshots,
   findExistingSessionStartDates,
   invalidateLeaderboardSnapshots,
   recomputeLeaderboardUserDays,
@@ -19,6 +20,7 @@ const mocks = vi.hoisted(() => ({
       deleteMany: vi.fn(),
     },
     leaderboardSnapshot: {
+      updateMany: vi.fn(),
       deleteMany: vi.fn(),
     },
   },
@@ -97,15 +99,87 @@ describe("findExistingSessionStartDates", () => {
 });
 
 describe("invalidateLeaderboardSnapshots", () => {
-  it("calls deleteMany on leaderboardSnapshot with empty filter", async () => {
-    const deleteMany = vi.fn().mockResolvedValue({ count: 0 });
-    const db = {
-      leaderboardSnapshot: { deleteMany },
-    };
+  // 2026-03-25 is a Wednesday, so the week window opens on the 23rd.
+  const now = new Date("2026-03-25T06:00:00.000Z");
+  // TTL (5min) minus the min lifetime (30s) before `now`.
+  const staleGeneratedAt = new Date("2026-03-25T05:55:30.000Z");
 
-    await invalidateLeaderboardSnapshots(db);
+  function createDb() {
+    const updateMany = vi.fn().mockResolvedValue({ count: 0 });
+    const deleteMany = vi.fn().mockResolvedValue({ count: 0 });
+    return {
+      db: { leaderboardSnapshot: { updateMany, deleteMany } },
+      updateMany,
+      deleteMany,
+    };
+  }
+
+  it("ages only the periods whose window covers the changed day", async () => {
+    const { db, updateMany } = createDb();
+
+    await invalidateLeaderboardSnapshots(db, {
+      dates: [new Date("2026-03-25T04:00:00.000Z")],
+      now,
+    });
+
+    expect(updateMany).toHaveBeenCalledWith({
+      where: {
+        period: { in: ["day", "week", "month", "all_time"] },
+        generatedAt: { gt: staleGeneratedAt },
+      },
+      data: { generatedAt: staleGeneratedAt },
+    });
+  });
+
+  it("leaves the bounded periods alone when a sync only backfills history", async () => {
+    const { db, updateMany } = createDb();
+
+    await invalidateLeaderboardSnapshots(db, {
+      dates: [new Date("2024-01-05T04:00:00.000Z")],
+      now,
+    });
+
+    expect(updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          period: { in: ["all_time"] },
+        }),
+      }),
+    );
+  });
+
+  it("does not touch snapshots when nothing changed", async () => {
+    const { db, updateMany } = createDb();
+
+    await invalidateLeaderboardSnapshots(db, { dates: [], now });
+
+    expect(updateMany).not.toHaveBeenCalled();
+  });
+
+  it("never ages a snapshot that is already past the stale mark", async () => {
+    const { db, updateMany } = createDb();
+
+    await invalidateLeaderboardSnapshots(db, {
+      dates: [new Date("2026-03-25T04:00:00.000Z")],
+      now,
+    });
+
+    const [call] = updateMany.mock.calls;
+    expect(call[0].where.generatedAt).toEqual({ gt: staleGeneratedAt });
+  });
+});
+
+describe("expireLeaderboardSnapshots", () => {
+  it("deletes every snapshot so a visibility change applies at once", async () => {
+    const deleteMany = vi.fn().mockResolvedValue({ count: 0 });
+    const updateMany = vi.fn().mockResolvedValue({ count: 0 });
+
+    await expireLeaderboardSnapshots({
+      leaderboardSnapshot: { deleteMany, updateMany },
+    });
 
     expect(deleteMany).toHaveBeenCalledWith({});
+    expect(updateMany).not.toHaveBeenCalled();
   });
 });
 
@@ -126,6 +200,7 @@ describe("recomputeLeaderboardUserDays", () => {
         ...((overrides.leaderboardUserDay as Record<string, unknown>) ?? {}),
       },
       leaderboardSnapshot: {
+        updateMany: vi.fn().mockResolvedValue(undefined),
         deleteMany: vi.fn().mockResolvedValue(undefined),
       },
     };

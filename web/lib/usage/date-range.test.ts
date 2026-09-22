@@ -4,9 +4,12 @@ import {
   getPreviousRange,
   groupByHourOrDay,
   listRangeBuckets,
+  MAX_CUSTOM_RANGE_DAYS,
   resolveDashboardRange,
   toZonedParts,
 } from "./date-range";
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 describe("resolveDashboardRange", () => {
   it("supports date-only custom ranges in the account timezone", () => {
@@ -32,6 +35,33 @@ describe("resolveDashboardRange", () => {
 
     expect(result.from.toISOString()).toBe("2026-03-26T07:00:00.000Z");
     expect(result.to.toISOString()).toBe("2026-03-28T06:59:59.999Z");
+  });
+
+  it("clamps a custom range wider than the cap, keeping the end fixed", () => {
+    const result = resolveDashboardRange({
+      preset: "custom",
+      from: "1970-01-01",
+      to: "2026-03-27",
+      timezone: "UTC",
+    });
+
+    expect(result.to.toISOString()).toBe("2026-03-27T23:59:59.999Z");
+    expect(result.to.getTime() - result.from.getTime()).toBe(
+      MAX_CUSTOM_RANGE_DAYS * DAY_MS,
+    );
+  });
+
+  it("leaves a custom range at the cap untouched", () => {
+    const to = new Date("2026-03-27T00:00:00.000Z");
+    const from = new Date(to.getTime() - MAX_CUSTOM_RANGE_DAYS * DAY_MS);
+    const result = resolveDashboardRange({
+      preset: "custom",
+      from,
+      to,
+      timezone: "UTC",
+    });
+
+    expect(result.from.toISOString()).toBe(from.toISOString());
   });
 
   it("uses hourly buckets for 1D", () => {

@@ -32,6 +32,15 @@ import type {
 } from "./types";
 
 const USAGE_READ_PAGE_SIZE = 1_000;
+/**
+ * Ceiling on rows a single dashboard read may pull into memory.
+ *
+ * The range is already capped (see `MAX_CUSTOM_RANGE_DAYS`), but a heavy account
+ * can still exceed that within the window, and every row here is summed
+ * in-process. Stopping short keeps the request bounded; the totals it feeds are
+ * aggregates, so a truncated read degrades rather than fails.
+ */
+export const USAGE_READ_MAX_ROWS = 200_000;
 
 async function loadUsagePages<T extends { id: string }>(
   fetchPage: (cursor?: string) => Promise<T[]>,
@@ -42,6 +51,7 @@ async function loadUsagePages<T extends { id: string }>(
     const page = await fetchPage(cursor);
     rows.push(...page);
     if (page.length < USAGE_READ_PAGE_SIZE) return rows;
+    if (rows.length >= USAGE_READ_MAX_ROWS) return rows;
     const nextCursor = page.at(-1)?.id;
     if (!nextCursor || nextCursor === cursor)
       throw new Error("Usage pagination did not advance");

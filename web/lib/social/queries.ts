@@ -2,7 +2,7 @@ import "server-only";
 
 import type { ProfileAchievementWallItem } from "@/lib/achievements/profile-wall";
 import { getProfileAchievementWall } from "@/lib/achievements/profile-wall";
-import { getAchievementArenaSummary } from "@/lib/achievements/queries";
+import { getArenaSummaryForProfile } from "@/lib/achievements/queries";
 import { normalizeUsername } from "@/lib/auth-username";
 import { getPricingCatalog } from "@/lib/pricing/catalog";
 import {
@@ -712,12 +712,12 @@ export async function getPublicProfilePageData(input: {
     }),
   ]);
 
-  // Run the all-time achievement queries only after the snapshot above has
-  // resolved. `getAchievementArenaSummary` still loads the user's full bucket
-  // and session history, so keeping the phases separate avoids holding it
-  // alongside the heatmap at the same time.
+  // Both of these read materialized rows (`UserArenaSummary`,
+  // `UserAchievement`) rather than replaying the user's history: a public
+  // profile is reachable by anyone, so nothing on this path may scale with how
+  // much the account has ever synced.
   const [arenaSummary, achievementWall] = await Promise.all([
-    getAchievementArenaSummary(user.id),
+    getArenaSummaryForProfile(user.id),
     getProfileAchievementWall(user.id, 5),
   ]);
 

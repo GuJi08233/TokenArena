@@ -9,7 +9,7 @@ import {
   resolveOfficialPricingMatch,
 } from "@/lib/pricing/resolve";
 import { prisma } from "@/lib/prisma";
-import { tokenCountToNumber } from "@/lib/token-counts";
+import { tokenCountToBigInt, tokenCountToNumber } from "@/lib/token-counts";
 import { resolveDashboardRange } from "@/lib/usage/date-range";
 import { formatDateInput } from "@/lib/usage/format";
 import { getUsagePreference } from "@/lib/usage/preferences";
@@ -601,39 +601,7 @@ async function synchronizeUserAchievements(input: {
   return plan.records;
 }
 
-export async function synchronizeAchievementsForUser(
-  userId: string,
-  source: AchievementAwardSource = "manual",
-) {
-  await finalizePendingLeaderboardPeriods();
-  const metrics = await loadAchievementMetrics(userId);
-  return synchronizeUserAchievements({
-    userId,
-    metrics,
-    source,
-  });
-}
-
-export async function getAchievementsPageData(
-  userId: string,
-): Promise<AchievementsPageData> {
-  await finalizePendingLeaderboardPeriods();
-  const metrics = await loadAchievementMetrics(userId);
-  const records = await synchronizeUserAchievements({
-    userId,
-    metrics,
-    source: "manual",
-  });
-  return buildAchievementsPageDataFromStatuses({
-    metrics,
-    achievements: mergeAchievementRecords(
-      buildAchievementStatuses(metrics),
-      records,
-    ),
-  });
-}
-
-export async function getAchievementArenaSummary(userId: string): Promise<{
+export type ArenaSummary = {
   score: number;
   level: number;
   totalTokens: number;
@@ -641,13 +609,45 @@ export async function getAchievementArenaSummary(userId: string): Promise<{
   totalActiveSeconds: number;
   totalSessions: number;
   totalActiveDays: number;
-}> {
+};
+
+async function persistArenaSummary(userId: string, summary: ArenaSummary) {
+  const row = {
+    score: summary.score,
+    level: summary.level,
+    totalTokens: tokenCountToBigInt(summary.totalTokens),
+    totalEstimatedCostUsd: summary.totalEstimatedCostUsd,
+    totalActiveSeconds: summary.totalActiveSeconds,
+    totalSessions: summary.totalSessions,
+    totalActiveDays: summary.totalActiveDays,
+    computedAt: new Date(),
+  };
+
+  await prisma.userArenaSummary.upsert({
+    where: { userId },
+    update: row,
+    create: { userId, ...row },
+  });
+}
+
+/**
+ * Re-evaluate every achievement for a user and persist the results.
+ *
+ * This is the expensive path: it replays the user's whole bucket and session
+ * history and runs four global rank queries, so it only belongs on writes
+ * (ingest, follow) and on the owner's own pages — never on a public profile
+ * view. It refreshes `UserArenaSummary` so those views can read a row instead.
+ */
+async function refreshUserAchievements(
+  userId: string,
+  source: AchievementAwardSource,
+) {
   await finalizePendingLeaderboardPeriods();
   const metrics = await loadAchievementMetrics(userId);
   const records = await synchronizeUserAchievements({
     userId,
     metrics,
-    source: "manual",
+    source,
   });
   const pageData = buildAchievementsPageDataFromStatuses({
     metrics,
@@ -656,7 +656,7 @@ export async function getAchievementArenaSummary(userId: string): Promise<{
       records,
     ),
   });
-  return {
+  const summary: ArenaSummary = {
     score: pageData.summary.score,
     level: pageData.summary.level,
     totalTokens: metrics.totalTokens,
@@ -665,25 +665,66 @@ export async function getAchievementArenaSummary(userId: string): Promise<{
     totalSessions: metrics.totalSessions,
     totalActiveDays: pageData.summary.totalActiveDays,
   };
+
+  await persistArenaSummary(userId, summary);
+
+  return { records, pageData, summary };
+}
+
+export async function synchronizeAchievementsForUser(
+  userId: string,
+  source: AchievementAwardSource = "manual",
+) {
+  const { records } = await refreshUserAchievements(userId, source);
+  return records;
+}
+
+export async function getAchievementsPageData(
+  userId: string,
+): Promise<AchievementsPageData> {
+  const { pageData } = await refreshUserAchievements(userId, "manual");
+  return pageData;
+}
+
+export async function getAchievementArenaSummary(
+  userId: string,
+): Promise<ArenaSummary> {
+  const { summary } = await refreshUserAchievements(userId, "manual");
+  return summary;
+}
+
+/**
+ * Arena score/level for a profile view, read from the materialized row.
+ *
+ * Falls back to a full recompute only when no row exists yet — an account that
+ * predates the table or has never synced. That recompute persists the row, so
+ * the fallback runs at most once per user.
+ */
+export async function getArenaSummaryForProfile(
+  userId: string,
+): Promise<ArenaSummary> {
+  const stored = await prisma.userArenaSummary.findUnique({
+    where: { userId },
+  });
+
+  if (!stored) {
+    return getAchievementArenaSummary(userId);
+  }
+
+  return {
+    score: stored.score,
+    level: stored.level,
+    totalTokens: tokenCountToNumber(stored.totalTokens),
+    totalEstimatedCostUsd: stored.totalEstimatedCostUsd,
+    totalActiveSeconds: stored.totalActiveSeconds,
+    totalSessions: stored.totalSessions,
+    totalActiveDays: stored.totalActiveDays,
+  };
 }
 
 export async function getAchievementNotificationData(
   userId: string,
 ): Promise<AchievementNotificationData> {
-  await finalizePendingLeaderboardPeriods();
-  const metrics = await loadAchievementMetrics(userId);
-  const records = await synchronizeUserAchievements({
-    userId,
-    metrics,
-    source: "manual",
-  });
-  return buildAchievementNotificationData(
-    buildAchievementsPageDataFromStatuses({
-      metrics,
-      achievements: mergeAchievementRecords(
-        buildAchievementStatuses(metrics),
-        records,
-      ),
-    }),
-  );
+  const { pageData } = await refreshUserAchievements(userId, "manual");
+  return buildAchievementNotificationData(pageData);
 }

@@ -1,6 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import { tokenCountToBigInt, tokenCountToNumber } from "@/lib/token-counts";
 import { getShanghaiDateKey, startOfShanghaiDay } from "./date";
+import {
+  resolveAffectedSnapshotPeriods,
+  resolveStaleSnapshotGeneratedAt,
+} from "./snapshot";
 
 type LeaderboardAggregateWriteClient = {
   usageBucket: Pick<typeof prisma.usageBucket, "findMany">;
@@ -9,7 +13,10 @@ type LeaderboardAggregateWriteClient = {
     typeof prisma.leaderboardUserDay,
     "upsert" | "deleteMany"
   >;
-  leaderboardSnapshot: Pick<typeof prisma.leaderboardSnapshot, "deleteMany">;
+  leaderboardSnapshot: Pick<
+    typeof prisma.leaderboardSnapshot,
+    "updateMany" | "deleteMany"
+  >;
 };
 
 type LeaderboardAccumulator = {
@@ -111,10 +118,48 @@ export async function findExistingSessionStartDates(
   return existing.map((row) => row.firstMessageAt);
 }
 
-export async function invalidateLeaderboardSnapshots(
+/**
+ * Drop every global snapshot immediately.
+ *
+ * For changes that must not be served from cache even briefly — a user turning
+ * their public profile off has to leave the board at once.
+ */
+export async function expireLeaderboardSnapshots(
   db: Pick<LeaderboardAggregateWriteClient, "leaderboardSnapshot"> = prisma,
 ) {
   await db.leaderboardSnapshot.deleteMany({});
+}
+
+/**
+ * Age the global snapshots that the changed days can affect.
+ *
+ * See `resolveStaleSnapshotGeneratedAt` for why this ages rather than deletes:
+ * the snapshot stays serveable for a short floor so a burst of ingests cannot
+ * force a full rebuild per request. Use `expireLeaderboardSnapshots` when a
+ * change must take effect immediately.
+ */
+export async function invalidateLeaderboardSnapshots(
+  db: Pick<LeaderboardAggregateWriteClient, "leaderboardSnapshot"> = prisma,
+  input: { dates: Date[]; now?: Date },
+) {
+  const now = input.now ?? new Date();
+  const periods = resolveAffectedSnapshotPeriods(input.dates, now);
+
+  if (periods.length === 0) {
+    return;
+  }
+
+  const staleGeneratedAt = resolveStaleSnapshotGeneratedAt(now);
+
+  await db.leaderboardSnapshot.updateMany({
+    where: {
+      period: { in: periods },
+      // Only pull a snapshot forward to the stale mark, never push an
+      // already-expired one back into the fresh window.
+      generatedAt: { gt: staleGeneratedAt },
+    },
+    data: { generatedAt: staleGeneratedAt },
+  });
 }
 
 export async function recomputeLeaderboardUserDays(
