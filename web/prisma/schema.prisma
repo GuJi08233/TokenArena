@@ -41,6 +41,11 @@ enum LeaderboardSnapshotPeriod {
   all_time
 }
 
+enum LeaderboardSnapshotMetric {
+  total_tokens
+  estimated_cost
+}
+
 enum AchievementAwardSource {
   ingest
   social
@@ -78,6 +83,7 @@ model User {
   leaderboardSnapshotEntries LeaderboardSnapshotEntry[]
   achievementAwards          AchievementAward[]
   achievements               UserAchievement[]
+  arenaSummary               UserArenaSummary?
   leaderboardPeriodEntries   LeaderboardPeriodEntry[]
   followers                  Follow[]                   @relation("FollowFollowing")
   following                  Follow[]                   @relation("FollowFollower")
@@ -147,6 +153,9 @@ model UsagePreference {
   createdAt            DateTime    @default(now())
   updatedAt            DateTime    @updatedAt
   user                 User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Every leaderboard query joins on this flag to exclude private profiles.
+  @@index([publicProfileEnabled])
 }
 
 model Follow {
@@ -221,6 +230,9 @@ model UsageBucket {
 
   @@unique([userId, deviceId, source, model, projectKey, bucketStart])
   @@index([userId, bucketStart])
+  // `getLastSyncedAt` orders by `updatedAt`; without this it sorts every row
+  // the user owns on each dashboard request.
+  @@index([userId, updatedAt])
 }
 
 model UsageSession {
@@ -252,6 +264,8 @@ model UsageSession {
 
   @@unique([userId, deviceId, source, sessionHash])
   @@index([userId, firstMessageAt])
+  // Mirrors the UsageBucket index above for the same `getLastSyncedAt` lookup.
+  @@index([userId, updatedAt])
 }
 
 model LeaderboardUserDay {
@@ -280,13 +294,17 @@ model LeaderboardUserDay {
 
 model LeaderboardSnapshot {
   id          String                     @id @default(cuid())
-  period      LeaderboardSnapshotPeriod  @unique
+  period      LeaderboardSnapshotPeriod
+  // The cost board ranks by a rate table the database has no access to, so it
+  // needs its own cached ordering rather than reusing the token snapshot.
+  metric      LeaderboardSnapshotMetric  @default(total_tokens)
   windowStart DateTime?
   windowEnd   DateTime?
   generatedAt DateTime                   @default(now())
   updatedAt   DateTime                   @updatedAt
   entries     LeaderboardSnapshotEntry[]
 
+  @@unique([period, metric])
   @@map("leaderboard_snapshot")
 }
 
@@ -301,6 +319,7 @@ model LeaderboardSnapshotEntry {
   cachedTokens        BigInt              @default(0)
   cacheCreationTokens BigInt              @default(0)
   totalTokens         BigInt              @default(0)
+  estimatedCostUsd    Float               @default(0)
   activeSeconds       Int                 @default(0)
   sessions            Int                 @default(0)
   createdAt           DateTime            @default(now())
@@ -312,6 +331,27 @@ model LeaderboardSnapshotEntry {
   @@index([snapshotId, rank])
   @@index([userId, rank])
   @@map("leaderboard_snapshot_entry")
+}
+
+/// Materialized arena score/level for a user.
+///
+/// Recomputing it walks the user's entire bucket and session history plus four
+/// global rank queries. Public profiles are reachable by anyone, so they read
+/// this row instead; it is refreshed whenever achievements are synchronized.
+model UserArenaSummary {
+  userId                String   @id
+  score                 Int      @default(0)
+  level                 Int      @default(0)
+  totalTokens           BigInt   @default(0)
+  totalEstimatedCostUsd Float    @default(0)
+  totalActiveSeconds    Int      @default(0)
+  totalSessions         Int      @default(0)
+  totalActiveDays       Int      @default(0)
+  computedAt            DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_arena_summary")
 }
 
 model UserAchievement {

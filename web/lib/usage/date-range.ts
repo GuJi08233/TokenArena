@@ -20,6 +20,17 @@ type ResolveDashboardRangeInput = {
 const zonedDateFormatterCache = new Map<string, Intl.DateTimeFormat>();
 const dateOnlyPattern = /^\d{4}-\d{2}-\d{2}$/;
 
+/**
+ * Widest span a `custom` range may cover, in days (a leap year).
+ *
+ * The dashboard loads raw buckets and sessions for the range and then sums them
+ * in memory, so an unbounded `from` would pull a user's entire history — and
+ * `getPreviousRange` doubles whatever span is chosen.
+ */
+export const MAX_CUSTOM_RANGE_DAYS = 366;
+
+const MAX_CUSTOM_RANGE_MS = MAX_CUSTOM_RANGE_DAYS * 24 * 60 * 60 * 1000;
+
 function getZonedFormatter(timezone: string) {
   const cached = zonedDateFormatterCache.get(timezone);
 
@@ -247,8 +258,14 @@ export function resolveDashboardRange(
   const now = input.now ?? new Date();
 
   if (preset === "custom") {
-    const from = toDate(input.from, now, "start", input.timezone);
     const to = toDate(input.to, now, "end", input.timezone);
+    const requestedFrom = toDate(input.from, now, "start", input.timezone);
+    // Clamp rather than reject: the resolved range travels back to the client,
+    // so a too-wide request still renders, just over the capped window.
+    const from =
+      to.getTime() - requestedFrom.getTime() > MAX_CUSTOM_RANGE_MS
+        ? new Date(to.getTime() - MAX_CUSTOM_RANGE_MS)
+        : requestedFrom;
 
     return {
       from,

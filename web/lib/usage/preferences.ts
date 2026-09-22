@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 
 import type { AppLocale } from "@/lib/i18n";
-import { invalidateLeaderboardSnapshots } from "@/lib/leaderboard/aggregates";
+import { expireLeaderboardSnapshots } from "@/lib/leaderboard/aggregates";
 import { prisma } from "@/lib/prisma";
 import type { ThemeMode } from "@/lib/theme";
 import type { ProjectMode } from "./types";
@@ -90,7 +90,9 @@ export async function updateUsagePreference(
       input.publicProfileEnabled !== undefined &&
       input.publicProfileEnabled !== existing.publicProfileEnabled
     ) {
-      await invalidateLeaderboardSnapshots(tx);
+      // Visibility changes must not be served from a cached board, so this
+      // clears the snapshots outright rather than ageing them.
+      await expireLeaderboardSnapshots(tx);
     }
 
     return preference;
