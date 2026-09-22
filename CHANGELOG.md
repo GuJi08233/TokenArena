@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.3](https://github.com/GuJi08233/TokenArena/compare/v0.16.2...v0.16.3) (2026-09-22)
+
+
+### Performance Improvements
+
+* 消除热路径上的全量扫描 ([#33](https://github.com/GuJi08233/TokenArena/issues/33)) ([5eac195](https://github.com/GuJi08233/TokenArena/commit/5eac195be7ee2c11e51229416013f8a3b1fead98))
+
 ## [0.16.2](https://github.com/GuJi08233/TokenArena/compare/v0.16.1...v0.16.2) (2026-09-20)
 
 
