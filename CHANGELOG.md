@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.5](https://github.com/GuJi08233/TokenArena/compare/v0.16.4...v0.16.5) (2026-09-23)
+
+
+### Bug Fixes
+
+* harden SVG responses and correct a CodeQL suppression ([#37](https://github.com/GuJi08233/TokenArena/issues/37)) ([55cd764](https://github.com/GuJi08233/TokenArena/commit/55cd76436ef7ab8377ab7ae55d17d8e124f676fd))
+
 ## [0.16.4](https://github.com/GuJi08233/TokenArena/compare/v0.16.3...v0.16.4) (2026-09-23)
 
 
