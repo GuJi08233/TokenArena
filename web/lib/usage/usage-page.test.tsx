@@ -1,6 +1,6 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   redirect: vi.fn(),
@@ -169,6 +169,12 @@ vi.mock("@/lib/usage/queries", () => ({
 }));
 
 describe("UsagePage", () => {
+  // 首次加载页面要转换整棵依赖树，全量并行时会超过单个用例 5 秒的超时；
+  // 超时的用例还会在后台继续渲染，吃掉下一个用例的 mock。
+  beforeAll(async () => {
+    await import("@/app/[locale]/usage/page");
+  }, 60_000);
+
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getSessionOrRedirect.mockResolvedValue({
