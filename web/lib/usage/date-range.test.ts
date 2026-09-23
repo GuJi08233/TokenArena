@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   getPreviousRange,
+  getZonedWeekdayHour,
   groupByHourOrDay,
   listRangeBuckets,
   MAX_CUSTOM_RANGE_DAYS,
@@ -100,6 +101,27 @@ describe("resolveDashboardRange", () => {
     expect(result.granularity).toBe("day");
     expect(result.from.toISOString()).toBe("2026-02-25T00:00:00.000Z");
     expect(result.to.toISOString()).toBe("2026-03-26T12:00:00.000Z");
+  });
+});
+
+describe("getZonedWeekdayHour", () => {
+  it("uses the local weekday when UTC and local dates differ", () => {
+    expect(
+      getZonedWeekdayHour(
+        new Date("2026-03-26T23:30:00.000Z"),
+        "Asia/Shanghai",
+      ),
+    ).toEqual({ weekday: 5, hour: 7 });
+  });
+
+  it("uses the correct hour across a daylight saving transition", () => {
+    const timezone = "America/Los_Angeles";
+    expect(
+      getZonedWeekdayHour(new Date("2026-03-08T09:30:00.000Z"), timezone),
+    ).toEqual({ weekday: 0, hour: 1 });
+    expect(
+      getZonedWeekdayHour(new Date("2026-03-08T10:30:00.000Z"), timezone),
+    ).toEqual({ weekday: 0, hour: 3 });
   });
 });
 

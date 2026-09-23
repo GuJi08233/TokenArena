@@ -142,19 +142,38 @@ function toDeviceMetadata(config: Config): DeviceMetadata {
   };
 }
 
+function createProjectIdentityResolver(settings: ApiSettings) {
+  const identities = new Map<string, ReturnType<typeof toProjectIdentity>>();
+
+  return (project: string) => {
+    const name = project || "unknown";
+    let identity = identities.get(name);
+    if (!identity) {
+      identity = toProjectIdentity({
+        project: name,
+        mode: settings.projectMode,
+        salt: settings.projectHashSalt,
+      });
+      identities.set(name, identity);
+    }
+    return identity;
+  };
+}
+
+type ProjectIdentityResolver = ReturnType<typeof createProjectIdentityResolver>;
+
 export function toUploadBuckets(
   buckets: TokenBucket[],
   settings: ApiSettings,
   device: DeviceMetadata,
+  resolveProject: ProjectIdentityResolver = createProjectIdentityResolver(
+    settings,
+  ),
 ): UploadTokenBucket[] {
   const aggregated = new Map<string, UploadTokenBucket>();
 
   for (const bucket of buckets) {
-    const project = toProjectIdentity({
-      project: bucket.project || "unknown",
-      mode: settings.projectMode,
-      salt: settings.projectHashSalt,
-    });
+    const project = resolveProject(bucket.project);
     const key = [
       bucket.source,
       bucket.model,
@@ -199,13 +218,12 @@ export function toUploadSessions(
   sessions: SessionMetadata[],
   settings: ApiSettings,
   device: DeviceMetadata,
+  resolveProject: ProjectIdentityResolver = createProjectIdentityResolver(
+    settings,
+  ),
 ): UploadSessionMetadata[] {
   return sessions.map((session) => {
-    const project = toProjectIdentity({
-      project: session.project || "unknown",
-      mode: settings.projectMode,
-      salt: settings.projectHashSalt,
-    });
+    const project = resolveProject(session.project);
 
     return {
       source: session.source,
@@ -431,8 +449,19 @@ export async function runSync(
       deviceId: device.deviceId,
       settings,
     });
-    const uploadBuckets = toUploadBuckets(allBuckets, settings, device);
-    const uploadSessions = toUploadSessions(allSessions, settings, device);
+    const resolveProject = createProjectIdentityResolver(settings);
+    const uploadBuckets = toUploadBuckets(
+      allBuckets,
+      settings,
+      device,
+      resolveProject,
+    );
+    const uploadSessions = toUploadSessions(
+      allSessions,
+      settings,
+      device,
+      resolveProject,
+    );
     const previousManifest = loadUploadManifest();
     const uploadDiff = diffUploadManifest({
       buckets: uploadBuckets,
@@ -506,7 +535,15 @@ export async function runSync(
             : "No new or updated usage data to upload.",
         );
       }
-      persistUploadManifest(uploadDiff.nextManifest, quiet);
+      if (
+        rebuild ||
+        !previousManifest ||
+        uploadDiff.scopeChangedReasons.length > 0 ||
+        uploadDiff.removedBuckets > 0 ||
+        uploadDiff.removedSessions > 0
+      ) {
+        persistUploadManifest(uploadDiff.nextManifest, quiet);
+      }
       markSyncSucceeded(source, { buckets: 0, sessions: 0 });
       return { buckets: 0, sessions: 0 };
     }

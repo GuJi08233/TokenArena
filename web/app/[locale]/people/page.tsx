@@ -18,10 +18,11 @@ import {
 import { Link } from "@/i18n/navigation";
 import { getOptionalSession } from "@/lib/session";
 import {
+  countFollowerProfiles,
+  countFollowingProfiles,
   countPublicProfiles,
   listFollowerProfiles,
   listFollowingProfiles,
-  type SocialListProfile,
   searchPublicProfiles,
 } from "@/lib/social/queries";
 import { cn } from "@/lib/utils";
@@ -95,22 +96,6 @@ function normalizePeopleTab(
   return "all";
 }
 
-function filterProfiles(profiles: SocialListProfile[], query: string) {
-  if (!query) {
-    return profiles;
-  }
-
-  const normalized = query.toLowerCase();
-
-  return profiles.filter((profile) => {
-    const haystack = [profile.username, profile.name, profile.bio ?? ""]
-      .join(" ")
-      .toLowerCase();
-
-    return haystack.includes(normalized);
-  });
-}
-
 export async function generateMetadata({
   params,
 }: {
@@ -152,26 +137,34 @@ export default async function PeoplePage({
 
   const peopleData = await (async () => {
     if (tab === "following" && viewer) {
-      const allProfiles = filterProfiles(
-        await listFollowingProfiles(viewer.user.id),
-        query,
-      );
+      const input = { viewerUserId: viewer.user.id, query };
+      const totalCount = await countFollowingProfiles(input);
+      const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+      const validPage = Math.min(currentPage, totalPages);
 
       return {
-        totalCount: allProfiles.length,
-        profiles: allProfiles,
+        totalCount,
+        profiles: await listFollowingProfiles({
+          ...input,
+          offset: (validPage - 1) * pageSize,
+          limit: pageSize,
+        }),
       };
     }
 
     if (tab === "followers" && viewer) {
-      const allProfiles = filterProfiles(
-        await listFollowerProfiles(viewer.user.id),
-        query,
-      );
+      const input = { viewerUserId: viewer.user.id, query };
+      const totalCount = await countFollowerProfiles(input);
+      const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+      const validPage = Math.min(currentPage, totalPages);
 
       return {
-        totalCount: allProfiles.length,
-        profiles: allProfiles,
+        totalCount,
+        profiles: await listFollowerProfiles({
+          ...input,
+          offset: (validPage - 1) * pageSize,
+          limit: pageSize,
+        }),
       };
     }
 
@@ -196,13 +189,7 @@ export default async function PeoplePage({
 
   const totalPages = Math.max(1, Math.ceil(peopleData.totalCount / pageSize));
   const validPage = Math.min(currentPage, totalPages);
-  const profiles =
-    tab === "all"
-      ? peopleData.profiles
-      : peopleData.profiles.slice(
-          (validPage - 1) * pageSize,
-          validPage * pageSize,
-        );
+  const profiles = peopleData.profiles;
 
   const tabs: Array<{ value: PeopleTab; label: string }> = [
     { value: "all", label: t("title") },

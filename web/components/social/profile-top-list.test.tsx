@@ -1,143 +1,51 @@
-import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { Bar, BarChart, LabelList, ResponsiveContainer } from "recharts";
 import { describe, expect, it, vi } from "vitest";
 
 import { ProfileTopList } from "./profile-top-list";
-import { ProfileTopListChartInner } from "./profile-top-list-chart-inner";
 
 vi.mock("next-intl", () => ({
   useTranslations:
     (namespace: string) =>
     (key: string): string => {
-      if (namespace === "social.profile") {
-        return (
-          {
-            totalTokens: "Total Tokens",
-          }[key] ?? key
-        );
+      if (namespace === "social.profile" && key === "totalTokens") {
+        return "Total Tokens";
       }
-
-      if (namespace === "usage.breakdowns.table") {
-        return (
-          {
-            share: "Share",
-          }[key] ?? key
-        );
+      if (namespace === "usage.breakdowns.table" && key === "share") {
+        return "Share";
       }
-
       return key;
     },
 }));
 
-vi.mock("next/dynamic", () => ({
-  default: () => {
-    const FakeComponent = (props: Record<string, unknown>) => props.children;
-    FakeComponent.displayName = "DynamicComponent";
-    FakeComponent.preload = () => Promise.resolve();
-    return FakeComponent;
-  },
-}));
-
-function collectElements(node: ReactNode): Array<{
-  type: unknown;
-  props: Record<string, unknown>;
-}> {
-  const elements: Array<{ type: unknown; props: Record<string, unknown> }> = [];
-
-  function visit(value: ReactNode) {
-    if (Array.isArray(value)) {
-      for (const item of value) {
-        visit(item);
-      }
-
-      return;
-    }
-
-    if (
-      value &&
-      typeof value === "object" &&
-      "type" in value &&
-      "props" in value &&
-      value.props &&
-      typeof value.props === "object"
-    ) {
-      const element = value as {
-        type: unknown;
-        props: Record<string, unknown> & { children?: ReactNode };
-      };
-
-      elements.push({
-        type: element.type,
-        props: element.props,
-      });
-      visit(element.props.children);
-    }
-  }
-
-  visit(node);
-
-  return elements;
-}
-
-describe("ProfileTopListChartInner", () => {
-  it("renders a recharts bar chart ranked by total tokens", () => {
-    const tree = ProfileTopListChartInner({
-      chartData: [
-        {
-          name: "Claude Code",
-          shortName: "Claude Code",
-          value: 1200000,
-          valueLabel: "1.2M",
-          share: 0.75,
-        },
-        {
-          name: "Codex",
-          shortName: "Codex",
-          value: 300000,
-          valueLabel: "300K",
-          share: 0.1875,
-        },
-        {
-          name: "OpenCode",
-          shortName: "OpenCode",
-          value: 100000,
-          valueLabel: "100K",
-          share: 0.0625,
-        },
-      ],
-      chartHeight: 220,
-      locale: "en",
-      shareLabel: "Share",
-      tokenLabel: "Total Tokens",
-    });
-    const elements = collectElements(tree);
-    const charts = elements.filter((element) => element.type === BarChart);
-    const markup = renderToStaticMarkup(tree);
-
-    expect(
-      elements.filter((element) => element.type === ResponsiveContainer),
-    ).toHaveLength(1);
-    expect(charts).toHaveLength(1);
-    expect(elements.filter((element) => element.type === Bar)).toHaveLength(1);
-    expect(
-      elements.filter((element) => element.type === LabelList),
-    ).toHaveLength(1);
-    expect((charts[0]?.props.data as Array<{ value: number }>)[0]?.value).toBe(
-      1200000,
-    );
-    expect(markup).not.toContain("Claude Code");
-    expect(markup).not.toContain("75.0%");
-  });
-});
-
 describe("ProfileTopList", () => {
+  it("renders ranked values and proportional bars without a chart runtime", () => {
+    const markup = renderToStaticMarkup(
+      <ProfileTopList
+        locale="en"
+        emptyLabel="No data"
+        items={[
+          { name: "Claude Code", totalTokens: 1_200_000, share: 0.8 },
+          { name: "Codex", totalTokens: 300_000, share: 0.2 },
+        ]}
+      />,
+    );
+
+    expect(markup).toContain("Claude Code");
+    expect(markup).toContain("Codex");
+    expect(markup).toContain("1.2M");
+    expect(markup).toContain("300K");
+    expect(markup).toContain("Share: 80.0%");
+    expect(markup).toContain("width:100%");
+    expect(markup).toContain("width:25%");
+    expect(markup).toContain("Total Tokens:");
+  });
+
   it("renders the empty label when no items are available", () => {
     const markup = renderToStaticMarkup(
       <ProfileTopList locale="en" emptyLabel="No tool usage yet." items={[]} />,
     );
 
     expect(markup).toContain("No tool usage yet.");
-    expect(markup).not.toContain("recharts-responsive-container");
+    expect(markup).not.toContain('aria-hidden="true"');
   });
 });

@@ -29,6 +29,7 @@ import {
 } from "@/lib/usage/date-range";
 import { formatDateInput } from "@/lib/usage/format";
 import type { DashboardRange } from "@/lib/usage/types";
+import { Prisma } from "../../generated/prisma/client";
 import type { FollowTag } from "./follow-tags";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -281,84 +282,17 @@ async function getRelationFlags(
   };
 }
 
-function buildHeatmap(
-  timezone: string,
-  sessions: Array<{
-    firstMessageAt: Date;
-    activeSeconds: number;
-  }>,
-  buckets: Array<{
-    bucketStart: Date;
-    totalTokens: number;
-  }>,
-) {
-  const range = createDailyRange(timezone, 365);
-  const seeded = new Map<string, ProfileHeatmapDay>(
-    listRangeBuckets(range).map((bucket) => [
-      bucket.key,
-      {
-        date: bucket.key,
-        activeSeconds: 0,
-        sessions: 0,
-        totalTokens: 0,
-        level: 0,
-      },
-    ]),
-  );
-
-  for (const session of sessions) {
-    const key = groupByHourOrDay(range, session.firstMessageAt);
-    const day = seeded.get(key);
-
-    if (!day) {
-      continue;
-    }
-
-    day.activeSeconds += session.activeSeconds;
-    day.sessions += 1;
-  }
-
-  for (const bucket of buckets) {
-    const key = groupByHourOrDay(range, bucket.bucketStart);
-    const day = seeded.get(key);
-
-    if (!day) {
-      continue;
-    }
-
-    day.totalTokens += bucket.totalTokens;
-  }
-
-  const values = Array.from(seeded.values());
-  const maxValue = Math.max(...values.map((day) => day.activeSeconds), 0);
-
-  for (const day of values) {
-    if (day.activeSeconds <= 0 || maxValue <= 0) {
-      day.level = 0;
-      continue;
-    }
-
-    day.level = Math.min(
-      4,
-      Math.max(1, Math.ceil((day.activeSeconds / maxValue) * 4)),
-    ) as ProfileHeatmapDay["level"];
-  }
-
-  return values;
-}
-
 type DailyHeatmapAggregate = {
-  statDate: Date;
+  date: string;
   activeSeconds: number;
   sessions: number;
   totalTokens: number | bigint;
 };
 
 function buildHeatmapFromDailyAggregates(
-  timezone: string,
+  range: DashboardRange,
   rows: DailyHeatmapAggregate[],
 ) {
-  const range = createDailyRange(timezone, 365);
   const seeded = new Map<string, ProfileHeatmapDay>(
     listRangeBuckets(range).map((bucket) => [
       bucket.key,
@@ -373,8 +307,7 @@ function buildHeatmapFromDailyAggregates(
   );
 
   for (const row of rows) {
-    const key = groupByHourOrDay(range, row.statDate);
-    const day = seeded.get(key);
+    const day = seeded.get(row.date);
 
     if (!day) {
       continue;
@@ -401,6 +334,32 @@ function buildHeatmapFromDailyAggregates(
   }
 
   return values;
+}
+
+function nextDateKey(key: string) {
+  return new Date(Date.parse(`${key}T00:00:00.000Z`) + DAY_MS)
+    .toISOString()
+    .slice(0, 10);
+}
+
+function firstUtcInstantOfLocalDay(range: DashboardRange, key: string) {
+  const nominalUtc = Date.parse(`${key}T00:00:00.000Z`);
+  if (range.timezone === "UTC") return nominalUtc;
+
+  let lower = nominalUtc - 2 * DAY_MS;
+  let upper = nominalUtc + 2 * DAY_MS;
+
+  // 本地午夜可能发生跳时；按实际日期键找首毫秒，不能信任近似的 day.start。
+  while (lower < upper) {
+    const middle = lower + Math.floor((upper - lower) / 2);
+    if (groupByHourOrDay(range, new Date(middle)) < key) {
+      lower = middle + 1;
+    } else {
+      upper = middle;
+    }
+  }
+
+  return lower;
 }
 
 export async function getActivityHeatmap365(input: {
@@ -431,45 +390,79 @@ export async function getActivityHeatmap365(input: {
       orderBy: { statDate: "asc" },
     });
 
-    return buildHeatmapFromDailyAggregates(input.timezone, dailyRows);
+    return buildHeatmapFromDailyAggregates(
+      range365,
+      dailyRows.map((row) => ({
+        ...row,
+        date: groupByHourOrDay(range365, row.statDate),
+      })),
+    );
   }
 
-  const [sessions365, buckets365] = await Promise.all([
-    prisma.usageSession.findMany({
-      where: {
-        userId: input.userId,
-        firstMessageAt: {
-          gte: range365.from,
-          lte: range365.to,
-        },
-      },
-      select: {
-        firstMessageAt: true,
-        activeSeconds: true,
-      },
-      orderBy: { firstMessageAt: "asc" },
-    }),
-    prisma.usageBucket.findMany({
-      where: {
-        userId: input.userId,
-        bucketStart: {
-          gte: range365.from,
-          lte: range365.to,
-        },
-      },
-      select: {
-        bucketStart: true,
-        totalTokens: true,
-      },
-      orderBy: { bucketStart: "asc" },
-    }),
-  ]);
+  const days = listRangeBuckets(range365);
+  const boundaries = new Map<string, number>();
+  const boundary = (key: string) => {
+    const cached = boundaries.get(key);
+    if (cached !== undefined) return cached;
+    const value = firstUtcInstantOfLocalDay(range365, key);
+    boundaries.set(key, value);
+    return value;
+  };
+  const endExclusive = range365.to.getTime() + 1;
+  const dayRanges = Array.from(new Set(days.map((day) => day.key))).flatMap(
+    (key) => {
+      const start = Math.max(range365.from.getTime(), boundary(key));
+      const end = Math.min(endExclusive, boundary(nextDateKey(key)));
+      if (start >= end) return [];
 
-  return buildHeatmap(
-    input.timezone,
-    sessions365,
-    buckets365.map(normalizeUsageBucketTokenFields),
+      return [
+        Prisma.sql`(
+          ${key}::text,
+          ${new Date(start).toISOString()}::timestamp(3),
+          ${new Date(end).toISOString()}::timestamp(3)
+        )`,
+      ];
+    },
   );
+
+  // DateTime 列存放无时区的 UTC 墙钟值。用应用已算好的本地日边界，
+  // 避免数据库与 Intl 对时区别名的支持范围不同，也只传输有数据的日汇总。
+  const dailyRows = await prisma.$queryRaw<DailyHeatmapAggregate[]>(Prisma.sql`
+    WITH day_ranges ("date", "startAt", "endAt") AS (
+      VALUES ${Prisma.join(dayRanges)}
+    ), day_events AS (
+      SELECT
+        d."date", s."activeSeconds"::bigint AS "activeSeconds",
+        1::bigint AS "sessions", 0::bigint AS "totalTokens"
+      FROM day_ranges d
+      JOIN "UsageSession" s ON s."userId" = ${input.userId}::text
+        AND s."firstMessageAt" >= d."startAt"
+        AND s."firstMessageAt" < d."endAt"
+      WHERE s."firstMessageAt" >= ${range365.from.toISOString()}::timestamp(3)
+        AND s."firstMessageAt" <= ${range365.to.toISOString()}::timestamp(3)
+
+      UNION ALL
+
+      SELECT
+        d."date", 0::bigint, 0::bigint, b."totalTokens"
+      FROM day_ranges d
+      JOIN "UsageBucket" b ON b."userId" = ${input.userId}::text
+        AND b."bucketStart" >= d."startAt"
+        AND b."bucketStart" < d."endAt"
+      WHERE b."bucketStart" >= ${range365.from.toISOString()}::timestamp(3)
+        AND b."bucketStart" <= ${range365.to.toISOString()}::timestamp(3)
+    )
+    SELECT
+      "date",
+      SUM("activeSeconds")::double precision AS "activeSeconds",
+      SUM("sessions")::double precision AS "sessions",
+      SUM("totalTokens")::bigint AS "totalTokens"
+    FROM day_events
+    GROUP BY "date"
+    ORDER BY "date"
+  `);
+
+  return buildHeatmapFromDailyAggregates(range365, dailyRows);
 }
 
 /**
@@ -943,14 +936,67 @@ export async function countPublicProfiles(input: {
   });
 }
 
-export async function listFollowingProfiles(viewerUserId: string) {
+type NetworkProfileQuery = {
+  viewerUserId: string;
+  query?: string;
+};
+
+type NetworkProfilePageQuery = NetworkProfileQuery & {
+  limit: number;
+  offset: number;
+};
+
+function buildNetworkProfileSearch(
+  query?: string,
+): Prisma.UserWhereInput | null {
+  const search = query?.trim();
+  if (!search) return null;
+
+  return {
+    OR: [
+      { username: { contains: search, mode: "insensitive" } },
+      { name: { contains: search, mode: "insensitive" } },
+      {
+        usagePreference: {
+          is: { bio: { contains: search, mode: "insensitive" } },
+        },
+      },
+    ],
+  };
+}
+
+function buildFollowingWhere(
+  input: NetworkProfileQuery,
+): Prisma.FollowWhereInput {
+  const search = buildNetworkProfileSearch(input.query);
+  return {
+    followerId: input.viewerUserId,
+    ...(search ? { following: { is: search } } : {}),
+  };
+}
+
+function buildFollowerWhere(
+  input: NetworkProfileQuery,
+): Prisma.FollowWhereInput {
+  const search = buildNetworkProfileSearch(input.query);
+  return {
+    followingId: input.viewerUserId,
+    ...(search ? { follower: { is: search } } : {}),
+  };
+}
+
+export async function countFollowingProfiles(input: NetworkProfileQuery) {
+  return prisma.follow.count({ where: buildFollowingWhere(input) });
+}
+
+export async function listFollowingProfiles(input: NetworkProfilePageQuery) {
   const rows = await prisma.follow.findMany({
-    where: {
-      followerId: viewerUserId,
-    },
+    where: buildFollowingWhere(input),
     orderBy: {
       createdAt: "desc",
     },
+    skip: input.offset,
+    take: input.limit,
     select: {
       tag: true,
       following: {
@@ -960,17 +1006,15 @@ export async function listFollowingProfiles(viewerUserId: string) {
   });
 
   const ids = rows.map((row) => row.following.id);
-  const reverse = await prisma.follow.findMany({
-    where: {
-      followerId: {
-        in: ids,
-      },
-      followingId: viewerUserId,
-    },
-    select: {
-      followerId: true,
-    },
-  });
+  const reverse = ids.length
+    ? await prisma.follow.findMany({
+        where: {
+          followerId: { in: ids },
+          followingId: input.viewerUserId,
+        },
+        select: { followerId: true },
+      })
+    : [];
   const reverseSet = new Set(reverse.map((record) => record.followerId));
 
   return rows.map((row) =>
@@ -981,19 +1025,23 @@ export async function listFollowingProfiles(viewerUserId: string) {
         followTag: row.tag,
         followsYou: reverseSet.has(row.following.id),
       },
-      viewerUserId,
+      input.viewerUserId,
     ),
   );
 }
 
-export async function listFollowerProfiles(viewerUserId: string) {
+export async function countFollowerProfiles(input: NetworkProfileQuery) {
+  return prisma.follow.count({ where: buildFollowerWhere(input) });
+}
+
+export async function listFollowerProfiles(input: NetworkProfilePageQuery) {
   const rows = await prisma.follow.findMany({
-    where: {
-      followingId: viewerUserId,
-    },
+    where: buildFollowerWhere(input),
     orderBy: {
       createdAt: "desc",
     },
+    skip: input.offset,
+    take: input.limit,
     select: {
       follower: {
         select: profileUserSelect,
@@ -1002,18 +1050,15 @@ export async function listFollowerProfiles(viewerUserId: string) {
   });
 
   const ids = rows.map((row) => row.follower.id);
-  const direct = await prisma.follow.findMany({
-    where: {
-      followerId: viewerUserId,
-      followingId: {
-        in: ids,
-      },
-    },
-    select: {
-      followingId: true,
-      tag: true,
-    },
-  });
+  const direct = ids.length
+    ? await prisma.follow.findMany({
+        where: {
+          followerId: input.viewerUserId,
+          followingId: { in: ids },
+        },
+        select: { followingId: true, tag: true },
+      })
+    : [];
   const directMap = new Map(
     direct.map((record) => [record.followingId, record.tag] as const),
   );
@@ -1026,7 +1071,7 @@ export async function listFollowerProfiles(viewerUserId: string) {
         followTag: directMap.get(row.follower.id) ?? null,
         followsYou: true,
       },
-      viewerUserId,
+      input.viewerUserId,
     ),
   );
 }

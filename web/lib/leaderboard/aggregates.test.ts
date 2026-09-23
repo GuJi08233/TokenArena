@@ -306,6 +306,59 @@ describe("recomputeLeaderboardUserDays", () => {
     expect(deleteArg.where.userId).toBe("user-1");
   });
 
+  it("reads only affected days when their dates are far apart", async () => {
+    const older = new Date("2024-01-01T16:00:00.000Z");
+    const newer = new Date("2026-09-22T16:00:00.000Z");
+    const db = createMockDb({
+      usageBucket: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            bucketStart: older,
+            inputTokens: BigInt(1),
+            outputTokens: BigInt(0),
+            reasoningTokens: BigInt(0),
+            cachedTokens: BigInt(0),
+            cacheCreationTokens: BigInt(0),
+            totalTokens: BigInt(1),
+          },
+        ]),
+      },
+      usageSession: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            firstMessageAt: newer,
+            activeSeconds: 10,
+            messageCount: 2,
+            userMessageCount: 1,
+          },
+        ]),
+      },
+    });
+
+    await recomputeLeaderboardUserDays(db, {
+      userId: "user-1",
+      dates: [newer, older],
+    });
+
+    const ranges = [
+      { gte: older, lt: new Date("2024-01-02T16:00:00.000Z") },
+      { gte: newer, lt: new Date("2026-09-23T16:00:00.000Z") },
+    ];
+    expect(db.usageBucket.findMany.mock.calls[0][0].where).toEqual({
+      userId: "user-1",
+      OR: ranges.map((range) => ({ bucketStart: range })),
+    });
+    expect(db.usageSession.findMany.mock.calls[0][0].where).toEqual({
+      userId: "user-1",
+      OR: ranges.map((range) => ({ firstMessageAt: range })),
+    });
+    expect(
+      db.leaderboardUserDay.upsert.mock.calls.map(
+        ([{ where }]) => where.userId_statDate.statDate,
+      ),
+    ).toEqual([older, newer]);
+  });
+
   it("handles multi-date scenario with data across several days", async () => {
     const day1 = new Date("2026-03-27T16:00:00.000Z");
     const day2 = new Date("2026-03-28T16:00:00.000Z");

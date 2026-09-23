@@ -176,18 +176,29 @@ export async function recomputeLeaderboardUserDays(
   const sortedDates = input.dates
     .map((value) => startOfShanghaiDay(value))
     .sort((left, right) => left.getTime() - right.getTime());
-  const rangeStart = sortedDates[0];
-  const rangeEnd = new Date(sortedDates[sortedDates.length - 1].getTime());
-  rangeEnd.setUTCDate(rangeEnd.getUTCDate() + 1);
+  const dateRanges: Array<{ gte: Date; lt: Date }> = [];
+  for (const statDate of sortedDates) {
+    const end = new Date(statDate.getTime());
+    end.setUTCDate(end.getUTCDate() + 1);
+    const previous = dateRanges.at(-1);
+
+    // 合并相邻日期，避免相隔很远的变更读取中间所有历史记录。
+    if (previous && statDate.getTime() <= previous.lt.getTime()) {
+      if (end.getTime() > previous.lt.getTime()) previous.lt = end;
+    } else {
+      dateRanges.push({ gte: statDate, lt: end });
+    }
+  }
 
   const [buckets, sessions] = await Promise.all([
     db.usageBucket.findMany({
       where: {
         userId: input.userId,
-        bucketStart: {
-          gte: rangeStart,
-          lt: rangeEnd,
-        },
+        ...(dateRanges.length === 1
+          ? { bucketStart: dateRanges[0] }
+          : {
+              OR: dateRanges.map((range) => ({ bucketStart: range })),
+            }),
       },
       select: {
         bucketStart: true,
@@ -202,10 +213,11 @@ export async function recomputeLeaderboardUserDays(
     db.usageSession.findMany({
       where: {
         userId: input.userId,
-        firstMessageAt: {
-          gte: rangeStart,
-          lt: rangeEnd,
-        },
+        ...(dateRanges.length === 1
+          ? { firstMessageAt: dateRanges[0] }
+          : {
+              OR: dateRanges.map((range) => ({ firstMessageAt: range })),
+            }),
       },
       select: {
         firstMessageAt: true,

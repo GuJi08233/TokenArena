@@ -41,6 +41,21 @@ const syncApi = vi.hoisted(() => ({
   ingest: vi.fn(),
   release: vi.fn(),
 }));
+const projectIdentityCalls = vi.hoisted(() => vi.fn());
+
+vi.mock("../domain/project-identity", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../domain/project-identity")>();
+  return {
+    ...actual,
+    toProjectIdentity: (
+      input: Parameters<typeof actual.toProjectIdentity>[0],
+    ) => {
+      projectIdentityCalls(input.project);
+      return actual.toProjectIdentity(input);
+    },
+  };
+});
 
 vi.mock("../infrastructure/api/client", async (importOriginal) => {
   const actual =
@@ -478,10 +493,71 @@ describe("runSync rebuild safeguards", () => {
     expect(await runSync(config, options)).toEqual({ buckets: 0, sessions: 0 });
     expect(syncApi.deleteDeviceData).not.toHaveBeenCalled();
     expect(syncApi.ingest).not.toHaveBeenCalled();
+    expect(saveUploadManifest).not.toHaveBeenCalled();
     expect(markSyncSucceeded).toHaveBeenCalledWith("manual", {
       buckets: 0,
       sessions: 0,
     });
+  });
+
+  it.each([
+    "buckets",
+    "sessions",
+  ] as const)("saves the manifest after %s disappear from a no-upload snapshot", async (kind) => {
+    rememberSnapshot();
+    if (!manifest) throw new Error("fixture");
+    manifest[kind].obsolete = "old-hash";
+
+    expect(await runSync(config, options)).toEqual({
+      buckets: 0,
+      sessions: 0,
+    });
+    expect(syncApi.ingest).not.toHaveBeenCalled();
+    expect(saveUploadManifest).toHaveBeenCalledOnce();
+    expect(manifest[kind].obsolete).toBeUndefined();
+  });
+
+  it("saves a first sync and a changed server scope", async () => {
+    expect(await runSync(config, options)).toEqual({ buckets: 1, sessions: 1 });
+    expect(saveUploadManifest).toHaveBeenCalledOnce();
+
+    if (!manifest) throw new Error("fixture");
+    manifest.scope.apiKeyHash = "previous-key";
+    vi.mocked(saveUploadManifest).mockClear();
+    syncApi.ingest.mockClear();
+    expect(await runSync(config, options)).toEqual({ buckets: 1, sessions: 1 });
+    expect(syncApi.deleteDeviceData).not.toHaveBeenCalled();
+    expect(syncApi.ingest).toHaveBeenCalledOnce();
+    expect(saveUploadManifest).toHaveBeenCalledOnce();
+  });
+
+  it("resolves each project once across buckets and sessions per sync", async () => {
+    snapshot.buckets = [
+      bucket(0),
+      bucket(1),
+      { ...bucket(2), project: "other" },
+    ];
+    snapshot.sessions = [session(0), { ...session(1), project: "other" }];
+
+    expect(await runSync(config, options)).toEqual({ buckets: 3, sessions: 2 });
+    expect(projectIdentityCalls.mock.calls.map(([project]) => project)).toEqual(
+      ["project", "other"],
+    );
+    const [uploadedBuckets, uploadedSessions] =
+      syncApi.ingest.mock.calls[0].slice(1, 3) as [
+        UploadTokenBucket[],
+        UploadSessionMetadata[],
+      ];
+    expect(uploadedBuckets[0].projectKey).toBe(uploadedBuckets[1].projectKey);
+    expect(uploadedBuckets[0].projectKey).toBe(uploadedSessions[0].projectKey);
+    expect(uploadedBuckets[2].projectKey).toBe(uploadedSessions[1].projectKey);
+
+    projectIdentityCalls.mockClear();
+    expect(await runSync(config, options)).toEqual({ buckets: 0, sessions: 0 });
+    expect(projectIdentityCalls.mock.calls.map(([project]) => project)).toEqual(
+      ["project", "other"],
+    );
+    expect(syncApi.ingest).toHaveBeenCalledOnce();
   });
 
   it.each([
@@ -497,6 +573,7 @@ describe("runSync rebuild safeguards", () => {
     expect(syncApi.deleteDeviceData).toHaveBeenCalledExactlyOnceWith(
       config.deviceId,
     );
+    expect(saveUploadManifest).toHaveBeenCalledTimes(2);
   });
 
   it("retries automatic privacy cleanup after an interrupted replacement", async () => {
@@ -548,6 +625,7 @@ describe("runSync rebuild safeguards", () => {
       1,
       expect.objectContaining({ buckets: {}, sessions: {} }),
     );
+    expect(saveUploadManifest).toHaveBeenCalledTimes(2);
     expect(
       vi.mocked(saveUploadManifest).mock.invocationCallOrder[0],
     ).toBeLessThan(syncApi.deleteDeviceData.mock.invocationCallOrder[0]);

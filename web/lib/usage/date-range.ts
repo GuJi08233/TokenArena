@@ -18,6 +18,16 @@ type ResolveDashboardRangeInput = {
 };
 
 const zonedDateFormatterCache = new Map<string, Intl.DateTimeFormat>();
+const zonedWeekdayHourFormatterCache = new Map<string, Intl.DateTimeFormat>();
+const weekdayIndex: Record<string, number> = {
+  Sun: 0,
+  Mon: 1,
+  Tue: 2,
+  Wed: 3,
+  Thu: 4,
+  Fri: 5,
+  Sat: 6,
+};
 const dateOnlyPattern = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
@@ -54,6 +64,20 @@ function getZonedFormatter(timezone: string) {
   return formatter;
 }
 
+function getZonedWeekdayHourFormatter(timezone: string) {
+  const cached = zonedWeekdayHourFormatterCache.get(timezone);
+  if (cached) return cached;
+
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    hourCycle: "h23",
+    weekday: "short",
+    hour: "2-digit",
+  });
+  zonedWeekdayHourFormatterCache.set(timezone, formatter);
+  return formatter;
+}
+
 export function toZonedParts(date: Date, timezone: string): ZonedDateParts {
   const parts = getZonedFormatter(timezone).formatToParts(date);
   const values = Object.fromEntries(
@@ -76,14 +100,21 @@ export function toZonedParts(date: Date, timezone: string): ZonedDateParts {
 }
 
 export function getZonedWeekdayHour(date: Date, timezone: string) {
-  const parts = toZonedParts(date, timezone);
-
-  return {
-    weekday: new Date(
-      Date.UTC(parts.year, parts.month - 1, parts.day),
-    ).getUTCDay(),
-    hour: parts.hour,
-  };
+  let weekday = 0;
+  let hour = 0;
+  for (const part of getZonedWeekdayHourFormatter(timezone).formatToParts(
+    date,
+  )) {
+    if (part.type === "weekday") {
+      const index = weekdayIndex[part.value];
+      if (index === undefined)
+        throw new Error(`Unknown weekday: ${part.value}`);
+      weekday = index;
+    } else if (part.type === "hour") {
+      hour = Number.parseInt(part.value, 10);
+    }
+  }
+  return { weekday, hour };
 }
 
 function getTimezoneOffsetMs(date: Date, timezone: string) {

@@ -1,22 +1,8 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import { useTranslations } from "next-intl";
 
-import { formatTokenCount } from "@/lib/usage/format";
-
-const ProfileTopListChartInner = dynamic(
-  () =>
-    import("./profile-top-list-chart-inner").then(
-      (mod) => mod.ProfileTopListChartInner,
-    ),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="h-[220px] w-full animate-pulse rounded-xl bg-muted/50" />
-    ),
-  },
-);
+import { formatPercentage, formatTokenCount } from "@/lib/usage/format";
 
 type ProfileTopListProps = {
   locale: string;
@@ -27,32 +13,6 @@ type ProfileTopListProps = {
     share: number;
   }>;
 };
-
-type ChartDatum = {
-  name: string;
-  shortName: string;
-  value: number;
-  valueLabel: string;
-  share: number;
-};
-
-function truncateLabel(value: string, maxLength = 14) {
-  if (value.length <= maxLength) {
-    return value;
-  }
-
-  return `${value.slice(0, maxLength - 1)}…`;
-}
-
-function toChartData(items: ProfileTopListProps["items"]): ChartDatum[] {
-  return items.map((item) => ({
-    name: item.name,
-    shortName: truncateLabel(item.name),
-    value: item.totalTokens,
-    valueLabel: formatTokenCount(item.totalTokens),
-    share: item.share,
-  }));
-}
 
 export function ProfileTopList({
   locale,
@@ -66,16 +26,38 @@ export function ProfileTopList({
     return <p className="text-sm text-muted-foreground">{emptyLabel}</p>;
   }
 
-  const chartData = toChartData(items);
-  const chartHeight = Math.max(chartData.length * 44 + 24, 220);
+  const maxTokens = Math.max(0, ...items.map((item) => item.totalTokens));
 
   return (
-    <ProfileTopListChartInner
-      chartData={chartData}
-      chartHeight={chartHeight}
-      locale={locale}
-      shareLabel={tTable("share")}
-      tokenLabel={tProfile("totalTokens")}
-    />
+    <ol className="space-y-3 py-1">
+      {items.map((item, index) => (
+        <li key={item.name} className="space-y-1.5">
+          <div className="flex items-baseline justify-between gap-3 text-sm">
+            <span className="min-w-0 truncate font-medium" title={item.name}>
+              {item.name}
+            </span>
+            <span className="shrink-0 tabular-nums text-muted-foreground">
+              <span className="sr-only">{tProfile("totalTokens")}: </span>
+              {formatTokenCount(item.totalTokens)}
+            </span>
+          </div>
+          <div
+            aria-hidden="true"
+            className="h-2.5 w-full overflow-hidden rounded-full bg-muted"
+          >
+            <div
+              className="h-full rounded-full bg-chart-1"
+              style={{
+                width: `${maxTokens > 0 ? Math.max(0, Math.min(100, (item.totalTokens / maxTokens) * 100)) : 0}%`,
+                opacity: Math.max(1 - index * 0.14, 0.35),
+              }}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {tTable("share")}: {formatPercentage(item.share, locale)}
+          </p>
+        </li>
+      ))}
+    </ol>
   );
 }
