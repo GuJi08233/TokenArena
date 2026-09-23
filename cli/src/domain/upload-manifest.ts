@@ -8,9 +8,11 @@ import type {
 const MANIFEST_VERSION = 1 as const;
 const SNAPSHOT_PROTOCOL_VERSION = 1 as const;
 
-// codeql[cs/insufficient-password-hash] - Used for API key fingerprinting and content change detection, not password storage.
-// API keys are high-entropy tokens; SHA-256 is appropriate for identifier comparison.
+// Used for API key fingerprinting and content change detection, not password
+// storage. API keys are high-entropy tokens; SHA-256 is appropriate for
+// identifier comparison.
 function fingerprint(value: string): string {
+  // codeql[js/insufficient-password-hash]
   return createHash("sha256").update(value).digest("hex").slice(0, 16);
 }
 
