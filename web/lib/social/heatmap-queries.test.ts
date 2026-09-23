@@ -6,7 +6,20 @@ const mocks = vi.hoisted(() => ({
   leaderboardDays: vi.fn(),
   sessions: vi.fn(),
   buckets: vi.fn(),
+  groupByHourOrDay: vi.fn(),
 }));
+
+vi.mock("@/lib/usage/date-range", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/usage/date-range")>();
+  return {
+    ...actual,
+    groupByHourOrDay: (...args: Parameters<typeof actual.groupByHourOrDay>) => {
+      mocks.groupByHourOrDay();
+      return actual.groupByHourOrDay(...args);
+    },
+  };
+});
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
@@ -126,6 +139,16 @@ describe("getActivityHeatmap365", () => {
       sessions: 0,
       totalTokens: 0,
     });
+  });
+
+  it("confirms listed day starts instead of searching every boundary", async () => {
+    await getActivityHeatmap365({
+      userId: "user-1",
+      timezone: "America/New_York",
+    });
+
+    // 逐日二分约需一万次时区格式化；校验 day.start 每天只需两次。
+    expect(mocks.groupByHourOrDay.mock.calls.length).toBeLessThan(1_000);
   });
 
   it.each([

@@ -290,14 +290,14 @@ type DailyHeatmapAggregate = {
 };
 
 function buildHeatmapFromDailyAggregates(
-  range: DashboardRange,
+  days: Array<{ key: string }>,
   rows: DailyHeatmapAggregate[],
 ) {
   const seeded = new Map<string, ProfileHeatmapDay>(
-    listRangeBuckets(range).map((bucket) => [
-      bucket.key,
+    days.map((day) => [
+      day.key,
       {
-        date: bucket.key,
+        date: day.key,
         activeSeconds: 0,
         sessions: 0,
         totalTokens: 0,
@@ -342,14 +342,27 @@ function nextDateKey(key: string) {
     .slice(0, 10);
 }
 
-function firstUtcInstantOfLocalDay(range: DashboardRange, key: string) {
+function firstUtcInstantOfLocalDay(
+  range: DashboardRange,
+  key: string,
+  hint?: number,
+) {
   const nominalUtc = Date.parse(`${key}T00:00:00.000Z`);
   if (range.timezone === "UTC") return nominalUtc;
+
+  // listRangeBuckets 给出的 day.start 通常就是首毫秒，两次格式化即可确认；
+  // 本地午夜跳时后它可能停在 01:00 之类的时刻，此时才按日期键二分查找。
+  if (
+    hint !== undefined &&
+    groupByHourOrDay(range, new Date(hint)) === key &&
+    groupByHourOrDay(range, new Date(hint - 1)) < key
+  ) {
+    return hint;
+  }
 
   let lower = nominalUtc - 2 * DAY_MS;
   let upper = nominalUtc + 2 * DAY_MS;
 
-  // 本地午夜可能发生跳时；按实际日期键找首毫秒，不能信任近似的 day.start。
   while (lower < upper) {
     const middle = lower + Math.floor((upper - lower) / 2);
     if (groupByHourOrDay(range, new Date(middle)) < key) {
@@ -367,6 +380,7 @@ export async function getActivityHeatmap365(input: {
   timezone: string;
 }): Promise<ProfileHeatmapDay[]> {
   const range365 = createDailyRange(input.timezone, 365);
+  const days = listRangeBuckets(range365);
 
   // The leaderboard aggregate is maintained on every ingest and is already
   // keyed by Shanghai calendar day. Use it for the default timezone so a
@@ -391,7 +405,7 @@ export async function getActivityHeatmap365(input: {
     });
 
     return buildHeatmapFromDailyAggregates(
-      range365,
+      days,
       dailyRows.map((row) => ({
         ...row,
         date: groupByHourOrDay(range365, row.statDate),
@@ -399,12 +413,12 @@ export async function getActivityHeatmap365(input: {
     );
   }
 
-  const days = listRangeBuckets(range365);
+  const hints = new Map(days.map((day) => [day.key, day.start.getTime()]));
   const boundaries = new Map<string, number>();
   const boundary = (key: string) => {
     const cached = boundaries.get(key);
     if (cached !== undefined) return cached;
-    const value = firstUtcInstantOfLocalDay(range365, key);
+    const value = firstUtcInstantOfLocalDay(range365, key, hints.get(key));
     boundaries.set(key, value);
     return value;
   };
@@ -462,7 +476,7 @@ export async function getActivityHeatmap365(input: {
     ORDER BY "date"
   `);
 
-  return buildHeatmapFromDailyAggregates(range365, dailyRows);
+  return buildHeatmapFromDailyAggregates(days, dailyRows);
 }
 
 /**
