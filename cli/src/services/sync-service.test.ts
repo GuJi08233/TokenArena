@@ -517,7 +517,7 @@ describe("runSync rebuild safeguards", () => {
     expect(manifest[kind].obsolete).toBeUndefined();
   });
 
-  it("saves a first sync and a changed server scope", async () => {
+  it("uploads and saves everything on a first sync or a changed server scope", async () => {
     expect(await runSync(config, options)).toEqual({ buckets: 1, sessions: 1 });
     expect(saveUploadManifest).toHaveBeenCalledOnce();
 

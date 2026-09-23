@@ -535,13 +535,9 @@ export async function runSync(
             : "No new or updated usage data to upload.",
         );
       }
-      if (
-        rebuild ||
-        !previousManifest ||
-        uploadDiff.scopeChangedReasons.length > 0 ||
-        uploadDiff.removedBuckets > 0 ||
-        uploadDiff.removedSessions > 0
-      ) {
+      // 首次同步、rebuild 和 scope 变化都会上传全部记录，走不到这里；此时新清单
+      // 与旧清单只差 updatedAt，只有旧记录消失时才需要落盘。
+      if (uploadDiff.removedBuckets > 0 || uploadDiff.removedSessions > 0) {
         persistUploadManifest(uploadDiff.nextManifest, quiet);
       }
       markSyncSucceeded(source, { buckets: 0, sessions: 0 });
