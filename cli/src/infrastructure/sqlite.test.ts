@@ -2,7 +2,11 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useTempDirs } from "../testing/temp-dir";
-import { readSqliteRows, warnWhenWalSkipped } from "./sqlite";
+import {
+  readSqliteRows,
+  warnWhenWalSkipped,
+  withSuppressedSqliteWarning,
+} from "./sqlite";
 
 // `node:sqlite` only exists on Node 22.5+, and the CLI matrix still covers
 // Node 20. There the builtin reader bails out to the sqlite3 CLI and the
@@ -31,6 +35,50 @@ function findWalWarning(spy: ReturnType<typeof spyOnStderr>): string | null {
 
 afterEach(() => {
   vi.restoreAllMocks();
+});
+
+it("restores the warning handler after overlapping SQLite warning scopes", async () => {
+  const originalEmitWarning = process.emitWarning;
+  let releaseFirst: () => void = () => {};
+  let releaseSecond: () => void = () => {};
+  let firstStarted: () => void = () => {};
+  let secondStarted: () => void = () => {};
+  const firstStartedPromise = new Promise<void>((resolve) => {
+    firstStarted = resolve;
+  });
+  const secondStartedPromise = new Promise<void>((resolve) => {
+    secondStarted = resolve;
+  });
+  const firstGate = new Promise<void>((resolve) => {
+    releaseFirst = resolve;
+  });
+  const secondGate = new Promise<void>((resolve) => {
+    releaseSecond = resolve;
+  });
+  const first = withSuppressedSqliteWarning(async () => {
+    firstStarted();
+    await firstGate;
+  });
+  await firstStartedPromise;
+  const second = withSuppressedSqliteWarning(async () => {
+    secondStarted();
+    await secondGate;
+  });
+
+  let handlerAfterScopes = originalEmitWarning;
+  try {
+    releaseFirst();
+    await first;
+    await secondStartedPromise;
+    expect(process.emitWarning).not.toBe(originalEmitWarning);
+  } finally {
+    releaseFirst();
+    releaseSecond();
+    await Promise.allSettled([first, second]);
+    handlerAfterScopes = process.emitWarning;
+    process.emitWarning = originalEmitWarning;
+  }
+  expect(handlerAfterScopes).toBe(originalEmitWarning);
 });
 
 describe("warnWhenWalSkipped", () => {

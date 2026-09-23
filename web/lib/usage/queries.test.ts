@@ -64,6 +64,7 @@ import {
   getSessionRows,
   getTokenTrend,
   getUsageDashboardSnapshot,
+  loadUsagePages,
 } from "./queries";
 
 const range = {
@@ -73,6 +74,35 @@ const range = {
   preset: "7d" as const,
   timezone: "UTC",
 };
+
+describe("loadUsagePages read limit", () => {
+  function fetchRows(total: number) {
+    return async (cursor?: string) => {
+      const start = cursor ? Number(cursor.slice(4)) + 1 : 0;
+      return Array.from(
+        { length: Math.min(1_000, total - start) },
+        (_, offset) => ({ id: `row-${start + offset}` }),
+      );
+    };
+  }
+
+  it("reports an overflow only when there are records beyond the cap", async () => {
+    const onTruncated = vi.fn();
+    const exact = await loadUsagePages(fetchRows(200_000), onTruncated);
+    expect(exact).toHaveLength(200_000);
+    expect(onTruncated).not.toHaveBeenCalled();
+
+    const partial = await loadUsagePages(fetchRows(200_001), onTruncated);
+    expect(partial).toHaveLength(200_000);
+    expect(onTruncated).toHaveBeenCalledOnce();
+  });
+
+  it("rejects an overflow when a caller cannot show a partial-data warning", async () => {
+    await expect(loadUsagePages(fetchRows(200_001))).rejects.toThrow(
+      "exceeds the 200000-row read limit",
+    );
+  });
+});
 
 describe("complete usage pagination", () => {
   it("includes records beyond 10,000 buckets and 5,000 sessions", async () => {

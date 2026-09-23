@@ -30,9 +30,8 @@ export interface AllParsersResult {
 /**
  * 同时在跑的解析器上限。
  *
- * 解析几乎全是读文件，串行跑时每个工具都在等磁盘。不放开到全部并发是因为
- * 每个解析器扫描期间都持有自己的中间状态（去重表、事件表），几十个一起展开
- * 会把内存峰值叠起来。
+ * 异步解析器可在等待 I/O 时重叠运行。同步读取和计算仍占用同一个事件循环；
+ * 限制同时运行的解析器数量，避免各工具的中间状态叠加过多。
  */
 const PARSER_CONCURRENCY = 8;
 
@@ -49,15 +48,14 @@ type SettledParse =
  * rename invalidates it too.
  */
 async function parseWithCache(parser: IParser): Promise<SettledParse> {
-  const files = parser.listSourceFiles?.();
-  const fingerprint = files ? computeScanFingerprint(files) : null;
-  const cached = loadCachedParseResult(parser.tool.id, fingerprint);
-
-  if (cached) {
-    return { status: "ok", result: cached, cached: true };
-  }
-
   try {
+    const files = parser.listSourceFiles?.();
+    const fingerprint = files ? computeScanFingerprint(files) : null;
+    const cached = loadCachedParseResult(parser.tool.id, fingerprint);
+    if (cached) {
+      return { status: "ok", result: cached, cached: true };
+    }
+
     const result = await parser.parse();
     saveCachedParseResult(parser.tool.id, fingerprint, result);
 

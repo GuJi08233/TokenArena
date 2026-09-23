@@ -15,7 +15,19 @@ export type SqliteQueryRows = <TRow>(
   query: string,
 ) => Promise<TRow[]>;
 
-function withSuppressedSqliteWarning<T>(fn: () => Promise<T>): Promise<T> {
+// process.emitWarning is global; serialize callers so overlapping SQLite reads
+// cannot restore one another's temporary handler in the wrong order.
+let warningScope = Promise.resolve();
+
+export async function withSuppressedSqliteWarning<T>(
+  fn: () => Promise<T>,
+): Promise<T> {
+  const previousScope = warningScope;
+  let releaseScope: () => void = () => {};
+  warningScope = new Promise<void>((resolve) => {
+    releaseScope = resolve;
+  });
+  await previousScope;
   const originalEmitWarning = process.emitWarning;
 
   process.emitWarning = ((
@@ -46,9 +58,12 @@ function withSuppressedSqliteWarning<T>(fn: () => Promise<T>): Promise<T> {
     ).call(process, warning, ...args);
   }) as typeof process.emitWarning;
 
-  return fn().finally(() => {
+  try {
+    return await fn();
+  } finally {
     process.emitWarning = originalEmitWarning;
-  });
+    releaseScope();
+  }
 }
 
 /**

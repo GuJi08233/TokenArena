@@ -253,6 +253,7 @@ describe("UsagePage", () => {
       dashboard: {
         range,
         filters: {},
+        truncated: false,
         overview,
         tokenTrend,
         activityTrend: [],
@@ -333,5 +334,27 @@ describe("UsagePage", () => {
     expect(markup).toContain('data-slot="share-badges-dialog"');
     expect(markup).toContain('data-slot="usage-visualization-card"');
     expect(markup).toContain('data-slot="sessions-section"');
+  });
+
+  it("warns about partial figures and disables report sharing", async () => {
+    const data = await mocks.getUsageDashboardData();
+    mocks.getUsageDashboardData.mockResolvedValueOnce({
+      ...data,
+      dashboard: { ...data.dashboard, truncated: true },
+    });
+    const { default: UsagePage } = await import("@/app/[locale]/usage/page");
+
+    const markup = renderToStaticMarkup(
+      await UsagePage({
+        params: Promise.resolve({ locale: "en" }),
+        searchParams: Promise.resolve({ preset: "7d" }),
+      }),
+    );
+
+    expect(markup).toContain("partialDataWarning");
+    expect(mocks.AppShell).toHaveBeenLastCalledWith(
+      expect.objectContaining({ usageReportShareData: null }),
+      undefined,
+    );
   });
 });

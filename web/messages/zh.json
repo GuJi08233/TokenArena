@@ -88,6 +88,7 @@
     },
     "lastSynced": "上次同步：{value}",
     "noSyncYet": "还没有同步记录",
+    "partialDataWarning": "本页统计所需的数据超过读取上限，以下数值仅基于部分记录。缩小日期范围或添加筛选条件，以查看准确结果。",
     "settings": {
       "button": "设置",
       "title": "设置",

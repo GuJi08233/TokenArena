@@ -88,6 +88,7 @@
     },
     "lastSynced": "Last synced {value}",
     "noSyncYet": "No sync yet",
+    "partialDataWarning": "The data needed for these figures exceeds the read limit, so the values below use only some records. Narrow the date range or add filters for accurate results.",
     "settings": {
       "button": "Settings",
       "title": "Settings",

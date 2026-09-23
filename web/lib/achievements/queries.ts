@@ -15,6 +15,8 @@ import { formatDateInput } from "@/lib/usage/format";
 import { getUsagePreference } from "@/lib/usage/preferences";
 import type { UsageShareCardPersona } from "@/lib/usage/share-card";
 import type { AchievementAwardSource } from "../../generated/prisma/client";
+import { getArenaLevelFromScore } from "./arena-level";
+import { achievementDefinitionMap } from "./catalog";
 import {
   type AchievementInputMetrics,
   buildAchievementNotificationData,
@@ -33,6 +35,7 @@ import {
   recordDistinctTimelineKey,
 } from "./timeline";
 import type {
+  AchievementCode,
   AchievementNotificationData,
   AchievementsPageData,
 } from "./types";
@@ -696,9 +699,9 @@ export async function getAchievementArenaSummary(
 /**
  * Arena score/level for a profile view, read from the materialized row.
  *
- * Falls back to a full recompute only when no row exists yet — an account that
- * predates the table or has never synced. That recompute persists the row, so
- * the fallback runs at most once per user.
+ * Falls back to a full recompute only when no row exists yet. An award written
+ * after the summary was computed only needs a small score/level correction from
+ * stored achievement counts; usage history is not replayed on that path.
  */
 export async function getArenaSummaryForProfile(
   userId: string,
@@ -711,9 +714,42 @@ export async function getArenaSummaryForProfile(
     return getAchievementArenaSummary(userId);
   }
 
+  let score = stored.score;
+  let level = stored.level;
+  const hasNewAchievement = await prisma.userAchievement.findFirst({
+    where: { userId, updatedAt: { gt: stored.computedAt } },
+    select: { code: true },
+  });
+
+  if (hasNewAchievement) {
+    const achievements = await prisma.userAchievement.findMany({
+      where: { userId },
+      select: { code: true, awardCount: true, updatedAt: true },
+    });
+    score = achievements.reduce(
+      (sum, achievement) =>
+        sum +
+        (achievementDefinitionMap.get(achievement.code as AchievementCode)
+          ?.points ?? 0) *
+          achievement.awardCount,
+      0,
+    );
+    level = getArenaLevelFromScore(score);
+    const latestAchievementUpdate = achievements.reduce(
+      (latest, achievement) =>
+        achievement.updatedAt > latest ? achievement.updatedAt : latest,
+      stored.computedAt,
+    );
+
+    await prisma.userArenaSummary.update({
+      where: { userId },
+      data: { score, level, computedAt: latestAchievementUpdate },
+    });
+  }
+
   return {
-    score: stored.score,
-    level: stored.level,
+    score,
+    level,
     totalTokens: tokenCountToNumber(stored.totalTokens),
     totalEstimatedCostUsd: stored.totalEstimatedCostUsd,
     totalActiveSeconds: stored.totalActiveSeconds,

@@ -162,6 +162,72 @@ describe("ingestUsagePayload achievement synchronization", () => {
     expect(values).not.toContain(BigInt(11));
   });
 
+  it.each([
+    {
+      name: "usage followed by metadata only",
+      rows: [{ inputTokens: 11 }, {}],
+      expectedTokens: 11,
+    },
+    {
+      name: "metadata only followed by usage",
+      rows: [{}, { inputTokens: 22 }],
+      expectedTokens: 22,
+    },
+    {
+      name: "the latest usage followed by metadata only",
+      rows: [{ inputTokens: 11 }, { inputTokens: 22 }, {}],
+      expectedTokens: 22,
+    },
+    {
+      name: "metadata only duplicates",
+      rows: [{}, {}],
+      expectedTokens: null,
+    },
+  ])("keeps $name for duplicate sessions", async ({ rows, expectedTokens }) => {
+    const tx = buildTransactionClient();
+    mocks.prisma.$transaction.mockImplementation(async (callback) =>
+      callback(tx),
+    );
+    const base = {
+      source: "codex",
+      projectKey: "project-a",
+      sessionHash: "duplicate-session",
+      firstMessageAt: "2026-04-01T12:00:00.000Z",
+      lastMessageAt: "2026-04-01T12:10:00.000Z",
+      durationSeconds: 600,
+      activeSeconds: 420,
+      messageCount: 8,
+      userMessageCount: 3,
+    };
+    const payload = ingestRequestSchema.parse({
+      ...buildPayload(false),
+      sessions: rows.map((row, index) => ({
+        ...base,
+        projectLabel: `Project ${index}`,
+        messageCount: index + 1,
+        ...row,
+      })),
+    });
+
+    await ingestUsagePayload({ userId: "user-1", payload });
+
+    expect(tx.$executeRaw).toHaveBeenCalledOnce();
+    const [statement] = tx.$executeRaw.mock.calls[0];
+    if (expectedTokens === null) {
+      expect(statement.sql).not.toContain(
+        '"totalTokens" = EXCLUDED."totalTokens"',
+      );
+    } else {
+      expect(statement.sql).toContain('"totalTokens" = EXCLUDED."totalTokens"');
+      expect(statement.values).toContain(BigInt(expectedTokens));
+    }
+    expect(statement.values).toContain(`Project ${rows.length - 1}`);
+    expect(statement.values).toContain(rows.length);
+    if (expectedTokens === 22 && rows.length === 3) {
+      expect(statement.values).not.toContain(BigInt(11));
+    }
+  });
+
   it("keeps explicit cache-only session usage when model details are empty", async () => {
     const tx = buildTransactionClient();
     mocks.prisma.$transaction.mockImplementation(async (callback) =>

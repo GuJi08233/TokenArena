@@ -1,3 +1,4 @@
+import { getArenaLevelFromScore } from "@/lib/achievements/arena-level";
 import { achievementDefinitionMap } from "@/lib/achievements/catalog";
 import type { AchievementCode } from "@/lib/achievements/types";
 import { prisma } from "@/lib/prisma";
@@ -295,6 +296,32 @@ export async function finalizePendingLeaderboardPeriods(now = new Date()) {
                 });
               }),
             );
+
+            const pointsByUser = new Map<string, number>();
+            for (const award of nextAwards) {
+              pointsByUser.set(
+                award.userId,
+                (pointsByUser.get(award.userId) ?? 0) + award.pointsAwarded,
+              );
+            }
+
+            // Keep an existing profile summary in sync with newly persisted
+            // awards. A missing summary still takes the normal profile fallback.
+            for (const [userId, points] of Array.from(pointsByUser).sort(
+              ([left], [right]) => left.localeCompare(right),
+            )) {
+              const [summary] = await tx.userArenaSummary.updateManyAndReturn({
+                where: { userId },
+                data: { score: { increment: points } },
+                select: { score: true },
+              });
+              if (summary) {
+                await tx.userArenaSummary.update({
+                  where: { userId },
+                  data: { level: getArenaLevelFromScore(summary.score) },
+                });
+              }
+            }
           }
         }
 

@@ -9,6 +9,7 @@ import type {
   SessionEvent,
   TokenUsageEntry,
 } from "../domain/types";
+import { withSuppressedSqliteWarning } from "../infrastructure/sqlite";
 import { registerParser } from "./registry";
 import type { IParser, ToolDefinition } from "./types";
 
@@ -87,46 +88,6 @@ function getOpenCodeDataDirs(env: NodeJS.ProcessEnv = process.env): string[] {
   ].filter((value): value is string => Boolean(value));
 
   return Array.from(new Set(dirs));
-}
-
-async function withSuppressedSqliteWarning<T>(
-  fn: () => Promise<T>,
-): Promise<T> {
-  const originalEmitWarning = process.emitWarning;
-
-  process.emitWarning = ((
-    warning: string | Error,
-    ...args: unknown[]
-  ): void => {
-    const warningName =
-      typeof warning === "string"
-        ? typeof args[0] === "string"
-          ? args[0]
-          : ""
-        : warning.name;
-    const warningMessage =
-      typeof warning === "string" ? warning : warning.message;
-
-    if (
-      warningName === "ExperimentalWarning" &&
-      warningMessage.includes("SQLite")
-    ) {
-      return;
-    }
-
-    (
-      originalEmitWarning as (
-        warning: string | Error,
-        ...warningArgs: unknown[]
-      ) => void
-    ).call(process, warning, ...args);
-  }) as typeof process.emitWarning;
-
-  try {
-    return await fn();
-  } finally {
-    process.emitWarning = originalEmitWarning;
-  }
 }
 
 async function readSqliteRowsWithBuiltin(

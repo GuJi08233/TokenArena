@@ -27,6 +27,7 @@ interface Usage {
 
 interface CodexEvent {
   type: string;
+  ordinal?: number;
   timestamp?: string;
   payload?: {
     type?: string;
@@ -68,7 +69,7 @@ interface Rollout {
   parentId: string | null;
   parentConflict: boolean;
   forkOrdinalExclusive: number | null;
-  lineCount: number;
+  maxOrdinal: number | null;
   rootTimestampOrder: bigint | null;
   latestTimestampOrder: bigint;
   minLineTimestampOrder: bigint | null;
@@ -170,13 +171,20 @@ function readRollout(path: string): Rollout | null {
   let latestTimestampOrder = 0n;
   let minLineTimestampOrder: bigint | null = null;
   let line = 0;
-  let lineCount = 0;
+  let maxOrdinal: number | null = null;
   for (const text of content.split("\n")) {
     line++;
     if (!text.trim()) continue;
-    lineCount++;
     try {
       const event = JSON.parse(text) as CodexEvent;
+      if (
+        typeof event.ordinal === "number" &&
+        Number.isSafeInteger(event.ordinal) &&
+        event.ordinal >= 0 &&
+        (maxOrdinal === null || event.ordinal > maxOrdinal)
+      ) {
+        maxOrdinal = event.ordinal;
+      }
       const timestamp = readTimestamp(event.timestamp);
       const order = timestampOrder(event.timestamp, timestamp);
       if (order !== null) {
@@ -241,7 +249,7 @@ function readRollout(path: string): Rollout | null {
       meta.forked_from_ordinal_exclusive > 0
         ? meta.forked_from_ordinal_exclusive
         : null,
-    lineCount,
+    maxOrdinal,
     rootTimestampOrder: timestampOrder(
       rootMeta?.timestamp,
       readTimestamp(rootMeta?.timestamp),
@@ -389,16 +397,22 @@ export class CodexParser implements IParser {
           // fork 在父会话写入 session_meta 的瞬间发生，父文件此后不会再有
           // 早于该时刻的增量事件；但时间戳精度（父为整毫秒、fork meta 含
           // 亚毫秒）会让父最大时间戳显得略早于截止点。fork 元数据带有
-          // forked_from_ordinal_exclusive（父文件行序号）时，以父文件实际
-          // 行数核验覆盖范围；旧格式日志回退到时间戳容差（1 秒）。
+          // forked_from_ordinal_exclusive 时，按父线程记录的 ordinal
+          // 核验覆盖范围；ordinal 允许跳号，也可能分布在多个 rollout 文件。
+          // 旧格式日志没有 ordinal 时回退到时间戳容差（1 秒）。
+          const parentMaxOrdinal = parent
+            ? parent.files.reduce<number | null>(
+                (max, rollout) =>
+                  rollout.maxOrdinal !== null &&
+                  (max === null || rollout.maxOrdinal > max)
+                    ? rollout.maxOrdinal
+                    : max,
+                null,
+              )
+            : null;
           const coverageOk = parent
-            ? file.forkOrdinalExclusive !== null
-              ? // 多文件父线程按最新文件（通常就是产生该 fork 的 rollout）
-                // 的行数核验；其余文件属于同一线程的历史分段。
-                parent.files.some(
-                  (rollout) =>
-                    rollout.lineCount >= (file.forkOrdinalExclusive ?? 0),
-                )
+            ? file.forkOrdinalExclusive !== null && parentMaxOrdinal !== null
+              ? parentMaxOrdinal >= file.forkOrdinalExclusive - 1
               : cutoff !== null &&
                 // 父最大时间戳落后不超过 1 秒，或父内容完全早于截止点
                 // 且父最早行时间戳也早于截止点（父在截止前已停止写入）。

@@ -44,6 +44,7 @@ export async function GET(request: Request) {
   });
 
   return NextResponse.json({
+    truncated: dashboard.truncated,
     range: {
       from: dashboard.range.from.toISOString(),
       to: dashboard.range.to.toISOString(),

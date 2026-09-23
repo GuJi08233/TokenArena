@@ -1,6 +1,25 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const mocks = vi.hoisted(() => ({
+  prisma: {
+    leaderboardPeriodResult: { findUnique: vi.fn() },
+    leaderboardUserDay: { groupBy: vi.fn() },
+    $transaction: vi.fn(),
+  },
+  tx: {
+    leaderboardPeriodResult: { upsert: vi.fn(), update: vi.fn() },
+    leaderboardPeriodEntry: { deleteMany: vi.fn(), createMany: vi.fn() },
+    achievementAward: { findMany: vi.fn(), createMany: vi.fn() },
+    userAchievement: { upsert: vi.fn() },
+    userArenaSummary: { updateManyAndReturn: vi.fn(), update: vi.fn() },
+  },
+}));
+
+vi.mock("@/lib/prisma", () => ({ prisma: mocks.prisma }));
+
 import {
   buildLeaderboardBadgeAwards,
+  finalizePendingLeaderboardPeriods,
   type RankedLeaderboardEntry,
 } from "./finalize";
 
@@ -59,5 +78,79 @@ describe("buildLeaderboardBadgeAwards", () => {
     });
 
     expect(awards).toEqual([]);
+  });
+});
+
+describe("finalizePendingLeaderboardPeriods", () => {
+  const now = new Date("2026-04-06T12:00:00.000Z");
+  let dayFinalized = false;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    dayFinalized = false;
+    mocks.prisma.leaderboardPeriodResult.findUnique.mockImplementation(
+      async (query) => ({
+        id: "result-1",
+        badgesIssuedAt:
+          query.where.period_windowStart_windowEnd.period === "day" &&
+          !dayFinalized
+            ? null
+            : now,
+      }),
+    );
+    mocks.prisma.leaderboardUserDay.groupBy.mockResolvedValue([
+      {
+        userId: "user-1",
+        _sum: {
+          inputTokens: BigInt(100),
+          outputTokens: BigInt(0),
+          reasoningTokens: BigInt(0),
+          cachedTokens: BigInt(0),
+          cacheCreationTokens: BigInt(0),
+          totalTokens: BigInt(100),
+          activeSeconds: 60,
+          sessions: 1,
+        },
+      },
+    ]);
+    mocks.prisma.$transaction.mockImplementation(async (callback) =>
+      callback(mocks.tx),
+    );
+    mocks.tx.leaderboardPeriodResult.upsert.mockResolvedValue({
+      id: "result-1",
+    });
+    mocks.tx.leaderboardPeriodResult.update.mockImplementation(async () => {
+      dayFinalized = true;
+    });
+    mocks.tx.achievementAward.findMany.mockResolvedValue([]);
+    mocks.tx.userArenaSummary.updateManyAndReturn.mockResolvedValue([
+      { score: 100 },
+    ]);
+  });
+
+  it("updates a materialized score and level in the award transaction only once", async () => {
+    await finalizePendingLeaderboardPeriods(now);
+
+    expect(mocks.tx.userAchievement.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          userId_code: { userId: "user-1", code: "leaderboard_day_top50" },
+        },
+      }),
+    );
+    expect(mocks.tx.userArenaSummary.updateManyAndReturn).toHaveBeenCalledWith({
+      where: { userId: "user-1" },
+      data: { score: { increment: 10 } },
+      select: { score: true },
+    });
+    expect(mocks.tx.userArenaSummary.update).toHaveBeenCalledWith({
+      where: { userId: "user-1" },
+      data: { level: 2 },
+    });
+
+    await finalizePendingLeaderboardPeriods(now);
+    expect(mocks.tx.userArenaSummary.updateManyAndReturn).toHaveBeenCalledTimes(
+      1,
+    );
   });
 });

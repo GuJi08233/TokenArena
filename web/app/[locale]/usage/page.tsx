@@ -7,6 +7,7 @@ import { AppShell } from "@/components/app/app-shell";
 import { ProfileHeatmap } from "@/components/social/profile-heatmap";
 import { ProfileHeatmapMarkdownButton } from "@/components/social/profile-heatmap-markdown-button";
 import { ShareBadgesDialog } from "@/components/social/share-badges-dialog";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BreakdownGrid } from "@/components/usage/breakdown-grid";
@@ -110,17 +111,18 @@ export default async function UsagePage({
   const hasData =
     dashboard.overview.totalTokens.current > 0 ||
     dashboard.overview.sessions.current > 0;
-  const usageReportShareData = hasData
-    ? buildUsageShareCardData({
-        username: session.user.username ?? "Anonymous Builder",
-        range: dashboard.range,
-        filters: dashboard.filters,
-        overview: dashboard.overview,
-        pricingSummary: dashboard.pricingSummary,
-        breakdowns: dashboard.breakdowns,
-        tokenTrend: dashboard.tokenTrend,
-      })
-    : null;
+  const usageReportShareData =
+    hasData && !dashboard.truncated
+      ? buildUsageShareCardData({
+          username: session.user.username ?? "Anonymous Builder",
+          range: dashboard.range,
+          filters: dashboard.filters,
+          overview: dashboard.overview,
+          pricingSummary: dashboard.pricingSummary,
+          breakdowns: dashboard.breakdowns,
+          tokenTrend: dashboard.tokenTrend,
+        })
+      : null;
   const lastSyncedText = dashboard.lastSyncedAt
     ? t("lastSynced", {
         value: formatDateTime(
@@ -200,7 +202,13 @@ export default async function UsagePage({
             />
           </Suspense>
 
-          {hasData ? (
+          {dashboard.truncated ? (
+            <Alert variant="destructive">
+              <AlertDescription>{t("partialDataWarning")}</AlertDescription>
+            </Alert>
+          ) : null}
+
+          {hasData || dashboard.truncated ? (
             <>
               <UsageVisualizationCard
                 trendData={dashboard.tokenTrend}

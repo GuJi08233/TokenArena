@@ -247,6 +247,31 @@ describe.skipIf(!VERIFY_URL)("ingest against a real database", () => {
     expect(row.messageCount).toBe(99);
   });
 
+  it("keeps the latest usage and metadata across duplicate sessions", async () => {
+    const sessionHash = "session-duplicate-existing";
+    await ingest({
+      sessions: [session({ sessionHash, inputTokens: 30 })],
+    });
+    await ingest({
+      sessions: [
+        session({ sessionHash, inputTokens: 70, messageCount: 10 }),
+        session({ sessionHash, inputTokens: 90, messageCount: 20 }),
+        session({ sessionHash, projectLabel: "Latest", messageCount: 30 }),
+      ],
+    });
+
+    const row = await readSession(sessionHash);
+    expect(row.inputTokens).toBe(BigInt(90));
+    expect(row.totalTokens).toBe(BigInt(90));
+    expect(row.projectLabel).toBe("Latest");
+    expect(row.messageCount).toBe(30);
+    expect(
+      await prisma.usageSession.count({
+        where: { userId: USER_ID, sessionHash },
+      }),
+    ).toBe(1);
+  });
+
   it("keeps the stored apiKeyId when a request carries none", async () => {
     await ingest({ buckets: [flatBucket(300)] }, { apiKeyId: null });
 

@@ -26,6 +26,7 @@ export type UsageDashboardQuery = z.infer<typeof dashboardQuerySchema>;
 export type UsageDashboardData = {
   range: DashboardRange;
   filters: UsageFilters;
+  truncated: boolean;
   overview: UsageOverviewMetrics;
   tokenTrend: TokenTrendPoint[];
   activityTrend: ActivityTrendPoint[];
@@ -58,6 +59,7 @@ export async function getUsageDashboardData(input: {
 
   const [
     {
+      truncated,
       overview,
       tokenTrend,
       activityTrend,
@@ -76,6 +78,7 @@ export async function getUsageDashboardData(input: {
   const dashboard: UsageDashboardData = {
     range,
     filters,
+    truncated,
     overview,
     tokenTrend,
     activityTrend,

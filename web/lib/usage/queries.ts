@@ -37,21 +37,31 @@ const USAGE_READ_PAGE_SIZE = 1_000;
  *
  * The range is already capped (see `MAX_CUSTOM_RANGE_DAYS`), but a heavy account
  * can still exceed that within the window, and every row here is summed
- * in-process. Stopping short keeps the request bounded; the totals it feeds are
- * aggregates, so a truncated read degrades rather than fails.
+ * in-process. Dashboard callers display a partial-data warning when this limit
+ * is reached. Other callers fail rather than return totals that look complete.
  */
 export const USAGE_READ_MAX_ROWS = 200_000;
 
-async function loadUsagePages<T extends { id: string }>(
+export async function loadUsagePages<T extends { id: string }>(
   fetchPage: (cursor?: string) => Promise<T[]>,
+  onTruncated?: () => void,
 ): Promise<T[]> {
   const rows: T[] = [];
   let cursor: string | undefined;
   while (true) {
     const page = await fetchPage(cursor);
     rows.push(...page);
+    // Read one page past the cap so exactly MAX_ROWS records remain complete.
+    if (rows.length > USAGE_READ_MAX_ROWS) {
+      if (!onTruncated) {
+        throw new Error(
+          `Usage range exceeds the ${USAGE_READ_MAX_ROWS}-row read limit; narrow the range or filters.`,
+        );
+      }
+      onTruncated();
+      return rows.slice(0, USAGE_READ_MAX_ROWS);
+    }
     if (page.length < USAGE_READ_PAGE_SIZE) return rows;
-    if (rows.length >= USAGE_READ_MAX_ROWS) return rows;
     const nextCursor = page.at(-1)?.id;
     if (!nextCursor || nextCursor === cursor)
       throw new Error("Usage pagination did not advance");
@@ -94,42 +104,47 @@ function applySessionFilters<T extends Record<string, unknown>>(
   };
 }
 
-async function loadBuckets(input: {
-  userId: string;
-  range: DashboardRange;
-  filters: UsageFilters;
-}) {
-  const rows = await loadUsagePages((cursor) =>
-    prisma.usageBucket.findMany({
-      where: applyBucketFilters(
-        {
-          userId: input.userId,
-          bucketStart: {
-            gte: input.range.from,
-            lte: input.range.to,
+async function loadBuckets(
+  input: {
+    userId: string;
+    range: DashboardRange;
+    filters: UsageFilters;
+  },
+  onTruncated?: () => void,
+) {
+  const rows = await loadUsagePages(
+    (cursor) =>
+      prisma.usageBucket.findMany({
+        where: applyBucketFilters(
+          {
+            userId: input.userId,
+            bucketStart: {
+              gte: input.range.from,
+              lte: input.range.to,
+            },
           },
+          input.filters,
+        ),
+        select: {
+          id: true,
+          deviceId: true,
+          source: true,
+          model: true,
+          projectKey: true,
+          projectLabel: true,
+          bucketStart: true,
+          totalTokens: true,
+          inputTokens: true,
+          outputTokens: true,
+          reasoningTokens: true,
+          cachedTokens: true,
+          cacheCreationTokens: true,
         },
-        input.filters,
-      ),
-      select: {
-        id: true,
-        deviceId: true,
-        source: true,
-        model: true,
-        projectKey: true,
-        projectLabel: true,
-        bucketStart: true,
-        totalTokens: true,
-        inputTokens: true,
-        outputTokens: true,
-        reasoningTokens: true,
-        cachedTokens: true,
-        cacheCreationTokens: true,
-      },
-      orderBy: { id: "asc" },
-      take: USAGE_READ_PAGE_SIZE,
-      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-    }),
+        orderBy: { id: "asc" },
+        take: USAGE_READ_PAGE_SIZE,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      }),
+    onTruncated,
   );
 
   return rows.map((bucket) => ({
@@ -143,39 +158,44 @@ async function loadBuckets(input: {
   }));
 }
 
-async function loadSessions(input: {
-  userId: string;
-  range: DashboardRange;
-  filters: UsageFilters;
-}) {
-  return loadUsagePages((cursor) =>
-    prisma.usageSession.findMany({
-      where: applySessionFilters(
-        {
-          userId: input.userId,
-          firstMessageAt: {
-            gte: input.range.from,
-            lte: input.range.to,
+async function loadSessions(
+  input: {
+    userId: string;
+    range: DashboardRange;
+    filters: UsageFilters;
+  },
+  onTruncated?: () => void,
+) {
+  return loadUsagePages(
+    (cursor) =>
+      prisma.usageSession.findMany({
+        where: applySessionFilters(
+          {
+            userId: input.userId,
+            firstMessageAt: {
+              gte: input.range.from,
+              lte: input.range.to,
+            },
           },
+          input.filters,
+        ),
+        select: {
+          id: true,
+          deviceId: true,
+          source: true,
+          projectKey: true,
+          projectLabel: true,
+          firstMessageAt: true,
+          durationSeconds: true,
+          activeSeconds: true,
+          messageCount: true,
+          userMessageCount: true,
         },
-        input.filters,
-      ),
-      select: {
-        id: true,
-        deviceId: true,
-        source: true,
-        projectKey: true,
-        projectLabel: true,
-        firstMessageAt: true,
-        durationSeconds: true,
-        activeSeconds: true,
-        messageCount: true,
-        userMessageCount: true,
-      },
-      orderBy: { id: "asc" },
-      take: USAGE_READ_PAGE_SIZE,
-      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-    }),
+        orderBy: { id: "asc" },
+        take: USAGE_READ_PAGE_SIZE,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      }),
+    onTruncated,
   );
 }
 
@@ -984,6 +1004,10 @@ export async function getSessionRows(input: {
  */
 export async function getUsageDashboardSnapshot(input: UsageQueryInput) {
   const previousRange = getPreviousRange(input.range);
+  let truncated = false;
+  const markTruncated = () => {
+    truncated = true;
+  };
   const [
     catalog,
     currentBuckets,
@@ -994,10 +1018,10 @@ export async function getUsageDashboardSnapshot(input: UsageQueryInput) {
     devices,
   ] = await Promise.all([
     getPricingCatalog(),
-    loadBuckets(input),
-    loadSessions(input),
-    loadBuckets({ ...input, range: previousRange }),
-    loadSessions({ ...input, range: previousRange }),
+    loadBuckets(input, markTruncated),
+    loadSessions(input, markTruncated),
+    loadBuckets({ ...input, range: previousRange }, markTruncated),
+    loadSessions({ ...input, range: previousRange }, markTruncated),
     loadRecentSessions(input),
     prisma.device.findMany({
       where: { userId: input.userId },
@@ -1012,6 +1036,7 @@ export async function getUsageDashboardSnapshot(input: UsageQueryInput) {
   );
 
   return {
+    truncated,
     overview: buildOverviewMetrics({
       currentBuckets,
       currentSessions,

@@ -262,6 +262,37 @@ describe("parser-service", () => {
       expect(result.parserResults[0].cached).toBeUndefined();
     });
 
+    it.each([
+      "file listing",
+      "fingerprinting",
+    ])("isolates %s failures from other parsers", async (stage) => {
+      const broken = cacheableParser();
+      const healthy = {
+        ...cacheableParser(),
+        tool: { id: "healthy", name: "Healthy", dataDir: "/tmp/h" },
+      };
+      if (stage === "file listing") {
+        broken.listSourceFiles.mockImplementationOnce(() => {
+          throw new Error("cannot list files");
+        });
+      } else {
+        cacheMocks.computeScanFingerprint.mockImplementationOnce(() => {
+          throw new Error("cannot stat file");
+        });
+      }
+      vi.mocked(getAllParsers).mockReturnValueOnce([broken, healthy]);
+
+      const result = await runAllParsers();
+
+      expect(result.failedSources).toEqual(["cacheable"]);
+      expect(broken.parse).not.toHaveBeenCalled();
+      expect(healthy.parse).toHaveBeenCalledOnce();
+      expect(result.parserResults.map((entry) => entry.source)).toEqual([
+        "healthy",
+      ]);
+      expect(result.buckets).toEqual([bucket]);
+    });
+
     it("leaves parsers without listSourceFiles uncached", async () => {
       const parser = {
         tool: { id: "plain", name: "Plain", dataDir: "/tmp/p" },

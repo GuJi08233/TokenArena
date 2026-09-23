@@ -700,6 +700,38 @@ describe("Codex usage and replay regressions", () => {
     ).toEqual([150, 300]);
   });
 
+  it("verifies a fork cutoff from ordinals across parent rollout files", async () => {
+    const directory = makeTempDir("tokenarena-codex-fork-ordinals-");
+    writeFixture(directory, "parent-1", [
+      { ...metadata("parent"), ordinal: 0 },
+      { ...tokenEvent(1, counters(100)), ordinal: 4 },
+    ]);
+    writeFixture(directory, "parent-2", [
+      { ...metadata("parent"), ordinal: 5 },
+      { ...tokenEvent(2, counters(200)), ordinal: 10 },
+    ]);
+    writeFixture(directory, "child", [
+      {
+        ...metadata("child", {
+          forked_from_id: "parent",
+          forked_from_ordinal_exclusive: 11,
+        }),
+        timestamp: "2026-07-10T03:00:05Z",
+        ordinal: 0,
+      },
+      tokenEvent(6, counters(100)),
+      tokenEvent(7, counters(200)),
+      tokenEvent(8, counters(300)),
+    ]);
+
+    const result = await new CodexParser(directory).parse();
+    expect(result.incomplete).not.toBe(true);
+    expect(bucketTotal(result)).toBe(300);
+    expect(
+      result.sessions.map((session) => session.totalTokens).sort(),
+    ).toEqual([100, 200]);
+  });
+
   it("does not remove a live child event that matches a future parent snapshot", async () => {
     const directory = makeTempDir("tokenarena-codex-fork-cutoff-");
     writeFixture(directory, "parent", [

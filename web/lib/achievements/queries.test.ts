@@ -16,8 +16,8 @@ const mocks = vi.hoisted(() => ({
     usageBucket: { findMany: vi.fn() },
     usageSession: { findMany: vi.fn() },
     follow: { findMany: vi.fn() },
-    userAchievement: { findMany: vi.fn() },
-    userArenaSummary: { findUnique: vi.fn(), upsert: vi.fn() },
+    userAchievement: { findMany: vi.fn(), findFirst: vi.fn() },
+    userArenaSummary: { findUnique: vi.fn(), upsert: vi.fn(), update: vi.fn() },
   },
 }));
 
@@ -59,6 +59,7 @@ function stubEmptyHistory() {
 describe("getArenaSummaryForProfile", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.prisma.userAchievement.findFirst.mockResolvedValue(null);
     mocks.getUsagePreference.mockResolvedValue({ timezone: "Asia/Shanghai" });
     mocks.getPricingCatalog.mockResolvedValue(null);
     mocks.getUserGlobalLeaderboardRanksByTotalTokens.mockResolvedValue({
@@ -79,6 +80,7 @@ describe("getArenaSummaryForProfile", () => {
       totalActiveSeconds: 3_600,
       totalSessions: 42,
       totalActiveDays: 30,
+      computedAt: new Date("2026-04-05T12:00:00.000Z"),
     });
 
     const summary = await getArenaSummaryForProfile("user-1");
@@ -100,6 +102,43 @@ describe("getArenaSummaryForProfile", () => {
     ).not.toHaveBeenCalled();
     expect(mocks.finalizePendingLeaderboardPeriods).not.toHaveBeenCalled();
     expect(mocks.prisma.userArenaSummary.upsert).not.toHaveBeenCalled();
+    expect(mocks.prisma.userArenaSummary.update).not.toHaveBeenCalled();
+  });
+
+  it("repairs an older score from stored achievements without replaying usage", async () => {
+    const computedAt = new Date("2026-04-05T12:00:00.000Z");
+    const updatedAt = new Date("2026-04-06T12:00:00.000Z");
+    mocks.prisma.userArenaSummary.findUnique.mockResolvedValue({
+      userId: "user-1",
+      score: 90,
+      level: 1,
+      totalTokens: BigInt(9_000),
+      totalEstimatedCostUsd: 12.5,
+      totalActiveSeconds: 3_600,
+      totalSessions: 42,
+      totalActiveDays: 30,
+      computedAt,
+    });
+    mocks.prisma.userAchievement.findFirst.mockResolvedValue({
+      code: "leaderboard_day_top50",
+    });
+    mocks.prisma.userAchievement.findMany.mockResolvedValue([
+      { code: "leaderboard_day_top50", awardCount: 10, updatedAt },
+    ]);
+
+    const summary = await getArenaSummaryForProfile("user-1");
+
+    expect(summary.score).toBe(100);
+    expect(summary.level).toBe(2);
+    expect(mocks.prisma.userArenaSummary.update).toHaveBeenCalledWith({
+      where: { userId: "user-1" },
+      data: { score: 100, level: 2, computedAt: updatedAt },
+    });
+    expect(mocks.prisma.usageBucket.findMany).not.toHaveBeenCalled();
+    expect(mocks.prisma.usageSession.findMany).not.toHaveBeenCalled();
+    expect(
+      mocks.getUserGlobalLeaderboardRanksByTotalTokens,
+    ).not.toHaveBeenCalled();
   });
 
   it("recomputes and persists once when no row exists yet", async () => {

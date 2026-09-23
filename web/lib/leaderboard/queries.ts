@@ -933,20 +933,24 @@ async function getGlobalViewerRankSummary(input: {
   const window = resolveLeaderboardWindow(input.period, input.now);
 
   if (input.metric === "estimated_cost") {
-    // Cost ordering only exists in the cached snapshot — reproducing it for an
-    // arbitrary rank would mean pricing every user's buckets on this request.
-    // Viewers outside the cached depth simply get no standalone row, the same
-    // as a viewer with no qualifying usage.
-    const { summaries } = await ensureGlobalSnapshot(
+    // Cost ordering lives in the cached top 100. Look up the viewer directly so
+    // ranks 51–100 remain visible even though the board only renders 50 rows.
+    // A viewer outside that depth has no standalone row.
+    const { snapshot } = await ensureGlobalSnapshot(
       input.period,
       input.metric,
       input.now,
     );
-    const summary = summaries.find(
-      (entry) => entry.userId === input.viewerUserId,
-    );
+    const row = await prisma.leaderboardSnapshotEntry.findUnique({
+      where: {
+        snapshotId_userId: {
+          snapshotId: snapshot.id,
+          userId: input.viewerUserId,
+        },
+      },
+    });
 
-    return summary ? { summary, window } : null;
+    return row ? { summary: snapshotEntryToSummary(row), window } : null;
   }
 
   const summary = await fetchGlobalTokenRankSummary({

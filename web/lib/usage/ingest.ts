@@ -448,20 +448,30 @@ async function upsertSessions(
   input: IngestUsagePayloadInput,
   catalog: Awaited<ReturnType<typeof getPricingCatalog>>,
 ) {
-  const sessions = dedupeByConflictKey(
-    input.payload.sessions,
-    (session) => `${session.source}\u0000${session.sessionHash}`,
-  ).map((session) => {
-    const normalizedUsage = normalizeSessionUsage(session, catalog);
+  const byKey = new Map<
+    string,
+    {
+      session: IngestPayload["sessions"][number];
+      usage: ReturnType<typeof buildUsageSessionWriteInput> | null;
+    }
+  >();
 
-    return {
+  for (const session of input.payload.sessions) {
+    const key = `${session.source}\u0000${session.sessionHash}`;
+    const normalizedUsage = normalizeSessionUsage(session, catalog);
+    const usage =
+      normalizedUsage == null
+        ? null
+        : buildUsageSessionWriteInput(normalizedUsage);
+
+    // 逐行 upsert 总是更新元数据；无 usage 的行不会覆盖先前的 token 字段。
+    byKey.set(key, {
       session,
-      usage:
-        normalizedUsage == null
-          ? null
-          : buildUsageSessionWriteInput(normalizedUsage),
-    };
-  });
+      usage: usage ?? byKey.get(key)?.usage ?? null,
+    });
+  }
+
+  const sessions = Array.from(byKey.values());
 
   await upsertSessionGroup(
     db,
