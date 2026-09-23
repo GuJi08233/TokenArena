@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.16.4](https://github.com/GuJi08233/TokenArena/compare/v0.16.3...v0.16.4) (2026-09-23)
+
+
+### Bug Fixes
+
+* address recent CLI and web review regressions ([26d1b4b](https://github.com/GuJi08233/TokenArena/commit/26d1b4b7feed54b1b93324e59a9ec8f37285ca6c))
+* **web:** upgrade next to 16.3.6 and better-auth to 1.6.33 ([13aee9b](https://github.com/GuJi08233/TokenArena/commit/13aee9beb0a921c05b677db5f14b5e5be6d51639))
+
+
+### Performance Improvements
+
+* reduce sync and profile processing costs ([38b29b1](https://github.com/GuJi08233/TokenArena/commit/38b29b1ac812bb3f99e051e7229cd3b517d28c56))
+* **web:** confirm listed heatmap day starts before searching ([25faa75](https://github.com/GuJi08233/TokenArena/commit/25faa75e830d46db770d3513b98246ce5a1f6061))
+
 ## [0.16.3](https://github.com/GuJi08233/TokenArena/compare/v0.16.2...v0.16.3) (2026-09-22)
 
 
