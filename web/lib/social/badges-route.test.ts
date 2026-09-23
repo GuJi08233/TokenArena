@@ -76,4 +76,30 @@ describe("badge route", () => {
 
     await expect(response.text()).resolves.toContain("private");
   });
+
+  it("escapes a hostile label and serves the SVG under a restrictive CSP", async () => {
+    mocks.getPublicBadgeData.mockResolvedValue({
+      kind: "private",
+      username: "alice",
+    });
+
+    const { GET } = await import("@/app/api/badges/[username]/route");
+    const label = encodeURIComponent('"><script>alert(1)</script>');
+    const response = await GET(
+      new Request(
+        `https://example.com/api/badges/alice?metric=tokens&label=${label}`,
+      ),
+      { params: Promise.resolve({ username: "alice" }) } as never,
+    );
+
+    const svg = await response.text();
+    expect(svg).not.toContain("<script");
+    expect(svg).toContain(
+      'aria-label="TokenArena &quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;: private"',
+    );
+    expect(response.headers.get("content-security-policy")).toBe(
+      "default-src 'none'; style-src 'unsafe-inline'",
+    );
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+  });
 });

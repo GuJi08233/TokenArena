@@ -7,6 +7,7 @@ import {
   parsePublicBadgeTheme,
   renderBadgeSvg,
 } from "@/lib/social/badges";
+import { SVG_SECURITY_HEADERS } from "@/lib/social/svg-headers";
 
 export async function GET(
   request: Request,
@@ -39,6 +40,7 @@ export async function GET(
     headers: {
       "content-type": "image/svg+xml; charset=utf-8",
       "cache-control": "public, s-maxage=300, stale-while-revalidate=3600",
+      ...SVG_SECURITY_HEADERS,
     },
   });
 }
