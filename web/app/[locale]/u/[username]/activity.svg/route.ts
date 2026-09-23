@@ -5,6 +5,7 @@ import {
   resolveActivityHeatmapSvgTheme,
 } from "@/lib/social/heatmap-svg";
 import { getPublicProfileActivityShareData } from "@/lib/social/queries";
+import { SVG_SECURITY_HEADERS } from "@/lib/social/svg-headers";
 
 export const revalidate = 3600;
 
@@ -39,6 +40,7 @@ export async function GET(
       "Content-Type": "image/svg+xml; charset=utf-8",
       "Cache-Control":
         "public, max-age=300, s-maxage=3600, stale-while-revalidate=86400",
+      ...SVG_SECURITY_HEADERS,
     },
   });
 }
