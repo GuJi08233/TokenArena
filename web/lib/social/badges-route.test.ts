@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getPublicBadgeData: vi.fn(),
@@ -16,6 +16,11 @@ vi.mock("@/lib/social/badges", async () => {
 });
 
 describe("badge route", () => {
+  // 首次加载路由会转换整棵依赖树，全量并行时可能超过单个用例 5 秒的超时。
+  beforeAll(async () => {
+    await import("@/app/api/badges/[username]/route");
+  }, 60_000);
+
   it("returns svg for a public metric", async () => {
     mocks.getPublicBadgeData.mockResolvedValue({
       kind: "ok",
