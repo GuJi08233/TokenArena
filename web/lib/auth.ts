@@ -40,6 +40,10 @@ export const auth = betterAuth({
       username: {
         type: "string",
         required: true,
+        // OAuth 注册时 better-auth 先按这里的定义校验提供方资料，之后才运行
+        // create.before；资料里没有 username，缺少默认值会直接报 username is
+        // required。空串由 create.before 视为未提供，生成用户名并标记待设置。
+        defaultValue: "",
         returned: true,
         unique: true,
         sortable: true,
