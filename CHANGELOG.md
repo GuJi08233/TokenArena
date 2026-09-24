@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.16.6](https://github.com/GuJi08233/TokenArena/compare/v0.16.5...v0.16.6) (2026-09-24)
+
+
+### Bug Fixes
+
+* **web:** let the username hook run during OAuth sign-up ([e189710](https://github.com/GuJi08233/TokenArena/commit/e18971006fa0cac11029b0c7ad76bb90301cf72e))
+* **web:** let the username hook run during OAuth sign-up ([38e3193](https://github.com/GuJi08233/TokenArena/commit/38e3193eff4d5d7d18beec8d143fb1bfb7874a65))
+
 ## [0.16.5](https://github.com/GuJi08233/TokenArena/compare/v0.16.4...v0.16.5) (2026-09-23)
 
 
