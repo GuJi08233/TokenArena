@@ -136,6 +136,38 @@ describe("updateUsagePreference", () => {
     vi.clearAllMocks();
   });
 
+  it("creates a missing preference before updating it", async () => {
+    let stored: ReturnType<typeof createPreference> | null = null;
+    const tx = {
+      usagePreference: {
+        findUnique: vi.fn(async () => stored),
+        create: vi.fn(async () => {
+          stored = createPreference({ publicProfileEnabled: true });
+          return stored;
+        }),
+        update: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+          if (!stored) throw new Error("P2025: preference does not exist");
+          stored = { ...stored, ...data };
+          return stored;
+        }),
+      },
+    };
+    mocks.prismaTransaction.mockImplementation(
+      async (fn: (client: unknown) => unknown) => fn(tx),
+    );
+
+    const result = await updateUsagePreference("user_123", {
+      theme: "dark",
+      publicProfileEnabled: false,
+    });
+
+    expect(result).toMatchObject({
+      theme: "dark",
+      publicProfileEnabled: false,
+    });
+    expect(mocks.expireLeaderboardSnapshots).toHaveBeenCalledWith(tx);
+  });
+
   it("updates preference fields and returns the updated record", async () => {
     const existing = createPreference({ publicProfileEnabled: false });
     const updated = createPreference({

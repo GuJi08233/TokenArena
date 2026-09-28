@@ -169,6 +169,53 @@ describe("groupByHourOrDay", () => {
 });
 
 describe("listRangeBuckets", () => {
+  it.each([
+    { timezone: "Europe/Berlin", date: "2026-03-29", count: 23 },
+    { timezone: "Europe/Berlin", date: "2026-10-25", count: 25 },
+    { timezone: "America/New_York", date: "2026-03-08", count: 23 },
+    { timezone: "America/New_York", date: "2026-11-01", count: 25 },
+  ])("advances through $date in $timezone", ({ timezone, date, count }) => {
+    const range = resolveDashboardRange({
+      preset: "custom",
+      from: date,
+      to: date,
+      timezone,
+    });
+
+    const buckets = listRangeBuckets(range);
+
+    expect(buckets).toHaveLength(count);
+    expect(buckets[0]?.start.getTime()).toBe(range.from.getTime());
+    expect(buckets.at(-1)?.start.getTime()).toBe(
+      range.to.getTime() + 1 - 60 * 60 * 1000,
+    );
+    for (let index = 1; index < buckets.length; index++) {
+      expect(
+        buckets[index].start.getTime() - buckets[index - 1].start.getTime(),
+      ).toBe(60 * 60 * 1000);
+    }
+  });
+
+  it.each([
+    "2026-11-01T05:30:45.123Z",
+    "2026-11-01T06:30:45.123Z",
+  ])("keeps the correct occurrence of an ambiguous starting hour at %s", (from) => {
+    const range = resolveDashboardRange({
+      preset: "custom",
+      from,
+      to: new Date(new Date(from).getTime() + 15 * 60 * 1000),
+      timezone: "America/New_York",
+    });
+
+    const buckets = listRangeBuckets(range);
+
+    expect(buckets).toHaveLength(1);
+    expect(buckets[0].start.toISOString()).toBe(
+      from.replace("30:45.123", "00:00.000"),
+    );
+    expect(buckets[0].key).toBe("2026-11-01 01:00");
+  });
+
   it("generates hourly buckets for a 1d range", () => {
     const range = resolveDashboardRange({
       preset: "1d",

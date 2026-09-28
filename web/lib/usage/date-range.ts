@@ -165,7 +165,7 @@ function zonedDateTimeToUtc(parts: ZonedDateParts, timezone: string) {
 
 function addToParts(
   parts: ZonedDateParts,
-  input: { days?: number; hours?: number },
+  input: { days?: number },
 ): ZonedDateParts {
   const next = new Date(
     Date.UTC(
@@ -180,10 +180,6 @@ function addToParts(
 
   if (input.days) {
     next.setUTCDate(next.getUTCDate() + input.days);
-  }
-
-  if (input.hours) {
-    next.setUTCHours(next.getUTCHours() + input.hours);
   }
 
   return {
@@ -215,16 +211,12 @@ function startOfZonedDay(date: Date, timezone: string) {
 function startOfZonedHour(date: Date, timezone: string) {
   const parts = toZonedParts(date, timezone);
 
-  return zonedDateTimeToUtc(
-    {
-      year: parts.year,
-      month: parts.month,
-      day: parts.day,
-      hour: parts.hour,
-      minute: 0,
-      second: 0,
-    },
-    timezone,
+  // 保留输入时刻的偏移，避免回拨时把第一个同名小时变成第二个。
+  return new Date(
+    date.getTime() -
+      parts.minute * 60_000 -
+      parts.second * 1000 -
+      date.getUTCMilliseconds(),
   );
 }
 
@@ -367,11 +359,14 @@ export function listRangeBuckets(range: DashboardRange) {
       start: cursor,
     });
 
-    const cursorParts = toZonedParts(cursor, range.timezone);
-    cursor = zonedDateTimeToUtc(
-      addToParts(cursorParts, step === "hour" ? { hours: 1 } : { days: 1 }),
-      range.timezone,
-    );
+    // 按真实经过的小时推进；本地时间可能跳过或重复某个小时。
+    cursor =
+      step === "hour"
+        ? new Date(cursor.getTime() + 60 * 60 * 1000)
+        : zonedDateTimeToUtc(
+            addToParts(toZonedParts(cursor, range.timezone), { days: 1 }),
+            range.timezone,
+          );
   }
 
   return buckets;

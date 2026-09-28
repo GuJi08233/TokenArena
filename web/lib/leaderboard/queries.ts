@@ -419,6 +419,7 @@ async function hydrateEntries(
   summaries: LeaderboardEntrySummary[],
   window: LeaderboardWindow,
   viewerUserId?: string | null,
+  scope: LeaderboardDataset["scope"] = "global",
 ) {
   if (summaries.length === 0) {
     return [];
@@ -449,7 +450,13 @@ async function hydrateEntries(
   for (const summary of summaries) {
     const user = userMap.get(summary.userId);
 
-    if (!user) {
+    // 快照可能在关闭公开资料之前读取，或由并发重建写回；输出时复核权限。
+    // 私密用户仍可在自己的关注榜看到自己。
+    if (
+      !user ||
+      (!user.usagePreference?.publicProfileEnabled &&
+        !(scope === "following" && user.id === viewerUserId))
+    ) {
       continue;
     }
 
@@ -1002,7 +1009,12 @@ async function getFollowingLeaderboard(input: {
         followTag,
         now,
       });
-    const entries = await hydrateEntries(summaries, window, input.viewerUserId);
+    const entries = await hydrateEntries(
+      summaries,
+      window,
+      input.viewerUserId,
+      "following",
+    );
 
     return toDataset({
       scope: "following",
@@ -1093,7 +1105,12 @@ async function getFollowingLeaderboard(input: {
     },
     [],
   );
-  const entries = await hydrateEntries(summaries, window, input.viewerUserId);
+  const entries = await hydrateEntries(
+    summaries,
+    window,
+    input.viewerUserId,
+    "following",
+  );
 
   return toDataset({
     scope: "following",

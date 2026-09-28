@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   finalizePendingLeaderboardPeriods: vi.fn().mockResolvedValue(undefined),
   getPricingCatalog: vi.fn().mockResolvedValue(null),
   prisma: {
+    $transaction: vi.fn(),
     $queryRaw: vi.fn(),
     leaderboardSnapshot: { findUnique: vi.fn() },
     leaderboardSnapshotEntry: { findMany: vi.fn(), findUnique: vi.fn() },
@@ -169,6 +170,127 @@ describe("cost leaderboard viewer rank", () => {
     expect(
       mocks.prisma.leaderboardSnapshotEntry.findUnique,
     ).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "total_tokens",
+    "estimated_cost",
+  ] as const)("filters private users out of a cached %s board", async (metric) => {
+    mocks.prisma.leaderboardSnapshotEntry.findMany.mockResolvedValue([
+      snapshotEntry("private", 1),
+      snapshotEntry("leader", 2),
+    ]);
+    mocks.prisma.user.findMany.mockResolvedValue([
+      {
+        id: "private",
+        usagePreference: { publicProfileEnabled: false },
+      },
+      {
+        id: "leader",
+        name: "Leader",
+        username: "leader",
+        image: null,
+        usagePreference: { bio: null, publicProfileEnabled: true },
+        _count: { followers: 0, following: 0 },
+      },
+    ]);
+
+    const page = await getLeaderboardPageData({
+      period: "all_time",
+      metric,
+      now,
+    });
+
+    expect(page.global.entries.map((entry) => entry.userId)).toEqual([
+      "leader",
+    ]);
+  });
+
+  it("keeps a private viewer only on their own following board", async () => {
+    mocks.prisma.leaderboardSnapshotEntry.findMany.mockResolvedValue([
+      snapshotEntry("viewer", 1),
+    ]);
+    mocks.prisma.leaderboardUserDay.groupBy.mockResolvedValue([
+      { userId: "viewer", _sum: snapshotEntry("viewer", 1) },
+    ]);
+    mocks.prisma.usagePreference.findUnique.mockResolvedValue({
+      publicProfileEnabled: false,
+    });
+    mocks.prisma.user.findMany.mockResolvedValue([
+      {
+        id: "viewer",
+        name: "Viewer",
+        username: "viewer",
+        image: null,
+        usagePreference: { bio: null, publicProfileEnabled: false },
+        _count: { followers: 0, following: 0 },
+      },
+    ]);
+
+    const page = await getLeaderboardPageData({
+      period: "all_time",
+      metric: "total_tokens",
+      viewerUserId: "viewer",
+      now,
+    });
+
+    expect(page.global.entries).toEqual([]);
+    expect(page.viewerGlobalEntry).toBeNull();
+    expect(page.following?.entries).toMatchObject([
+      { userId: "viewer", isSelf: true },
+    ]);
+  });
+
+  it("hides a user when an in-flight rebuild republishes their old summary", async () => {
+    const snapshot = {
+      id: "rebuilt",
+      generatedAt: now,
+      windowStart: null,
+      windowEnd: null,
+    };
+    let entries: unknown[] = [];
+    mocks.prisma.leaderboardSnapshot.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValue(snapshot);
+    mocks.prisma.leaderboardUserDay.groupBy.mockImplementation(async () => {
+      // 聚合读完后，用户关闭公开资料并清空快照；旧聚合仍可稍后写回。
+      mocks.prisma.user.findMany.mockResolvedValue([
+        { id: "leader", usagePreference: { publicProfileEnabled: false } },
+      ]);
+      return [{ userId: "leader", _sum: snapshotEntry("leader", 1) }];
+    });
+    mocks.prisma.$transaction.mockImplementation(
+      async (fn: (tx: unknown) => unknown) =>
+        fn({
+          leaderboardSnapshot: { upsert: async () => snapshot },
+          leaderboardSnapshotEntry: {
+            deleteMany: async () => {
+              entries = [];
+            },
+            createMany: async ({ data }: { data: unknown[] }) => {
+              entries = data;
+            },
+          },
+        }),
+    );
+    mocks.prisma.leaderboardSnapshotEntry.findMany.mockImplementation(
+      async () => entries,
+    );
+
+    const first = await getLeaderboardPageData({
+      period: "all_time",
+      metric: "total_tokens",
+      now,
+    });
+    const later = await getLeaderboardPageData({
+      period: "all_time",
+      metric: "total_tokens",
+      now: new Date(now.getTime() + 60_000),
+    });
+
+    expect(entries).toHaveLength(1);
+    expect(first.global.entries).toEqual([]);
+    expect(later.global.entries).toEqual([]);
   });
 
   it("adds a token viewer outside the cached top 50 using the SQL rank", async () => {
