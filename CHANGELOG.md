@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.18.0](https://github.com/GuJi08233/TokenArena/compare/v0.17.0...v0.18.0) (2026-10-01)
+
+
+### Features
+
+* add Snow App collection and unified Snow reporting ([c805caf](https://github.com/GuJi08233/TokenArena/commit/c805caf4b29434a899b51737494061344891ed85))
+* add Snow App usage and unified Snow reporting ([4d91a6e](https://github.com/GuJi08233/TokenArena/commit/4d91a6e54b34373738e8051b75b6ad5b0f457219))
+
+
+### Bug Fixes
+
+* harden Snow App collection and document safe history handling ([90d1179](https://github.com/GuJi08233/TokenArena/commit/90d1179078d692c369e0ebc6dd514b894a96617b))
+
 ## [0.17.0](https://github.com/GuJi08233/TokenArena/compare/v0.16.6...v0.17.0) (2026-09-28)
 
 
