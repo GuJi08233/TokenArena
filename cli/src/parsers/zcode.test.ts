@@ -100,11 +100,11 @@ describe("ZCodeParser", () => {
       source: "zcode",
       model: "gpt-5.5",
       project: "TokenArena",
-      inputTokens: 150,
-      outputTokens: 60,
+      inputTokens: 120,
+      outputTokens: 50,
       reasoningTokens: 10,
       cachedTokens: 30,
-      totalTokens: 250,
+      totalTokens: 210,
     });
 
     expect(result.sessions).toHaveLength(1);
@@ -115,12 +115,121 @@ describe("ZCodeParser", () => {
       activeSeconds: 11,
       messageCount: 3,
       userMessageCount: 2,
-      inputTokens: 150,
-      outputTokens: 60,
+      inputTokens: 120,
+      outputTokens: 50,
       reasoningTokens: 10,
       cachedTokens: 30,
-      totalTokens: 250,
+      totalTokens: 210,
       primaryModel: "gpt-5.5",
+    });
+  });
+
+  it("does not count the cache and reasoning subsets of ZCode totals twice", async () => {
+    const dataDir = makeTempDir("tokenarena-zcode-");
+    const dbPath = join(dataDir, "db.sqlite");
+    writeFileSync(dbPath, "", "utf-8");
+
+    const parser = new ZCodeParser({
+      dbPath,
+      queryRows: async <TRow>(_targetDbPath: string, query: string) => {
+        if (query.includes("FROM model_usage")) {
+          return [
+            // Real rows: provider_total_tokens was 106975 and 52598.
+            {
+              sessionId: "sess-1",
+              directory: "C:\\work\\TokenArena",
+              model: "glm-5.3-flash",
+              startedAt: 1782022744909,
+              inputTokens: 106205,
+              outputTokens: 770,
+              reasoningTokens: 0,
+              cacheReadInputTokens: 106112,
+              cacheCreationInputTokens: 0,
+            },
+            {
+              sessionId: "sess-1",
+              directory: "C:\\work\\TokenArena",
+              model: "deepseek-v4.1-flash",
+              startedAt: 1782022756087,
+              inputTokens: 51965,
+              outputTokens: 633,
+              reasoningTokens: 453,
+              cacheReadInputTokens: 51712,
+              cacheCreationInputTokens: 0,
+            },
+            // Anthropic usage as the AI SDK reports it: the input total is
+            // 120 uncached + 2000 cache writes + 30000 cache reads.
+            {
+              sessionId: "sess-1",
+              directory: "C:\\work\\TokenArena",
+              model: "claude-sonnet-5-5",
+              startedAt: 1782022766087,
+              inputTokens: 32120,
+              outputTokens: 500,
+              reasoningTokens: 0,
+              cacheReadInputTokens: 30000,
+              cacheCreationInputTokens: 2000,
+            },
+          ] as TRow[];
+        }
+
+        if (query.includes("FROM session")) {
+          return [
+            {
+              id: "sess-1",
+              directory: "C:\\work\\TokenArena",
+              timeCreated: 1782022744898,
+              timeUpdated: 1782022861329,
+            },
+          ] as TRow[];
+        }
+
+        return [];
+      },
+    });
+
+    const result = await parser.parse();
+
+    expect(result.buckets).toHaveLength(3);
+    expect(result.buckets).toMatchObject([
+      {
+        model: "glm-5.3-flash",
+        inputTokens: 93,
+        outputTokens: 770,
+        reasoningTokens: 0,
+        cachedTokens: 106112,
+        cacheCreationTokens: 0,
+        totalTokens: 106975,
+      },
+      {
+        model: "deepseek-v4.1-flash",
+        inputTokens: 253,
+        outputTokens: 180,
+        reasoningTokens: 453,
+        cachedTokens: 51712,
+        cacheCreationTokens: 0,
+        totalTokens: 52598,
+      },
+      {
+        model: "claude-sonnet-5-5",
+        inputTokens: 120,
+        outputTokens: 500,
+        reasoningTokens: 0,
+        cachedTokens: 30000,
+        cacheCreationTokens: 2000,
+        totalTokens: 32620,
+      },
+    ]);
+
+    expect(result.sessions).toHaveLength(1);
+    expect(result.sessions[0]).toMatchObject({
+      inputTokens: 466,
+      outputTokens: 1450,
+      reasoningTokens: 453,
+      cachedTokens: 187824,
+      cacheCreationTokens: 2000,
+      totalTokens: 192193,
+      primaryModel: "glm-5.3-flash",
     });
   });
 
@@ -224,10 +333,10 @@ describe("ZCodeParser", () => {
       source: "zcode",
       model: "gpt-5.5",
       project: "TokenArena",
-      inputTokens: 10,
+      inputTokens: 5,
       outputTokens: 20,
       cachedTokens: 5,
-      totalTokens: 35,
+      totalTokens: 30,
     });
   });
 });
