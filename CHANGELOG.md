@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.1](https://github.com/GuJi08233/TokenArena/compare/v0.18.0...v0.18.1) (2026-10-03)
+
+
+### Bug Fixes
+
+* **cli:** stop counting ZCode cache and reasoning tokens twice ([#47](https://github.com/GuJi08233/TokenArena/issues/47)) ([221c670](https://github.com/GuJi08233/TokenArena/commit/221c670e3127c7b84168cfedb8d6f1a4aff79762))
+
 ## [0.18.0](https://github.com/GuJi08233/TokenArena/compare/v0.17.0...v0.18.0) (2026-10-01)
 
 
