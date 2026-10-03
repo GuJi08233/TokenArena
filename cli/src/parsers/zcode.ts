@@ -26,13 +26,15 @@ const MODEL_USAGE_QUERY = `SELECT
   model_usage.input_tokens as inputTokens,
   model_usage.output_tokens as outputTokens,
   model_usage.reasoning_tokens as reasoningTokens,
-  model_usage.cache_read_input_tokens as cacheReadInputTokens
+  model_usage.cache_read_input_tokens as cacheReadInputTokens,
+  model_usage.cache_creation_input_tokens as cacheCreationInputTokens
   FROM model_usage
   LEFT JOIN session ON session.id = model_usage.session_id
   WHERE model_usage.input_tokens > 0
     OR model_usage.output_tokens > 0
     OR model_usage.reasoning_tokens > 0
-    OR model_usage.cache_read_input_tokens > 0`;
+    OR model_usage.cache_read_input_tokens > 0
+    OR model_usage.cache_creation_input_tokens > 0`;
 
 const SESSION_QUERY = `SELECT
   id,
@@ -63,6 +65,7 @@ interface ZCodeModelUsageRow {
   outputTokens?: unknown;
   reasoningTokens?: unknown;
   cacheReadInputTokens?: unknown;
+  cacheCreationInputTokens?: unknown;
 }
 
 interface ZCodeSessionRow {
@@ -204,11 +207,13 @@ function buildSessionUsage(entries: TokenUsageEntry[]) {
       usageBySession.set(entry.sessionId, byModel);
     }
 
+    const cacheCreationTokens = entry.cacheCreationTokens ?? 0;
     const totalTokens =
       entry.inputTokens +
       entry.outputTokens +
       entry.reasoningTokens +
-      entry.cachedTokens;
+      entry.cachedTokens +
+      cacheCreationTokens;
     const existing = byModel.get(entry.model);
 
     if (existing) {
@@ -216,6 +221,8 @@ function buildSessionUsage(entries: TokenUsageEntry[]) {
       existing.outputTokens += entry.outputTokens;
       existing.reasoningTokens += entry.reasoningTokens;
       existing.cachedTokens += entry.cachedTokens;
+      existing.cacheCreationTokens =
+        (existing.cacheCreationTokens ?? 0) + cacheCreationTokens;
       existing.totalTokens += totalTokens;
       continue;
     }
@@ -226,6 +233,7 @@ function buildSessionUsage(entries: TokenUsageEntry[]) {
       outputTokens: entry.outputTokens,
       reasoningTokens: entry.reasoningTokens,
       cachedTokens: entry.cachedTokens,
+      cacheCreationTokens,
       totalTokens,
     });
   }
@@ -305,7 +313,7 @@ function buildSessions(input: {
   const host = hostname().replace(/\.local$/, "");
 
   return Array.from(drafts.values())
-    .map((draft) => {
+    .map((draft): SessionMetadata | null => {
       const firstMessageAt = draft.firstMessageAt ?? draft.fallbackFirstAt;
       const lastMessageAt =
         draft.lastMessageAt ?? draft.fallbackLastAt ?? firstMessageAt;
@@ -339,6 +347,10 @@ function buildSessions(input: {
         (sum, usage) => sum + usage.cachedTokens,
         0,
       );
+      const cacheCreationTokens = modelUsages.reduce(
+        (sum, usage) => sum + (usage.cacheCreationTokens ?? 0),
+        0,
+      );
       const totalTokens = modelUsages.reduce(
         (sum, usage) => sum + usage.totalTokens,
         0,
@@ -369,10 +381,11 @@ function buildSessions(input: {
         outputTokens,
         reasoningTokens,
         cachedTokens,
+        cacheCreationTokens,
         totalTokens,
         primaryModel: modelUsages[0]?.model ?? "",
         modelUsages,
-      } satisfies SessionMetadata;
+      };
     })
     .filter((session): session is SessionMetadata => session !== null);
 }
@@ -405,16 +418,29 @@ export class ZCodeParser implements IParser {
         continue;
       }
 
-      const inputTokens = toSafeNumber(row.inputTokens);
-      const outputTokens = toSafeNumber(row.outputTokens);
-      const reasoningTokens = toSafeNumber(row.reasoningTokens);
+      // ZCode stores the AI SDK totals as-is: input_tokens already includes
+      // cache reads and writes, and output_tokens already includes reasoning
+      // (ZCode's own computed_total_tokens is just input + output). Split the
+      // subsets out so they are not counted twice.
       const cachedTokens = toSafeNumber(row.cacheReadInputTokens);
+      const cacheCreationTokens = toSafeNumber(row.cacheCreationInputTokens);
+      const inputTokens = Math.max(
+        0,
+        toSafeNumber(row.inputTokens) - cachedTokens - cacheCreationTokens,
+      );
+      const reasoningTokens = toSafeNumber(row.reasoningTokens);
+      const outputTokens = Math.max(
+        0,
+        toSafeNumber(row.outputTokens) - reasoningTokens,
+      );
 
       if (
-        inputTokens === 0 &&
-        outputTokens === 0 &&
-        reasoningTokens === 0 &&
-        cachedTokens === 0
+        inputTokens +
+          outputTokens +
+          reasoningTokens +
+          cachedTokens +
+          cacheCreationTokens ===
+        0
       ) {
         continue;
       }
@@ -429,6 +455,7 @@ export class ZCodeParser implements IParser {
         outputTokens,
         reasoningTokens,
         cachedTokens,
+        cacheCreationTokens,
       });
     }
 
