@@ -6,14 +6,25 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 ## Test Coverage Requirements
 
-All changes must pass `pnpm test:web` with the following minimum coverage thresholds (defined in `vitest.config.ts`):
+All changes must pass `pnpm test:web` with the minimum coverage thresholds defined in
+`vitest.config.ts`:
 
 | Metric      | Threshold |
 |-------------|-----------|
-| Statements  | 75%       |
-| Branches    | 70%       |
-| Functions   | 75%       |
-| Lines       | 75%       |
+| Statements  | 62%       |
+| Branches    | 55%       |
+| Functions   | 60%       |
+| Lines       | 62%       |
+
+These are deliberately below the original 75/70/75/75. That target was never met —
+`coverage.include` was missing, so Vitest only counted files a test happened to import
+and reported ~83% while real coverage was ~62%. The thresholds are now enforced over
+every source file and should be ratcheted up as coverage improves, not lowered.
+
+`proxy.ts` is the auth middleware: it is covered, and its cases are the ones to extend
+before changing any protected-route rule.
 
 - Place `*.test.ts` or `*.test.tsx` files beside the source they cover.
+- `include` in `vitest.config.ts` lists every test tree. Adding a test under a tree
+  that is not listed means it never runs — silently.
 - Treat `pnpm check`, `pnpm build`, and `pnpm test:web` as required gates before merging.
