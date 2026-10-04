@@ -5,7 +5,7 @@ import {
   type ReactNode,
   use,
   useCallback,
-  useEffect,
+  useLayoutEffect,
   useMemo,
   useState,
 } from "react";
@@ -58,7 +58,9 @@ export function ThemeProvider({
     resolveThemeAppearance(initialThemeMode, false),
   );
 
-  useEffect(() => {
+  // Layout effect: re-applies the class before paint after React resets the
+  // <html> attributes set by ThemeScript (dev Strict Mode remount).
+  useLayoutEffect(() => {
     setResolvedTheme(applyTheme(themeMode));
 
     if (themeMode !== "system") {
