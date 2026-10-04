@@ -18,6 +18,7 @@ import {
 import type { TokenTrendPoint } from "@/lib/usage/types";
 
 import { TokenTrendTooltipContent } from "./token-trend-card";
+import { TOKEN_TREND_SERIES } from "./token-trend-series";
 
 type TrendMetricView = "tokens" | "cost" | "totalTime";
 
@@ -25,44 +26,6 @@ const TOKEN_TREND_INITIAL_DIMENSION = {
   width: 720,
   height: 288,
 } as const;
-
-const TOKEN_TREND_SERIES = [
-  {
-    dataKey: "cachedTokens",
-    labelKey: "cache",
-    color: "var(--chart-1)",
-    opacity: 1,
-    radius: [0, 0, 0, 0] as [number, number, number, number],
-  },
-  {
-    dataKey: "cacheCreationTokens",
-    labelKey: "cacheCreation",
-    color: "var(--chart-1)",
-    opacity: 0.86,
-    radius: [0, 0, 0, 0] as [number, number, number, number],
-  },
-  {
-    dataKey: "inputTokens",
-    labelKey: "input",
-    color: "var(--chart-1)",
-    opacity: 0.72,
-    radius: [0, 0, 0, 0] as [number, number, number, number],
-  },
-  {
-    dataKey: "outputTokens",
-    labelKey: "output",
-    color: "var(--chart-1)",
-    opacity: 0.44,
-    radius: [0, 0, 0, 0] as [number, number, number, number],
-  },
-  {
-    dataKey: "reasoningTokens",
-    labelKey: "reasoning",
-    color: "var(--chart-1)",
-    opacity: 0.28,
-    radius: [6, 6, 0, 0] as [number, number, number, number],
-  },
-] as const;
 
 function formatTrendMetricValue(
   value: number,
@@ -131,7 +94,6 @@ export function TokenTrendChartInner({
               name={t(series.labelKey)}
               stackId="tokens"
               fill={series.color}
-              fillOpacity={series.opacity}
               radius={series.radius}
             />
           ))

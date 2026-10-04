@@ -22,11 +22,16 @@
   --border: oklch(0.9219 0 0);
   --input: oklch(0.9219 0 0);
   --ring: oklch(0.709 0 0);
-  --chart-1: oklch(0.5555 0 0);
-  --chart-2: oklch(0.5555 0 0);
-  --chart-3: oklch(0.5555 0 0);
-  --chart-4: oklch(0.5555 0 0);
-  --chart-5: oklch(0.5555 0 0);
+  /*
+   * Categorical chart slots, used in this order (blue, orange, aqua, yellow,
+   * magenta). Light and dark steps were each validated against their card
+   * surface: adjacent pairs stay apart under protanopia/deuteranopia.
+   */
+  --chart-1: #2a78d6;
+  --chart-2: #eb6834;
+  --chart-3: #1baf7a;
+  --chart-4: #eda100;
+  --chart-5: #e87ba4;
   --sidebar: oklch(0.9851 0 0);
   --sidebar-foreground: oklch(0.1448 0 0);
   --sidebar-primary: oklch(0.2046 0 0);
@@ -93,11 +98,11 @@
   --border: oklch(0.3407 0 0);
   --input: oklch(0.4386 0 0);
   --ring: oklch(0.5555 0 0);
-  --chart-1: oklch(0.5555 0 0);
-  --chart-2: oklch(0.5555 0 0);
-  --chart-3: oklch(0.5555 0 0);
-  --chart-4: oklch(0.5555 0 0);
-  --chart-5: oklch(0.5555 0 0);
+  --chart-1: #3987e5;
+  --chart-2: #d95926;
+  --chart-3: #199e70;
+  --chart-4: #c98500;
+  --chart-5: #d55181;
   --sidebar: oklch(0.2046 0 0);
   --sidebar-foreground: oklch(0.9851 0 0);
   --sidebar-primary: oklch(0.9851 0 0);
