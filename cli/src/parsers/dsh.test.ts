@@ -411,15 +411,14 @@ describe("DshParser", () => {
       }
     });
 
+    // zstd needs Node 22.15+, and `decompressZstdLog` already reports a null
+    // read below that, so a compressed case only means something where the
+    // runtime can write one. The non-zstd names still run everywhere.
     it.each([
       "session.jsonl",
-      "session.jsonl.zstd",
       "session.v3.jsonl",
-      "session.v3.jsonl.zstd",
-      "session.v4.jsonl.zstd",
     ])("parses a %s log", async (fileName) => {
       const sessionsDir = makeTempDir("tokenarena-dsh-");
-      const compression = fileName.endsWith(".zstd") ? "zstd" : "none";
       writeSessionLog(
         sessionsDir,
         "--home-user-my-project--",
@@ -441,7 +440,49 @@ describe("DshParser", () => {
             usage: { inputTokens: 10, outputTokens: 5 },
           }),
         ],
-        compression,
+        "none",
+        undefined,
+        fileName,
+      );
+
+      const result = await new DshParser(sessionsDir).parse();
+
+      expect(result.buckets).toHaveLength(1);
+      expect(result.buckets[0].inputTokens).toBe(10);
+      expect(result.buckets[0].totalTokens).toBe(15);
+      expect(result.sessions).toHaveLength(1);
+    });
+
+    it
+      .runIf(hasZstd)
+      .each([
+        "session.jsonl.zstd",
+        "session.v3.jsonl.zstd",
+        "session.v4.jsonl.zstd",
+      ])("parses a %s log", async (fileName) => {
+      const sessionsDir = makeTempDir("tokenarena-dsh-");
+      writeSessionLog(
+        sessionsDir,
+        "--home-user-my-project--",
+        "sess-gen",
+        [
+          header,
+          event("request/context", 1, 1_785_739_543_301, {
+            provider: "deepseek",
+            model: "deepseek-chat",
+          }),
+          event("assistant/message", 2, 1_785_739_545_000, {
+            turn: 1,
+            step: 1,
+            message: {
+              role: "assistant",
+              content: [],
+              source: { kind: "model", model: "deepseek-chat" },
+            },
+            usage: { inputTokens: 10, outputTokens: 5 },
+          }),
+        ],
+        "zstd",
         undefined,
         fileName,
       );
@@ -507,90 +548,96 @@ describe("DshParser", () => {
       );
     });
 
-    it("prefers the compressed root when both encodings of one generation exist", async () => {
-      const sessionsDir = makeTempDir("tokenarena-dsh-");
-      const projectDir = "--home-user-my-project--";
-      const sessionDir = "sess-both";
-      const lines = [
-        header,
-        event("assistant/message", 1, 1_785_739_545_000, {
-          turn: 1,
-          step: 1,
-          message: { role: "assistant", content: [] },
-          usage: { inputTokens: 7, outputTokens: 3 },
-        }),
-      ];
-      writeSessionLog(
-        sessionsDir,
-        projectDir,
-        sessionDir,
-        lines,
-        "none",
-        undefined,
-        "session.v3.jsonl",
-      );
-      writeSessionLog(
-        sessionsDir,
-        projectDir,
-        sessionDir,
-        lines,
-        "zstd",
-        undefined,
-        "session.v3.jsonl.zstd",
-      );
+    it.runIf(hasZstd)(
+      "prefers the compressed root when both encodings of one generation exist",
+      async () => {
+        const sessionsDir = makeTempDir("tokenarena-dsh-");
+        const projectDir = "--home-user-my-project--";
+        const sessionDir = "sess-both";
+        const lines = [
+          header,
+          event("assistant/message", 1, 1_785_739_545_000, {
+            turn: 1,
+            step: 1,
+            message: { role: "assistant", content: [] },
+            usage: { inputTokens: 7, outputTokens: 3 },
+          }),
+        ];
+        writeSessionLog(
+          sessionsDir,
+          projectDir,
+          sessionDir,
+          lines,
+          "none",
+          undefined,
+          "session.v3.jsonl",
+        );
+        writeSessionLog(
+          sessionsDir,
+          projectDir,
+          sessionDir,
+          lines,
+          "zstd",
+          undefined,
+          "session.v3.jsonl.zstd",
+        );
 
-      const parser = new DshParser(sessionsDir);
-      const result = await parser.parse();
+        const parser = new DshParser(sessionsDir);
+        const result = await parser.parse();
 
-      expect(result.buckets).toHaveLength(1);
-      expect(result.buckets[0].totalTokens).toBe(10);
-      expect(parser.listSourceFiles()).toHaveLength(1);
-    });
+        expect(result.buckets).toHaveLength(1);
+        expect(result.buckets[0].totalTokens).toBe(10);
+        expect(parser.listSourceFiles()).toHaveLength(1);
+      },
+    );
   });
 
   describe("listSourceFiles", () => {
     /** The parse cache replays a result only when this list is exhaustive. */
-    it("lists every log parse() reads, and only those", async () => {
-      const sessionsDir = makeTempDir("tokenarena-dsh-");
-      writeSessionLog(
-        sessionsDir,
-        "--home-user-a--",
-        "s1",
-        [
-          header,
-          event("user/message", 1, 1_785_739_543_281, {
-            source: { kind: "user" },
-          }),
-        ],
-        "none",
-        undefined,
-        "session.jsonl",
-      );
-      writeSessionLog(
-        sessionsDir,
-        "--home-user-b--",
-        "s2",
-        [
-          header,
-          event("user/message", 1, 1_785_739_543_281, {
-            source: { kind: "user" },
-          }),
-        ],
-        "zstd",
-        undefined,
-        "session.v3.jsonl.zstd",
-      );
+    it.runIf(hasZstd)(
+      "lists every log parse() reads, and only those",
+      async () => {
+        const sessionsDir = makeTempDir("tokenarena-dsh-");
+        writeSessionLog(
+          sessionsDir,
+          "--home-user-a--",
+          "s1",
+          [
+            header,
+            event("user/message", 1, 1_785_739_543_281, {
+              source: { kind: "user" },
+            }),
+          ],
+          "none",
+          undefined,
+          "session.jsonl",
+        );
+        writeSessionLog(
+          sessionsDir,
+          "--home-user-b--",
+          "s2",
+          [
+            header,
+            event("user/message", 1, 1_785_739_543_281, {
+              source: { kind: "user" },
+            }),
+          ],
+          "zstd",
+          undefined,
+          "session.v3.jsonl.zstd",
+        );
 
-      const parser = new DshParser(sessionsDir);
-      const files = parser.listSourceFiles();
+        const parser = new DshParser(sessionsDir);
+        const files = parser.listSourceFiles();
 
-      expect(files).toHaveLength(2);
-      expect(files.some((file) => file.endsWith("session.jsonl"))).toBe(true);
-      expect(files.some((file) => file.endsWith("session.v3.jsonl.zstd"))).toBe(
-        true,
-      );
-      await parser.parse();
-    });
+        expect(files).toHaveLength(2);
+        expect(files.some((file) => file.endsWith("session.jsonl"))).toBe(true);
+        expect(
+          files.some((file) => file.endsWith("session.v3.jsonl.zstd")),
+        ).toBe(true);
+        await parser.parse();
+      },
+    );
 
     it("returns nothing for a missing directory", () => {
       const sessionsDir = makeTempDir("tokenarena-dsh-");
@@ -720,39 +767,42 @@ describe("DshParser", () => {
      * is missing. The upload replaces the device snapshot, so the source has to
      * defer instead of publishing a short total.
      */
-    it("defers when a committed frame cannot be decompressed", async () => {
-      const sessionsDir = makeTempDir("tokenarena-dsh-");
-      const dir = join(sessionsDir, "--home-user-my-project--", "sess-bad");
-      mkdirSync(dir, { recursive: true });
-      // Single-segment descriptor declaring an empty content size, so the
-      // scanner admits the frame but zstd rejects the size mismatch.
-      const magic = Buffer.alloc(4);
-      magic.writeUInt32LE(0xfd2fb528, 0);
-      const blockHeader = Buffer.alloc(3);
-      blockHeader.writeUIntLE(1 | (2 << 1) | (64 << 3), 0, 3);
-      const corrupt = Buffer.concat([
-        magic,
-        Buffer.from([0x20, 0x00]),
-        blockHeader,
-        Buffer.alloc(64, 0xff),
-      ]);
-      writeFileSync(
-        join(dir, "session.v4.jsonl.zstd"),
-        Buffer.concat([
-          zlib.zstdCompressSync(
-            `${JSON.stringify({ ...header, version: 4 })}\n`,
-          ),
-          corrupt,
-        ]),
-      );
+    it.runIf(hasZstd)(
+      "defers when a committed frame cannot be decompressed",
+      async () => {
+        const sessionsDir = makeTempDir("tokenarena-dsh-");
+        const dir = join(sessionsDir, "--home-user-my-project--", "sess-bad");
+        mkdirSync(dir, { recursive: true });
+        // Single-segment descriptor declaring an empty content size, so the
+        // scanner admits the frame but zstd rejects the size mismatch.
+        const magic = Buffer.alloc(4);
+        magic.writeUInt32LE(0xfd2fb528, 0);
+        const blockHeader = Buffer.alloc(3);
+        blockHeader.writeUIntLE(1 | (2 << 1) | (64 << 3), 0, 3);
+        const corrupt = Buffer.concat([
+          magic,
+          Buffer.from([0x20, 0x00]),
+          blockHeader,
+          Buffer.alloc(64, 0xff),
+        ]);
+        writeFileSync(
+          join(dir, "session.v4.jsonl.zstd"),
+          Buffer.concat([
+            zlib.zstdCompressSync(
+              `${JSON.stringify({ ...header, version: 4 })}\n`,
+            ),
+            corrupt,
+          ]),
+        );
 
-      const result = await new DshParser(sessionsDir).parse();
+        const result = await new DshParser(sessionsDir).parse();
 
-      expect(result.incomplete).toBe(true);
-      expect(result.buckets).toEqual([]);
-    });
+        expect(result.incomplete).toBe(true);
+        expect(result.buckets).toEqual([]);
+      },
+    );
 
-    it("still reads a crash-truncated tail frame", async () => {
+    it.runIf(hasZstd)("still reads a crash-truncated tail frame", async () => {
       const sessionsDir = makeTempDir("tokenarena-dsh-");
       writeSessionLog(
         sessionsDir,
