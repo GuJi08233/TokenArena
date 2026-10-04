@@ -29,6 +29,7 @@
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "dotenv": "^17.4.2",
+    "geist": "^1.7.2",
     "html-to-image": "^1.11.13",
     "lucide-react": "^1.16.0",
     "motion": "^12.23.12",

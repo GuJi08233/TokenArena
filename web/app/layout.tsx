@@ -10,6 +10,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { defaultLocale } from "@/lib/i18n";
 import { getAppOrigin } from "@/lib/site-url";
 import { getThemeMode, themeCookieName } from "@/lib/theme";
+import { geistMono } from "./fonts";
 import "./globals.css";
 
 const appOrigin = getAppOrigin();
@@ -70,7 +71,11 @@ export default async function RootLayout({
   );
 
   return (
-    <html lang={locale} suppressHydrationWarning className="h-full antialiased">
+    <html
+      lang={locale}
+      suppressHydrationWarning
+      className={`${geistMono.variable} h-full antialiased`}
+    >
       <body className="min-h-full flex flex-col">
         <ThemeScript initialThemeMode={initialThemeMode} />
         {gaSecret ? (
