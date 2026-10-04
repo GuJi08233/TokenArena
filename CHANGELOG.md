@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.18.2](https://github.com/GuJi08233/TokenArena/compare/v0.18.1...v0.18.2) (2026-10-04)
+
+
+### Bug Fixes
+
+* **web:** apply the saved theme before the first paint ([eac8b3e](https://github.com/GuJi08233/TokenArena/commit/eac8b3e5d7df19431442f457cd80806d7124d222))
+* **web:** load Geist Mono instead of the system monospace font ([eac8b3e](https://github.com/GuJi08233/TokenArena/commit/eac8b3e5d7df19431442f457cd80806d7124d222))
+* **web:** localize error and not-found pages and make retry refetch ([eac8b3e](https://github.com/GuJi08233/TokenArena/commit/eac8b3e5d7df19431442f457cd80806d7124d222))
+* **web:** make chart series distinguishable and label breakdown tooltips ([eac8b3e](https://github.com/GuJi08233/TokenArena/commit/eac8b3e5d7df19431442f457cd80806d7124d222))
+* **web:** polish fonts, theme, error pages and charts ([#49](https://github.com/GuJi08233/TokenArena/issues/49)) ([eac8b3e](https://github.com/GuJi08233/TokenArena/commit/eac8b3e5d7df19431442f457cd80806d7124d222))
+
+
+### Performance Improvements
+
+* **web:** bundle only the Radix primitives in use ([eac8b3e](https://github.com/GuJi08233/TokenArena/commit/eac8b3e5d7df19431442f457cd80806d7124d222))
+
 ## [0.18.1](https://github.com/GuJi08233/TokenArena/compare/v0.18.0...v0.18.1) (2026-10-03)
 
 
