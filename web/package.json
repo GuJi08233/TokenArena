@@ -76,9 +76,11 @@
   },
   "size-limit": [
     {
-      "name": "Web App (standalone server)",
-      "path": ".next/standalone/web/server.js",
-      "limit": "500 kB"
+      "name": "Client JS (all chunks)",
+      "path": ".next/static/chunks/**/*.js",
+      "gzip": true,
+      "running": false,
+      "limit": "1050 kB"
     }
   ]
 }
