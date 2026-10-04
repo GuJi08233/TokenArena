@@ -237,6 +237,20 @@ describe("readSqliteRowsReadonly capability checks", () => {
 // never happens. The runtime flag below instead disables the built-in itself, so
 // the default loader rejects the import for real — which is also the exact
 // condition a Node build without `node:sqlite` produces in production.
+//
+// Two environment traps this case has to sidestep, both of which turned it red
+// on CI before:
+//
+// 1. `--no-experimental-sqlite` does not exist before Node 22, and an unknown
+//    flag makes Node 20 exit with "bad option" instead of running the script.
+//    That is harmless here: `node:sqlite` is itself absent before Node 22, so
+//    the import already rejects with ERR_UNKNOWN_BUILTIN_MODULE and the flag has
+//    nothing left to disable. Pass it only where the runtime knows it.
+// 2. GitHub's runners ship a working `sqlite3` CLI, so the fallback it reaches
+//    runs a real query and fails on the missing database file rather than
+//    reporting a missing CLI. Emptying PATH in the child makes "no sqlite3 on
+//    this machine" true everywhere. The child imports its only module by
+//    absolute path, so it needs no PATH of its own.
 describe("readSqliteRowsReadonly import errors", () => {
   it("falls back to the CLI when the real loader rejects node:sqlite", () => {
     const script = `
@@ -254,9 +268,9 @@ describe("readSqliteRowsReadonly import errors", () => {
     const child = spawnSync(
       process.execPath,
       [
-        // Real rejection with ERR_UNKNOWN_BUILTIN_MODULE, on every Node version
-        // that ships node:sqlite at all.
-        "--no-experimental-sqlite",
+        ...(process.allowedNodeEnvironmentFlags.has("--no-experimental-sqlite")
+          ? ["--no-experimental-sqlite"]
+          : []),
         "--import",
         "tsx",
         "--input-type=module",
@@ -265,7 +279,7 @@ describe("readSqliteRowsReadonly import errors", () => {
       ],
       {
         cwd: fileURLToPath(new URL("../../", import.meta.url)),
-        env: { ...process.env, TOKEN_ARENA_SQLITE3: "" },
+        env: { ...process.env, TOKEN_ARENA_SQLITE3: "", PATH: "" },
         encoding: "utf8",
         timeout: 15000,
         windowsHide: true,
@@ -277,7 +291,7 @@ describe("readSqliteRowsReadonly import errors", () => {
 
     // Reaching the CLI reader at all proves the original code was preserved
     // through the real loader: any other code is rethrown instead (covered by
-    // the in-process cases above), and the CLI itself is absent here by design.
+    // the in-process cases above), and the CLI itself is absent by design.
     expect(result.code).toBeNull();
     expect(result.message).toMatch(/^sqlite3 CLI not found\./);
   });
