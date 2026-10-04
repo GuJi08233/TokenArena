@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.18.3](https://github.com/GuJi08233/TokenArena/compare/v0.18.2...v0.18.3) (2026-10-04)
+
+
+### Bug Fixes
+
+* **cli:** guard the dsh zstd cases on runtimes that can write a frame ([a910210](https://github.com/GuJi08233/TokenArena/commit/a9102108330398a17091affe8cdd1e9924d0f43d))
+* **cli:** make the Node 20 leg of the CI matrix pass ([#52](https://github.com/GuJi08233/TokenArena/issues/52)) ([a910210](https://github.com/GuJi08233/TokenArena/commit/a9102108330398a17091affe8cdd1e9924d0f43d))
+* **cli:** read every DeepSeek Harness session log generation ([ffbd1ad](https://github.com/GuJi08233/TokenArena/commit/ffbd1ad6bc564c9d5c2e5920c02cf415e9d08978))
+* **cli:** stop the loader-boundary case from depending on runner quirks ([a910210](https://github.com/GuJi08233/TokenArena/commit/a9102108330398a17091affe8cdd1e9924d0f43d))
+* **web:** drop the unreachable puppeteer subtree from the shipped image ([c72208e](https://github.com/GuJi08233/TokenArena/commit/c72208ec8e7900f5700f803110913cdc5d72eb21))
+
 ## [0.18.2](https://github.com/GuJi08233/TokenArena/compare/v0.18.1...v0.18.2) (2026-10-04)
 
 
