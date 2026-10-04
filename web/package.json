@@ -56,7 +56,6 @@
   "devDependencies": {
     "@biomejs/biome": "2.4.15",
     "@size-limit/file": "^12.1.0",
-    "@size-limit/time": "^12.1.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^25",
     "@types/pg": "^8.20.0",
@@ -79,7 +78,6 @@
       "name": "Client JS (all chunks)",
       "path": ".next/static/chunks/**/*.js",
       "gzip": true,
-      "running": false,
       "limit": "1050 kB"
     }
   ]
