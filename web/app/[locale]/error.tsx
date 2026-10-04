@@ -2,12 +2,12 @@
 
 import { RouteErrorCard } from "@/components/app/route-error-card";
 
-export default function UsageError({
+export default function LocaleError({
   error,
-  reset,
+  retry,
 }: {
   error: Error & { digest?: string };
-  reset: () => void;
+  retry: () => void;
 }) {
-  return <RouteErrorCard error={error} reset={reset} />;
+  return <RouteErrorCard error={error} retry={retry} />;
 }

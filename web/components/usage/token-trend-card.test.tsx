@@ -54,10 +54,10 @@ describe("TokenTrendCard", () => {
     expect(markup).toContain("Output");
     expect(markup).toContain("Reasoning");
     expect(markup).not.toContain("$12.50");
-    expect(markup).toContain("background-color:var(--chart-1)");
-    expect(markup).toContain("opacity:0.72");
-    expect(markup).toContain("opacity:0.44");
-    expect(markup).toContain("opacity:0.28");
+    for (const slot of [1, 2, 3, 4, 5]) {
+      expect(markup).toContain(`background-color:var(--chart-${slot})`);
+    }
+    expect(markup).not.toContain("opacity:");
   });
 
   it("renders a cost chart when switched to cost view", () => {
@@ -176,11 +176,10 @@ describe("TokenTrendCard", () => {
     expect(markup).toContain("$1.25");
     expect(markup).toContain("1h");
     expect(markup).toContain("background-color:var(--foreground)");
-    expect(markup).toContain("background-color:var(--chart-1)");
-    expect(markup).toContain("background-color:var(--chart-2)");
-    expect(markup).toContain("opacity:0.72");
-    expect(markup).toContain("opacity:0.44");
-    expect(markup).toContain("opacity:0.28");
+    for (const slot of [1, 2, 3, 4, 5]) {
+      expect(markup).toContain(`background-color:var(--chart-${slot})`);
+    }
+    expect(markup).not.toContain("opacity:");
   });
 
   it("renders plain-text tooltip rows for time view", () => {

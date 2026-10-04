@@ -29,6 +29,7 @@
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "dotenv": "^17.4.2",
+    "geist": "^1.7.2",
     "html-to-image": "^1.11.13",
     "lucide-react": "^1.16.0",
     "motion": "^12.23.12",
@@ -75,9 +76,11 @@
   },
   "size-limit": [
     {
-      "name": "Web App (standalone server)",
-      "path": ".next/standalone/web/server.js",
-      "limit": "500 kB"
+      "name": "Client JS (all chunks)",
+      "path": ".next/static/chunks/**/*.js",
+      "gzip": true,
+      "running": false,
+      "limit": "1050 kB"
     }
   ]
 }

@@ -13,6 +13,7 @@ import {
   formatUsdAmount,
 } from "@/lib/usage/format";
 import type { TokenTrendPoint } from "@/lib/usage/types";
+import { TOKEN_TREND_SERIES } from "./token-trend-series";
 
 type TrendMetricView = "tokens" | "cost" | "totalTime";
 
@@ -51,67 +52,24 @@ const TREND_VIEW_OPTIONS = [
   labelKey: "views.tokens" | "views.cost" | "views.totalTime";
 }>;
 
-const TOKEN_TREND_SERIES = [
-  {
-    dataKey: "cachedTokens",
-    labelKey: "cache",
-    color: "var(--chart-1)",
-    opacity: 1,
-    radius: [0, 0, 0, 0] as [number, number, number, number],
-  },
-  {
-    dataKey: "cacheCreationTokens",
-    labelKey: "cacheCreation",
-    color: "var(--chart-1)",
-    opacity: 0.86,
-    radius: [0, 0, 0, 0] as [number, number, number, number],
-  },
-  {
-    dataKey: "inputTokens",
-    labelKey: "input",
-    color: "var(--chart-1)",
-    opacity: 0.72,
-    radius: [0, 0, 0, 0] as [number, number, number, number],
-  },
-  {
-    dataKey: "outputTokens",
-    labelKey: "output",
-    color: "var(--chart-1)",
-    opacity: 0.44,
-    radius: [0, 0, 0, 0] as [number, number, number, number],
-  },
-  {
-    dataKey: "reasoningTokens",
-    labelKey: "reasoning",
-    color: "var(--chart-1)",
-    opacity: 0.28,
-    radius: [6, 6, 0, 0] as [number, number, number, number],
-  },
-];
-
 const TOKEN_TREND_TOOLTIP_STYLES = {
   total: {
     backgroundColor: "var(--foreground)",
   },
   cache: {
     backgroundColor: TOKEN_TREND_SERIES[0].color,
-    opacity: TOKEN_TREND_SERIES[0].opacity,
   },
   cacheCreation: {
     backgroundColor: TOKEN_TREND_SERIES[1].color,
-    opacity: TOKEN_TREND_SERIES[1].opacity,
   },
   input: {
     backgroundColor: TOKEN_TREND_SERIES[2].color,
-    opacity: TOKEN_TREND_SERIES[2].opacity,
   },
   output: {
     backgroundColor: TOKEN_TREND_SERIES[3].color,
-    opacity: TOKEN_TREND_SERIES[3].opacity,
   },
   reasoning: {
     backgroundColor: TOKEN_TREND_SERIES[4].color,
-    opacity: TOKEN_TREND_SERIES[4].opacity,
   },
   cost: {
     backgroundColor: "var(--chart-2)",
@@ -250,10 +208,7 @@ export function TokenTrendCard({
                   <div key={series.dataKey} className="flex items-center gap-2">
                     <span
                       className="size-3 rounded-sm"
-                      style={{
-                        backgroundColor: series.color,
-                        opacity: series.opacity,
-                      }}
+                      style={{ backgroundColor: series.color }}
                     />
                     <span>{t(series.labelKey)}</span>
                   </div>

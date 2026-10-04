@@ -1,10 +1,10 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import {
   Bar,
   BarChart,
   CartesianGrid,
-  Cell,
   LabelList,
   ResponsiveContainer,
   Tooltip,
@@ -65,12 +65,13 @@ function getMetricLabelKey(metric: BreakdownMetric) {
   }
 }
 
-function BreakdownTooltipContent({
+export function BreakdownTooltipContent({
   active,
   payload,
   metric,
   locale,
 }: BreakdownTooltipContentProps) {
+  const t = useTranslations("usage.breakdowns.table");
   const point = payload?.[0]?.payload;
 
   if (!active || !point) {
@@ -85,21 +86,21 @@ function BreakdownTooltipContent({
       <div className="space-y-1.5">
         <div className="flex items-center justify-between gap-6 text-sm">
           <span className="text-muted-foreground">
-            {getMetricLabelKey(metric)}
+            {t(getMetricLabelKey(metric))}
           </span>
           <span className="font-medium text-foreground">
             {formatMetricValue(point.value, metric, locale)}
           </span>
         </div>
         <div className="flex items-center justify-between gap-6 text-sm">
-          <span className="text-muted-foreground">share</span>
+          <span className="text-muted-foreground">{t("share")}</span>
           <span className="font-medium text-foreground">
             {formatPercentage(point.share, locale)}
           </span>
         </div>
         {metric !== "totalTokens" ? (
           <div className="flex items-center justify-between gap-6 text-sm">
-            <span className="text-muted-foreground">totalTokens</span>
+            <span className="text-muted-foreground">{t("totalTokens")}</span>
             <span className="font-medium text-foreground">
               {formatTokenCount(point.totalTokens)}
             </span>
@@ -107,7 +108,7 @@ function BreakdownTooltipContent({
         ) : null}
         {metric !== "estimatedCostUsd" ? (
           <div className="flex items-center justify-between gap-6 text-sm">
-            <span className="text-muted-foreground">estimatedCost</span>
+            <span className="text-muted-foreground">{t("estimatedCost")}</span>
             <span className="font-medium text-foreground">
               {formatUsdAmount(point.estimatedCostUsd, locale)}
             </span>
@@ -115,20 +116,20 @@ function BreakdownTooltipContent({
         ) : null}
         {point.totalSeconds > 0 ? (
           <div className="flex items-center justify-between gap-6 text-sm">
-            <span className="text-muted-foreground">totalTime</span>
+            <span className="text-muted-foreground">{t("totalTime")}</span>
             <span className="font-medium text-foreground">
               {formatDuration(point.totalSeconds)}
             </span>
           </div>
         ) : null}
         <div className="flex items-center justify-between gap-6 text-sm">
-          <span className="text-muted-foreground">sessions</span>
+          <span className="text-muted-foreground">{t("sessions")}</span>
           <span className="font-medium text-foreground">
             {formatTokenCount(point.sessions)}
           </span>
         </div>
         <div className="flex items-center justify-between gap-6 text-sm">
-          <span className="text-muted-foreground">messages</span>
+          <span className="text-muted-foreground">{t("messages")}</span>
           <span className="font-medium text-foreground">
             {formatTokenCount(point.messages)}
           </span>
@@ -206,20 +207,14 @@ export function BreakdownChartInner({
           />
           <Bar
             dataKey="value"
+            fill={
+              metric === "estimatedCostUsd"
+                ? "var(--chart-2)"
+                : "var(--chart-1)"
+            }
             radius={[0, 6, 6, 0]}
             background={{ fill: "var(--card)" }}
           >
-            {chartData.map((entry, index) => (
-              <Cell
-                key={entry.key}
-                fill={
-                  metric === "estimatedCostUsd"
-                    ? "var(--chart-2)"
-                    : "var(--chart-1)"
-                }
-                fillOpacity={Math.max(1 - index * 0.14, 0.35)}
-              />
-            ))}
             <LabelList
               dataKey="valueLabel"
               position="right"

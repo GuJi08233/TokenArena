@@ -18,6 +18,7 @@ import type {
   TokenTrendPoint,
 } from "@/lib/usage/types";
 import { cn } from "@/lib/utils";
+import { TOKEN_TREND_SERIES } from "./token-trend-series";
 
 type VisualizationMode = "trend" | "heatmap";
 type VisualizationMetricView = "tokens" | "cost" | "time";
@@ -44,44 +45,6 @@ const METRIC_OPTIONS = [
   labelKey: "views.tokens" | "views.cost" | "views.totalTime";
 }>;
 
-const TREND_SERIES = [
-  {
-    dataKey: "cachedTokens",
-    labelKey: "cache",
-    color: "var(--chart-1)",
-    opacity: 1,
-    radius: [0, 0, 0, 0] as [number, number, number, number],
-  },
-  {
-    dataKey: "cacheCreationTokens",
-    labelKey: "cacheCreation",
-    color: "var(--chart-1)",
-    opacity: 0.86,
-    radius: [0, 0, 0, 0] as [number, number, number, number],
-  },
-  {
-    dataKey: "inputTokens",
-    labelKey: "input",
-    color: "var(--chart-1)",
-    opacity: 0.72,
-    radius: [0, 0, 0, 0] as [number, number, number, number],
-  },
-  {
-    dataKey: "outputTokens",
-    labelKey: "output",
-    color: "var(--chart-1)",
-    opacity: 0.44,
-    radius: [0, 0, 0, 0] as [number, number, number, number],
-  },
-  {
-    dataKey: "reasoningTokens",
-    labelKey: "reasoning",
-    color: "var(--chart-1)",
-    opacity: 0.28,
-    radius: [6, 6, 0, 0] as [number, number, number, number],
-  },
-] as const;
-
 const VISUALIZATION_PANEL_HEIGHT_CLASS = "h-[22rem]";
 
 const UsageVisualizationChart = dynamic(
@@ -103,7 +66,9 @@ const HOURS = [
   22, 23,
 ] as const;
 
-const HEATMAP_LEVEL_MIXES = [16, 28, 40, 54, 72] as const;
+// Levels mix the metric colour into the empty-cell colour, so "no activity"
+// stays the end of the ramp in both themes and every step is evenly spaced.
+const HEATMAP_LEVEL_MIXES = [20, 40, 60, 80, 100] as const;
 const HEATMAP_METRIC_COLORS = {
   totalTokens: "var(--chart-1)",
   estimatedCostUsd: "var(--chart-2)",
@@ -116,8 +81,11 @@ const HEATMAP_METRIC_COLORS = {
   string
 >;
 
+const HEATMAP_EMPTY_COLOR =
+  "color-mix(in oklab, var(--muted) 82%, var(--background))";
+
 const EMPTY_CELL_STYLE = {
-  backgroundColor: "color-mix(in oklab, var(--muted) 82%, var(--background))",
+  backgroundColor: HEATMAP_EMPTY_COLOR,
 } as const;
 
 function getHeatmapMetric(
@@ -224,7 +192,7 @@ function getHeatmapStyle(
   const accentColor = HEATMAP_METRIC_COLORS[metric];
 
   return {
-    backgroundColor: `color-mix(in oklab, ${accentColor} ${mix}%, var(--background))`,
+    backgroundColor: `color-mix(in oklab, ${accentColor} ${mix}%, ${HEATMAP_EMPTY_COLOR})`,
     boxShadow:
       "inset 0 1px 0 color-mix(in oklab, var(--background) 80%, transparent)",
   };
@@ -274,14 +242,11 @@ function TrendLegend({
           className,
         )}
       >
-        {TREND_SERIES.map((series) => (
+        {TOKEN_TREND_SERIES.map((series) => (
           <div key={series.dataKey} className="flex items-center gap-2">
             <span
               className="size-3 rounded-sm"
-              style={{
-                backgroundColor: series.color,
-                opacity: series.opacity,
-              }}
+              style={{ backgroundColor: series.color }}
             />
             <span>{tTrend(series.labelKey)}</span>
           </div>
