@@ -17,7 +17,18 @@
       "system": "跟随系统"
     },
     "footerCopyright": "TokenArena @ Poco-ai",
-    "footerVersion": "版本 {version}"
+    "footerVersion": "版本 {version}",
+    "errors": {
+      "title": "页面出错了",
+      "description": "页面加载失败，请稍后重试。",
+      "retry": "重试",
+      "home": "返回首页"
+    },
+    "notFound": {
+      "title": "页面不存在",
+      "description": "你访问的页面不存在，或已被移动。",
+      "home": "返回首页"
+    }
   },
   "auth": {
     "fields": {

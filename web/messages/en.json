@@ -17,7 +17,18 @@
       "system": "System"
     },
     "footerCopyright": "TokenArena @ Poco-ai",
-    "footerVersion": "Version {version}"
+    "footerVersion": "Version {version}",
+    "errors": {
+      "title": "Something went wrong",
+      "description": "This page could not load. Please try again.",
+      "retry": "Try again",
+      "home": "Back to home"
+    },
+    "notFound": {
+      "title": "Page not found",
+      "description": "The page you are looking for does not exist or has been moved.",
+      "home": "Back to home"
+    }
   },
   "auth": {
     "fields": {
