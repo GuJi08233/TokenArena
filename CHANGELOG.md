@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.18.4](https://github.com/GuJi08233/TokenArena/compare/v0.18.3...v0.18.4) (2026-10-05)
+
+
+### Bug Fixes
+
+* **cli:** stop counting a DeepSeek Harness subagent's task as a prompt ([759a547](https://github.com/GuJi08233/TokenArena/commit/759a547759faf052c4d7adbb66af07464d7affec))
+* **cli:** stop counting DeepSeek Harness fork history twice ([#53](https://github.com/GuJi08233/TokenArena/issues/53)) ([759a547](https://github.com/GuJi08233/TokenArena/commit/759a547759faf052c4d7adbb66af07464d7affec))
+* **web:** show breakdown chart value labels in full ([759a547](https://github.com/GuJi08233/TokenArena/commit/759a547759faf052c4d7adbb66af07464d7affec))
+
 ## [0.18.3](https://github.com/GuJi08233/TokenArena/compare/v0.18.2...v0.18.3) (2026-10-04)
 
 
