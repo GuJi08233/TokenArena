@@ -40,6 +40,13 @@ interface DshTokenUsage {
   reasoningTokens?: number;
 }
 
+interface DshMessageSource {
+  kind?: string;
+  model?: string;
+  /** Stamped by the control RPC on what a person submits. */
+  rpcId?: string;
+}
+
 /**
  * One JSONL record: the leading `session` header line (id/cwd) or an event
  * line (seq/time/data). All fields optional; unknown event types are skipped.
@@ -50,11 +57,15 @@ interface DshLine {
   time?: number;
   id?: string;
   cwd?: string;
+  /** Header: absent or 0 for a top-level session, parent depth + 1 below. */
+  delegationDepth?: number;
+  /** v0 header: how many leading events a fork inherited. */
+  seedLength?: number;
   data?: {
     /** `user/message` rows carry the UserMessage inline: `data.source.kind`. */
-    source?: { kind?: string };
+    source?: DshMessageSource;
     message?: {
-      source?: { kind?: string; model?: string };
+      source?: DshMessageSource;
     };
     usage?: DshTokenUsage;
     model?: string;
@@ -63,6 +74,8 @@ interface DshLine {
         model?: string;
       };
     };
+    /** `session/end-seed`: closes the prefix a fork copied from its source. */
+    inherited?: boolean;
   };
 }
 
@@ -319,6 +332,37 @@ function projectFromDirName(name: string): string {
   return last ? decodeSegment(last) || "unknown" : "unknown";
 }
 
+/**
+ * Index of the first row the session owns rather than inherited by forking.
+ *
+ * A fork starts with its source's events copied verbatim — usage, prompts and
+ * timestamps included — and the source session already billed them. dsh ends
+ * the copy with the last `session/end-seed` marked `inherited`; v0 headers
+ * counted the copied events in `seedLength` instead.
+ */
+function firstOwnRowIndex(rows: DshLine[]): number {
+  const bodyStart = rows[0]?.type === "session" ? 1 : 0;
+  const seedLength = bodyStart === 1 ? rows[0].seedLength : undefined;
+  if (typeof seedLength === "number" && seedLength > 0) {
+    const index = rows.findIndex(
+      (row, position) =>
+        position >= bodyStart &&
+        typeof row.seq === "number" &&
+        row.seq >= seedLength,
+    );
+    return index === -1 ? rows.length : index;
+  }
+
+  let firstOwn = bodyStart;
+  for (let index = bodyStart; index < rows.length; index++) {
+    const row = rows[index];
+    if (row.type === "session/end-seed" && row.data?.inherited === true) {
+      firstOwn = index + 1;
+    }
+  }
+  return firstOwn;
+}
+
 export class DshParser implements IParser {
   readonly tool: ToolDefinition;
   private readonly sessionsDirs: string[];
@@ -371,8 +415,15 @@ export class DshParser implements IParser {
           ? basename(header.cwd) || "unknown"
           : projectFromDirName(relativeParts[0] ?? "");
 
+      const firstOwn = firstOwnRowIndex(rows);
+      // A subagent's task is its parent agent's prompt, not a person's. dsh
+      // delivers it as the child's first user-kind message with a bare source;
+      // a person prompting the child goes through the control RPC, which
+      // stamps `rpcId` on the message.
+      let delegatedTaskPending = (header?.delegationDepth ?? 0) > 0;
+
       let currentModel = "unknown";
-      for (const row of rows) {
+      for (const [index, row] of rows.entries()) {
         if (row.type === "request/context") {
           const model = row.data?.model;
           if (typeof model === "string" && model) currentModel = model;
@@ -384,17 +435,27 @@ export class DshParser implements IParser {
           continue;
         }
 
+        // Rows a fork copied were billed in its source session; they still
+        // set the route its own calls inherit, but count nothing here.
+        const inherited = index < firstOwn;
         const timestamp =
           typeof row.time === "number" && Number.isFinite(row.time)
             ? new Date(row.time)
             : null;
 
         if (row.type === "user/message") {
+          if (inherited) continue;
           // Plugin-source user rows are injected context, not human prompts.
           // The UserMessage sits inline on `data`; older logs nested it.
           const sourceKind =
             row.data?.source?.kind ?? row.data?.message?.source?.kind;
           if (sourceKind !== "user") continue;
+          if (delegatedTaskPending) {
+            delegatedTaskPending = false;
+            const rpcId =
+              row.data?.source?.rpcId ?? row.data?.message?.source?.rpcId;
+            if (rpcId === undefined) continue;
+          }
           if (timestamp) {
             sessionEvents.push({
               sessionId,
@@ -411,7 +472,7 @@ export class DshParser implements IParser {
         // the model that wrote them rather than the session's current route.
         const isCompaction = row.type === "compaction/summary";
         if (row.type !== "assistant/message" && !isCompaction) continue;
-        if (timestamp && !isCompaction) {
+        if (timestamp && !isCompaction && !inherited) {
           sessionEvents.push({
             sessionId,
             source: TOOL_ID,
@@ -432,6 +493,7 @@ export class DshParser implements IParser {
           toModelName(row.data?.model) ??
           toModelName(row.data?.message?.source?.model);
         if (declaredModel) currentModel = declaredModel;
+        if (inherited) continue;
         const model = declaredModel ?? currentModel;
 
         const inputTokens = toNonNegativeNumber(usage.inputTokens);
