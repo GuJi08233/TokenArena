@@ -61,6 +61,28 @@ function event(
   return { type, seq, time, data };
 }
 
+/** A user-kind prompt; people's prompts carry the control RPC's `rpcId`. */
+function prompt(seq: number, time: number, rpcId?: string): unknown {
+  return event("user/message", seq, time, {
+    role: "user",
+    content: [],
+    source: rpcId === undefined ? { kind: "user" } : { kind: "user", rpcId },
+  });
+}
+
+function reply(
+  seq: number,
+  time: number,
+  usage: { inputTokens: number; outputTokens: number },
+): unknown {
+  return event("assistant/message", seq, time, {
+    turn: 1,
+    step: 1,
+    message: { role: "assistant", content: [], source: { kind: "model" } },
+    usage,
+  });
+}
+
 const hasZstd = typeof zlib.zstdCompressSync === "function";
 
 describe("DshParser", () => {
@@ -827,6 +849,183 @@ describe("DshParser", () => {
       expect(result.incomplete).toBeUndefined();
       expect(result.buckets).toHaveLength(1);
       expect(result.buckets[0].totalTokens).toBe(10);
+    });
+  });
+
+  describe("forks", () => {
+    /**
+     * dsh starts a fork with its source's events copied verbatim — usage,
+     * prompts and timestamps included — ahead of an inherited
+     * `session/end-seed`. The source session already billed them.
+     */
+    const t0 = 1_785_739_600_000;
+    const sourceEvents = [
+      prompt(0, t0 + 1_000, "rpc-1"),
+      reply(1, t0 + 2_000, { inputTokens: 1_000, outputTokens: 200 }),
+    ];
+
+    it("bills a fork only for the calls after its inherited prefix", async () => {
+      const sessionsDir = makeTempDir("tokenarena-dsh-");
+      writeSessionLog(sessionsDir, "--home-user-my-project--", "parent", [
+        { ...header, id: "parent" },
+        ...sourceEvents,
+      ]);
+      writeSessionLog(sessionsDir, "--home-user-my-project--", "fork", [
+        { ...header, id: "fork", isSeeded: true, parentSession: "parent" },
+        ...sourceEvents,
+        event("session/end-seed", 2, t0 + 2_000, { inherited: true }),
+        prompt(3, t0 + 60_000, "rpc-2"),
+        reply(4, t0 + 61_000, { inputTokens: 7, outputTokens: 3 }),
+      ]);
+
+      const result = await new DshParser(sessionsDir).parse();
+
+      const total = result.buckets.reduce(
+        (sum, bucket) => sum + bucket.totalTokens,
+        0,
+      );
+      expect(total).toBe(1_210);
+      const fork = result.sessions.find(
+        (session) =>
+          session.firstMessageAt === new Date(t0 + 60_000).toISOString(),
+      );
+      expect(fork?.totalTokens).toBe(10);
+      expect(fork?.userMessageCount).toBe(1);
+      expect(fork?.messageCount).toBe(2);
+    });
+
+    it("takes the last inherited marker when a fork is forked again", async () => {
+      const sessionsDir = makeTempDir("tokenarena-dsh-");
+      writeSessionLog(sessionsDir, "--home-user-my-project--", "grandchild", [
+        { ...header, id: "grandchild", isSeeded: true, parentSession: "fork" },
+        ...sourceEvents,
+        event("session/end-seed", 2, t0 + 2_000, { inherited: true }),
+        prompt(3, t0 + 60_000, "rpc-2"),
+        reply(4, t0 + 61_000, { inputTokens: 7, outputTokens: 3 }),
+        event("session/end-seed", 5, t0 + 61_000, { inherited: true }),
+        prompt(6, t0 + 120_000, "rpc-3"),
+        reply(7, t0 + 121_000, { inputTokens: 4, outputTokens: 1 }),
+      ]);
+
+      const result = await new DshParser(sessionsDir).parse();
+
+      expect(result.buckets).toHaveLength(1);
+      expect(result.buckets[0].totalTokens).toBe(5);
+      expect(result.sessions).toHaveLength(1);
+      expect(result.sessions[0].userMessageCount).toBe(1);
+    });
+
+    it("routes a fork's own calls with the model it inherited", async () => {
+      const sessionsDir = makeTempDir("tokenarena-dsh-");
+      writeSessionLog(sessionsDir, "--home-user-my-project--", "fork", [
+        { ...header, id: "fork", isSeeded: true },
+        event("request/context", 0, t0, {
+          provider: "deepseek",
+          model: "deepseek-reasoner",
+        }),
+        prompt(1, t0 + 1_000, "rpc-1"),
+        reply(2, t0 + 2_000, { inputTokens: 1_000, outputTokens: 200 }),
+        event("session/end-seed", 3, t0 + 2_000, { inherited: true }),
+        prompt(4, t0 + 60_000, "rpc-2"),
+        reply(5, t0 + 61_000, { inputTokens: 7, outputTokens: 3 }),
+      ]);
+
+      const result = await new DshParser(sessionsDir).parse();
+
+      expect(result.buckets).toHaveLength(1);
+      expect(result.buckets[0].model).toBe("deepseek-reasoner");
+      expect(result.buckets[0].totalTokens).toBe(10);
+    });
+
+    it("skips the prefix a v0 header counts in seedLength", async () => {
+      const sessionsDir = makeTempDir("tokenarena-dsh-");
+      writeSessionLog(
+        sessionsDir,
+        "--home-user-my-project--",
+        "fork",
+        [
+          { ...header, version: 0, id: "fork", seedLength: 2 },
+          ...sourceEvents,
+          prompt(2, t0 + 60_000, "rpc-2"),
+          reply(3, t0 + 61_000, { inputTokens: 7, outputTokens: 3 }),
+        ],
+        "none",
+        undefined,
+        "session.jsonl",
+      );
+
+      const result = await new DshParser(sessionsDir).parse();
+
+      expect(result.buckets).toHaveLength(1);
+      expect(result.buckets[0].totalTokens).toBe(10);
+      expect(result.sessions[0].userMessageCount).toBe(1);
+    });
+  });
+
+  describe("subagents", () => {
+    /**
+     * dsh hands a subagent its task as the child's first user-kind message,
+     * with a bare source: the parent agent's prompt, not a person's.
+     */
+    const t0 = 1_785_739_600_000;
+    const child = {
+      ...header,
+      id: "child",
+      delegationDepth: 1,
+      origin: "subagent",
+      parentSession: "parent",
+    };
+
+    it("does not count the delegated task as a human prompt", async () => {
+      const sessionsDir = makeTempDir("tokenarena-dsh-");
+      writeSessionLog(sessionsDir, "--home-user-my-project--", "child", [
+        child,
+        prompt(0, t0 + 1_000),
+        reply(1, t0 + 2_000, { inputTokens: 10, outputTokens: 5 }),
+        // a person steering the child through the control RPC
+        prompt(2, t0 + 3_000, "rpc-1"),
+        reply(3, t0 + 4_000, { inputTokens: 20, outputTokens: 5 }),
+      ]);
+
+      const result = await new DshParser(sessionsDir).parse();
+
+      expect(result.sessions).toHaveLength(1);
+      expect(result.sessions[0].userMessageCount).toBe(1);
+      expect(result.sessions[0].messageCount).toBe(3);
+      expect(result.sessions[0].totalTokens).toBe(40);
+    });
+
+    it("counts a person's prompt even when it reaches the child first", async () => {
+      const sessionsDir = makeTempDir("tokenarena-dsh-");
+      writeSessionLog(sessionsDir, "--home-user-my-project--", "child", [
+        child,
+        prompt(0, t0 + 1_000, "rpc-1"),
+        reply(1, t0 + 2_000, { inputTokens: 10, outputTokens: 5 }),
+      ]);
+
+      const result = await new DshParser(sessionsDir).parse();
+
+      expect(result.sessions[0].userMessageCount).toBe(1);
+    });
+
+    /** `subagent_fork` seeds the child with the parent's turns, then delegates. */
+    it("bills a forked subagent for its own calls only", async () => {
+      const sessionsDir = makeTempDir("tokenarena-dsh-");
+      writeSessionLog(sessionsDir, "--home-user-my-project--", "child", [
+        { ...child, isSeeded: true },
+        prompt(0, t0 + 1_000, "rpc-1"),
+        reply(1, t0 + 2_000, { inputTokens: 1_000, outputTokens: 200 }),
+        event("session/end-seed", 2, t0 + 2_000, { inherited: true }),
+        prompt(3, t0 + 60_000),
+        reply(4, t0 + 61_000, { inputTokens: 7, outputTokens: 3 }),
+      ]);
+
+      const result = await new DshParser(sessionsDir).parse();
+
+      expect(result.buckets).toHaveLength(1);
+      expect(result.buckets[0].totalTokens).toBe(10);
+      expect(result.sessions[0].userMessageCount).toBe(0);
+      expect(result.sessions[0].messageCount).toBe(1);
     });
   });
 });
