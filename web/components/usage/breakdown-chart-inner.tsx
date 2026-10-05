@@ -35,6 +35,37 @@ type BreakdownChartDatum = {
 
 type BreakdownMetric = "estimatedCostUsd" | "totalTokens";
 
+const VALUE_LABEL_FONT_SIZE = 12;
+const VALUE_LABEL_OFFSET = 10;
+/** Room the rightmost axis tick, centred on the plot edge, already needed. */
+const MIN_RIGHT_MARGIN = 24;
+
+/**
+ * Pixel width of a value label. The UI font is Geist Mono, 0.6em per
+ * character; CJK units from compact currency (万, 亿) fall back to a
+ * full-width glyph.
+ */
+function estimateLabelWidth(label: string) {
+  let width = 0;
+  for (const character of label) {
+    width +=
+      (character.charCodeAt(0) >= 0x2e80 ? 1 : 0.6) * VALUE_LABEL_FONT_SIZE;
+  }
+  return width;
+}
+
+/**
+ * Right margin that keeps every value label inside the chart.
+ *
+ * Labels sit past the end of their bar, and the longest bar reaches the plot
+ * edge whenever the axis rounds its maximum only just above the data (139.2M
+ * on a 140M axis), so the margin has to hold a whole label.
+ */
+export function getValueLabelMargin(labels: readonly string[]) {
+  const widest = Math.max(0, ...labels.map(estimateLabelWidth));
+  return Math.max(MIN_RIGHT_MARGIN, Math.ceil(VALUE_LABEL_OFFSET + widest + 4));
+}
+
 function formatMetricValue(
   value: number,
   metric: BreakdownMetric,
@@ -168,7 +199,12 @@ export function BreakdownChartInner({
         <BarChart
           data={chartData}
           layout="vertical"
-          margin={{ left: 8, right: 24, top: 4, bottom: 4 }}
+          margin={{
+            left: 8,
+            right: getValueLabelMargin(chartData.map((row) => row.valueLabel)),
+            top: 4,
+            bottom: 4,
+          }}
           barCategoryGap="20%"
         >
           <CartesianGrid
@@ -218,9 +254,9 @@ export function BreakdownChartInner({
             <LabelList
               dataKey="valueLabel"
               position="right"
-              offset={10}
+              offset={VALUE_LABEL_OFFSET}
               fill="var(--foreground)"
-              fontSize={12}
+              fontSize={VALUE_LABEL_FONT_SIZE}
             />
           </Bar>
         </BarChart>
