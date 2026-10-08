@@ -385,3 +385,84 @@ describe("toZonedParts", () => {
     expect(parts.day).toBe(26);
   });
 });
+
+describe("resolveDashboardRange with wall-clock custom edges", () => {
+  it("reads datetime-local values in the account timezone with an exclusive end", () => {
+    const result = resolveDashboardRange({
+      preset: "custom",
+      from: "2026-03-26T10:00",
+      to: "2026-03-26T18:00",
+      timezone: "Asia/Shanghai",
+    });
+
+    expect(result.from.toISOString()).toBe("2026-03-26T02:00:00.000Z");
+    expect(result.to.toISOString()).toBe("2026-03-26T09:59:59.999Z");
+    expect(result.granularity).toBe("hour");
+    expect(listRangeBuckets(result).map((bucket) => bucket.label)).toEqual(
+      Array.from(
+        { length: 8 },
+        (_, index) => `2026-03-26 ${String(10 + index).padStart(2, "0")}:00`,
+      ),
+    );
+  });
+
+  it("accepts seconds and keeps the start inclusive", () => {
+    const result = resolveDashboardRange({
+      preset: "custom",
+      from: "2026-03-26T10:00:30",
+      to: "2026-03-26T18:00:30",
+      timezone: "UTC",
+    });
+
+    expect(result.from.toISOString()).toBe("2026-03-26T10:00:30.000Z");
+    expect(result.to.toISOString()).toBe("2026-03-26T18:00:29.999Z");
+  });
+
+  it("keeps an end given as an instant inclusive", () => {
+    const result = resolveDashboardRange({
+      preset: "custom",
+      from: "2026-03-26T10:00:00.000Z",
+      to: "2026-03-26T18:00:00.000Z",
+      timezone: "Asia/Shanghai",
+    });
+
+    expect(result.from.toISOString()).toBe("2026-03-26T10:00:00.000Z");
+    expect(result.to.toISOString()).toBe("2026-03-26T18:00:00.000Z");
+  });
+
+  it("switches to daily buckets once the span passes 36 hours", () => {
+    const hourly = resolveDashboardRange({
+      preset: "custom",
+      from: "2026-03-26T00:00",
+      to: "2026-03-27T12:00",
+      timezone: "UTC",
+    });
+    const daily = resolveDashboardRange({
+      preset: "custom",
+      from: "2026-03-26T00:00",
+      to: "2026-03-27T12:01",
+      timezone: "UTC",
+    });
+
+    expect(hourly.granularity).toBe("hour");
+    expect(daily.granularity).toBe("day");
+  });
+
+  it("round-trips a date-only end through the exclusive midnight", () => {
+    const dateOnly = resolveDashboardRange({
+      preset: "custom",
+      from: "2026-03-26",
+      to: "2026-03-26",
+      timezone: "Asia/Shanghai",
+    });
+    const wallClock = resolveDashboardRange({
+      preset: "custom",
+      from: "2026-03-26T00:00",
+      to: "2026-03-27T00:00",
+      timezone: "Asia/Shanghai",
+    });
+
+    expect(wallClock.from.getTime()).toBe(dateOnly.from.getTime());
+    expect(wallClock.to.getTime()).toBe(dateOnly.to.getTime());
+  });
+});

@@ -302,3 +302,25 @@ describe("usageSettingsSchema", () => {
     expect(result.success).toBe(false);
   });
 });
+
+describe("dashboardQuerySchema wall-clock custom edges", () => {
+  it("accepts datetime-local values without an offset", () => {
+    const result = dashboardQuerySchema.safeParse({
+      preset: "custom",
+      from: "2026-03-26T10:00",
+      to: "2026-03-26T18:00",
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects an impossible wall-clock time", () => {
+    const result = dashboardQuerySchema.safeParse({
+      preset: "custom",
+      from: "2026-03-26T25:00",
+      to: "2026-03-26T18:00",
+    });
+
+    expect(result.success).toBe(false);
+  });
+});

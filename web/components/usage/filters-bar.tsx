@@ -31,14 +31,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useRouter } from "@/i18n/navigation";
-import { formatDateInput } from "@/lib/usage/format";
 import type {
   DashboardPreset,
   UsageFilterOptions,
   UsageFilters,
 } from "@/lib/usage/types";
+import { isCustomRangeValid, toCustomRangeInputValue } from "./custom-range";
 import { buildUsageHref } from "./filter-query";
 import { getActiveFilterChips, getFilterMeta } from "./filter-state";
+import { RefreshControls } from "./refresh-controls";
 
 type FiltersBarProps = {
   preset: DashboardPreset;
@@ -116,10 +117,6 @@ function FilterSelectField({
   );
 }
 
-function buildDateValue(value: string, timezone: string) {
-  return formatDateInput(new Date(value), timezone);
-}
-
 function getPresetLabel(
   value: DashboardPreset,
   t: ReturnType<typeof useTranslations<"usage.filters">>,
@@ -142,10 +139,10 @@ function FiltersBarInner({
   const [isCustomOpen, setIsCustomOpen] = useState(false);
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
   const [customFrom, setCustomFrom] = useState(() =>
-    buildDateValue(range.from, range.timezone),
+    toCustomRangeInputValue(range.from, range.timezone, "start"),
   );
   const [customTo, setCustomTo] = useState(() =>
-    buildDateValue(range.to, range.timezone),
+    toCustomRangeInputValue(range.to, range.timezone, "end"),
   );
 
   const activeChips = useMemo(
@@ -171,7 +168,7 @@ function FiltersBarInner({
   };
 
   const applyCustomRange = () => {
-    if (!customFrom || !customTo) {
+    if (!isCustomRangeValid(customFrom, customTo)) {
       return;
     }
 
@@ -257,8 +254,16 @@ function FiltersBarInner({
                 onOpenChange={(open) => {
                   setIsCustomOpen(open);
                   if (open) {
-                    setCustomFrom(buildDateValue(range.from, range.timezone));
-                    setCustomTo(buildDateValue(range.to, range.timezone));
+                    setCustomFrom(
+                      toCustomRangeInputValue(
+                        range.from,
+                        range.timezone,
+                        "start",
+                      ),
+                    );
+                    setCustomTo(
+                      toCustomRangeInputValue(range.to, range.timezone, "end"),
+                    );
                   }
                 }}
               >
@@ -287,7 +292,7 @@ function FiltersBarInner({
                         <Label htmlFor="custom-from">{t("from")}</Label>
                         <Input
                           id="custom-from"
-                          type="date"
+                          type="datetime-local"
                           value={customFrom}
                           onChange={(event) =>
                             setCustomFrom(event.target.value)
@@ -298,12 +303,16 @@ function FiltersBarInner({
                         <Label htmlFor="custom-to">{t("to")}</Label>
                         <Input
                           id="custom-to"
-                          type="date"
+                          type="datetime-local"
                           value={customTo}
                           onChange={(event) => setCustomTo(event.target.value)}
                         />
                       </div>
-                      <Button type="button" onClick={applyCustomRange}>
+                      <Button
+                        type="button"
+                        disabled={!isCustomRangeValid(customFrom, customTo)}
+                        onClick={applyCustomRange}
+                      >
                         {t("apply")}
                       </Button>
                     </div>
@@ -398,16 +407,15 @@ function FiltersBarInner({
           ) : null}
         </div>
 
-        {lastSyncedText || badgesSlotChildren.length > 0 ? (
-          <div className="flex shrink-0 flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-end sm:gap-3">
-            {lastSyncedText ? (
-              <p className="text-sm text-muted-foreground sm:text-right">
-                {lastSyncedText}
-              </p>
-            ) : null}
-            {badgesSlotChildren}
-          </div>
-        ) : null}
+        <div className="flex shrink-0 flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-end sm:gap-3">
+          {lastSyncedText ? (
+            <p className="text-sm text-muted-foreground sm:text-right">
+              {lastSyncedText}
+            </p>
+          ) : null}
+          <RefreshControls />
+          {badgesSlotChildren}
+        </div>
       </div>
     </div>
   );

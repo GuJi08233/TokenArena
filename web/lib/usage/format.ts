@@ -242,3 +242,41 @@ export function formatDateTime(
   const timePart = getTimeFormatter(timezone, locale).format(date);
   return `${datePart} ${timePart}`;
 }
+
+const dateTimeInputFormatterCache = new Map<string, Intl.DateTimeFormat>();
+
+function getDateTimeInputFormatter(timezone: string) {
+  const cached = dateTimeInputFormatterCache.get(timezone);
+
+  if (cached) {
+    return cached;
+  }
+
+  const formatter = Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  dateTimeInputFormatterCache.set(timezone, formatter);
+
+  return formatter;
+}
+
+/**
+ * `YYYY-MM-DDTHH:mm` in `timezone`: the value a `datetime-local` input takes,
+ * and the wall-clock form `resolveDashboardRange` reads back.
+ */
+export function formatDateTimeInput(value: Date | string, timezone: string) {
+  const parts = new Map(
+    getDateTimeInputFormatter(timezone)
+      .formatToParts(normalizeDate(value))
+      .map((part) => [part.type, part.value]),
+  );
+
+  return `${parts.get("year")}-${parts.get("month")}-${parts.get("day")}T${parts.get("hour")}:${parts.get("minute")}`;
+}
