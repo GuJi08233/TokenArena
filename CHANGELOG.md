@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.19.0](https://github.com/GuJi08233/TokenArena/compare/v0.18.4...v0.19.0) (2026-10-08)
+
+
+### Features
+
+* **web:** add a refresh button and auto-refresh switch to the usage dashboard ([f387fb2](https://github.com/GuJi08233/TokenArena/commit/f387fb273ab2d118fcc207dee64e2c77bf97a63e))
+* **web:** let the custom range start and end at any minute ([#55](https://github.com/GuJi08233/TokenArena/issues/55)) ([f387fb2](https://github.com/GuJi08233/TokenArena/commit/f387fb273ab2d118fcc207dee64e2c77bf97a63e))
+
 ## [0.18.4](https://github.com/GuJi08233/TokenArena/compare/v0.18.3...v0.18.4) (2026-10-05)
 
 
