@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   formatDateInput,
   formatDateTime,
+  formatDateTimeInput,
   formatDuration,
   formatPercentage,
   formatTokenCount,
@@ -93,5 +94,25 @@ describe("usage format helpers", () => {
   it("formatUsdRatePerMillion uses fewer decimals for values >= 1", () => {
     expect(formatUsdRatePerMillion(1)).toBe("$1/M");
     expect(formatUsdRatePerMillion(10.5)).toBe("$10.5/M");
+  });
+});
+
+describe("formatDateTimeInput", () => {
+  it("formats datetime-local values in the account timezone", () => {
+    expect(
+      formatDateTimeInput("2026-03-26T02:05:59.000Z", "Asia/Shanghai"),
+    ).toBe("2026-03-26T10:05");
+    expect(
+      formatDateTimeInput(
+        new Date("2026-03-26T23:30:00.000Z"),
+        "America/Los_Angeles",
+      ),
+    ).toBe("2026-03-26T16:30");
+  });
+
+  it("writes midnight as 00, not 24", () => {
+    expect(formatDateTimeInput("2026-03-26T00:00:00.000Z", "UTC")).toBe(
+      "2026-03-26T00:00",
+    );
   });
 });

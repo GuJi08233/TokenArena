@@ -29,6 +29,8 @@ const weekdayIndex: Record<string, number> = {
   Sat: 6,
 };
 const dateOnlyPattern = /^\d{4}-\d{2}-\d{2}$/;
+const localDateTimePattern =
+  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/;
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
 
@@ -251,6 +253,36 @@ function dateOnlyToUtc(value: string, timezone: string, edge: "start" | "end") {
   );
 }
 
+/**
+ * A wall-clock time without an offset, as a `datetime-local` input produces,
+ * read in the account timezone.
+ *
+ * The end edge is exclusive: `10:00`–`18:00` means the eight hours before
+ * 18:00, so the trend draws eight hourly bars and a range closing at midnight
+ * still labels the day it ends. An instant with an explicit offset keeps the
+ * inclusive end the API has always had.
+ */
+function localDateTimeToUtc(
+  match: RegExpExecArray,
+  timezone: string,
+  edge: "start" | "end",
+) {
+  const [, year, month, day, hour, minute, second = "0"] = match;
+  const instant = zonedDateTimeToUtc(
+    {
+      year: Number.parseInt(year, 10),
+      month: Number.parseInt(month, 10),
+      day: Number.parseInt(day, 10),
+      hour: Number.parseInt(hour, 10),
+      minute: Number.parseInt(minute, 10),
+      second: Number.parseInt(second, 10),
+    },
+    timezone,
+  );
+
+  return edge === "end" ? new Date(instant.getTime() - 1) : instant;
+}
+
 function toDate(
   value: string | Date | undefined,
   fallback: Date,
@@ -267,6 +299,12 @@ function toDate(
 
   if (dateOnlyPattern.test(value)) {
     return dateOnlyToUtc(value, timezone, edge);
+  }
+
+  const localDateTime = localDateTimePattern.exec(value);
+
+  if (localDateTime) {
+    return localDateTimeToUtc(localDateTime, timezone, edge);
   }
 
   return new Date(value);
