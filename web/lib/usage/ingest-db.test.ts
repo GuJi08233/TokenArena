@@ -109,6 +109,8 @@ describe.skipIf(!VERIFY_URL)("ingest against a real database", () => {
   let ingestUsagePayload: any;
   // biome-ignore lint/suspicious/noExplicitAny: resolved from the mocked module
   let ingestRequestSchema: any;
+  // biome-ignore lint/suspicious/noExplicitAny: resolved from the mocked module
+  let synchronizeAchievementsForUser: any;
   let apiKeyId: string;
 
   async function ingest(
@@ -138,6 +140,9 @@ describe.skipIf(!VERIFY_URL)("ingest against a real database", () => {
     ({ prisma } = await import("@/lib/prisma"));
     ({ ingestUsagePayload } = await import("./ingest"));
     ({ ingestRequestSchema } = await import("./contracts"));
+    ({ synchronizeAchievementsForUser } = await import(
+      "@/lib/achievements/queries"
+    ));
 
     // The only safe target is an empty database. A real one has accounts, so
     // this turns a mistyped connection string into a clean failure.
@@ -171,10 +176,12 @@ describe.skipIf(!VERIFY_URL)("ingest against a real database", () => {
   afterAll(async () => {
     if (!prisma?.user) return;
     await prisma.user.deleteMany({ where: { id: USER_ID } });
-    // Snapshots are global rather than owned by a user, so deleting the
-    // verification account does not cascade to them and a leftover row would
-    // break the next run.
+    // Snapshots and period results are global rather than owned by a user, so
+    // deleting the verification account does not cascade to them. A leftover
+    // snapshot breaks the next run, and the achievement pass marks the periods
+    // finished right now as issued, which hides them from other suites.
     await prisma.leaderboardSnapshot.deleteMany({});
+    await prisma.leaderboardPeriodResult.deleteMany({});
     await prisma.$disconnect();
   });
 
@@ -302,6 +309,12 @@ describe.skipIf(!VERIFY_URL)("ingest against a real database", () => {
 
   it("materializes the arena summary when achievements sync", async () => {
     await ingest({ buckets: [flatBucket(33)] }, { syncAchievements: true });
+    // The route schedules this after responding; ingest itself never does.
+    expect(
+      await prisma.userArenaSummary.findUnique({ where: { userId: USER_ID } }),
+    ).toBeNull();
+
+    await synchronizeAchievementsForUser(USER_ID, "ingest");
 
     const arena = await prisma.userArenaSummary.findUnique({
       where: { userId: USER_ID },

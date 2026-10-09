@@ -1,6 +1,7 @@
 import "server-only";
 
-import { finalizePendingLeaderboardPeriods } from "@/lib/leaderboard/finalize";
+import { ADVISORY_LOCK_NAMESPACE, lockAdvisoryKeys } from "@/lib/advisory-lock";
+import { settlePendingLeaderboardPeriods } from "@/lib/leaderboard/finalize";
 import { getUserGlobalLeaderboardRanksByTotalTokens } from "@/lib/leaderboard/rank";
 import type { PricingCatalog } from "@/lib/pricing/catalog";
 import { getPricingCatalog } from "@/lib/pricing/catalog";
@@ -9,13 +10,18 @@ import {
   resolveOfficialPricingMatch,
 } from "@/lib/pricing/resolve";
 import { prisma } from "@/lib/prisma";
+import { toUtcTimestampLiteral } from "@/lib/sql-timestamp";
 import { tokenCountToBigInt, tokenCountToNumber } from "@/lib/token-counts";
+import { getTransactionTimeoutMs } from "@/lib/transaction-timeout";
 import { resolveDashboardRange } from "@/lib/usage/date-range";
 import { formatDateInput } from "@/lib/usage/format";
 import { getUsagePreference } from "@/lib/usage/preferences";
 import type { UsageShareCardPersona } from "@/lib/usage/share-card";
 import { normalizeUsageSource } from "@/lib/usage/sources";
-import type { AchievementAwardSource } from "../../generated/prisma/client";
+import {
+  type AchievementAwardSource,
+  Prisma,
+} from "../../generated/prisma/client";
 import { getArenaLevelFromScore } from "./arena-level";
 import { achievementDefinitionMap } from "./catalog";
 import {
@@ -27,6 +33,7 @@ import {
 import {
   buildAchievementAwardPlan,
   mergeAchievementRecords,
+  type PlannedAchievementAward,
   type StoredAchievementRecord,
 } from "./records";
 import {
@@ -38,6 +45,7 @@ import {
 import type {
   AchievementCode,
   AchievementNotificationData,
+  AchievementStatus,
   AchievementsPageData,
 } from "./types";
 
@@ -519,122 +527,235 @@ async function loadAchievementMetrics(userId: string) {
   });
 }
 
+function toStoredAchievementRecords(
+  rows: Parameters<typeof normalizeStoredAchievementRecord>[0][],
+) {
+  return rows.reduce<StoredAchievementRecord[]>((acc, row) => {
+    const record = normalizeStoredAchievementRecord(row);
+    if (record) acc.push(record);
+    return acc;
+  }, []);
+}
+
+function toAchievementAwardRow(award: PlannedAchievementAward) {
+  return {
+    userId: award.userId,
+    code: award.code,
+    awardedAt: new Date(award.awardedAt),
+    source: award.source,
+    dedupeKey: award.dedupeKey,
+    pointsAwarded: award.pointsAwarded,
+    progressValue: award.progressValue,
+    thresholdValue: award.thresholdValue,
+    context: award.context,
+  };
+}
+
+const AWARD_INSERT_CHUNK_SIZE = 1_000;
+
+/**
+ * Write planned awards to the ledger ahead of the counter transaction.
+ *
+ * A first synchronization of a long history can plan thousands of awards.
+ * Inside the transaction they could push it past its timeout, after which
+ * nothing was recorded and every later attempt planned the same backlog. The
+ * ledger is keyed by `dedupeKey`, so autocommit chunks are idempotent: a retry,
+ * or a concurrent pass for the same user, only skips existing rows.
+ */
+async function insertAchievementAwards(awards: PlannedAchievementAward[]) {
+  for (let start = 0; start < awards.length; start += AWARD_INSERT_CHUNK_SIZE) {
+    // react-doctor-disable-next-line react-doctor/async-await-in-loop -- one chunk at a time, so a backfill cannot take every pooled connection
+    await prisma.achievementAward.createMany({
+      data: awards
+        .slice(start, start + AWARD_INSERT_CHUNK_SIZE)
+        .map(toAchievementAwardRow),
+      skipDuplicates: true,
+    });
+  }
+}
+
+function isSameAchievementRecord(
+  next: StoredAchievementRecord,
+  stored: StoredAchievementRecord,
+) {
+  return (
+    next.awardCount === stored.awardCount &&
+    next.firstAwardedAt === stored.firstAwardedAt &&
+    next.lastAwardedAt === stored.lastAwardedAt &&
+    // A plan without state leaves the stored state alone.
+    (next.state === null ||
+      next.state.lastQualified === stored.state?.lastQualified)
+  );
+}
+
+/**
+ * Records the plan actually changed.
+ *
+ * The plan carries every stored record, including leaderboard badges it never
+ * evaluates. Writing those back used to overwrite an increment a concurrent
+ * finalization had just made; only changed rows are written now. A code that
+ * was never awarded still gets no row.
+ */
+function listChangedAchievementRecords(
+  planned: Map<AchievementCode, StoredAchievementRecord>,
+  stored: StoredAchievementRecord[],
+) {
+  const storedByCode = new Map(stored.map((record) => [record.code, record]));
+
+  return Array.from(planned.values()).filter((record) => {
+    const existing = storedByCode.get(record.code);
+
+    return existing
+      ? !isSameAchievementRecord(record, existing)
+      : record.awardCount > 0;
+  });
+}
+
+/** Upsert changed award counts in one statement instead of one per code. */
+async function upsertAchievementRecords(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  records: StoredAchievementRecord[],
+  now: Date,
+) {
+  const nowLiteral = toUtcTimestampLiteral(now);
+  const rows = records.map(
+    (record) => Prisma.sql`(
+      ${record.code}::text,
+      ${record.awardCount}::integer,
+      ${record.firstAwardedAt === null ? null : toUtcTimestampLiteral(record.firstAwardedAt)}::timestamp(3),
+      ${record.lastAwardedAt === null ? null : toUtcTimestampLiteral(record.lastAwardedAt)}::timestamp(3),
+      ${record.state === null ? null : JSON.stringify(record.state)}::jsonb
+    )`,
+  );
+
+  await tx.$executeRaw(Prisma.sql`
+    INSERT INTO "user_achievement" (
+      "userId", "code", "awardCount", "firstAwardedAt", "lastAwardedAt",
+      "state", "createdAt", "updatedAt"
+    )
+    SELECT
+      ${userId}::text, v."code", v."awardCount", v."firstAwardedAt",
+      v."lastAwardedAt", v."state", ${nowLiteral}::timestamp(3),
+      ${nowLiteral}::timestamp(3)
+    FROM (VALUES ${Prisma.join(rows)}) AS v(
+      "code", "awardCount", "firstAwardedAt", "lastAwardedAt", "state"
+    )
+    ON CONFLICT ("userId", "code") DO UPDATE SET
+      "awardCount" = EXCLUDED."awardCount",
+      "firstAwardedAt" = EXCLUDED."firstAwardedAt",
+      "lastAwardedAt" = EXCLUDED."lastAwardedAt",
+      -- A record without state keeps the stored one, as the Prisma upsert did.
+      "state" = COALESCE(EXCLUDED."state", "user_achievement"."state"),
+      "updatedAt" = EXCLUDED."updatedAt"
+  `);
+}
+
+/**
+ * Re-plan under the user's lock, then write counts and the summary together.
+ *
+ * Leaderboard finalization increments the same counts and score while holding
+ * the same lock, so neither side can write values computed before the other
+ * committed. The summary shares the counts' timestamp, which tells a profile
+ * view the stored score is current.
+ */
+async function writeAchievementState(input: {
+  userId: string;
+  metrics: AchievementInputMetrics;
+  statuses: AchievementStatus[];
+  source: AchievementAwardSource;
+  evaluatedAt: string;
+  insertedAwardKeys: Set<string>;
+}) {
+  const now = new Date();
+
+  return prisma.$transaction(
+    async (tx) => {
+      await lockAdvisoryKeys(tx, ADVISORY_LOCK_NAMESPACE.achievementState, [
+        input.userId,
+      ]);
+      const stored = toStoredAchievementRecords(
+        await tx.userAchievement.findMany({ where: { userId: input.userId } }),
+      );
+      const plan = buildAchievementAwardPlan({
+        userId: input.userId,
+        evaluatedAt: input.evaluatedAt,
+        source: input.source,
+        statuses: input.statuses,
+        records: stored,
+      });
+      // Usually empty: only awards a concurrent change made newly due.
+      const lateAwards = plan.awards.filter(
+        (award) => !input.insertedAwardKeys.has(award.dedupeKey),
+      );
+
+      if (lateAwards.length > 0) {
+        await tx.achievementAward.createMany({
+          data: lateAwards.map(toAchievementAwardRow),
+          skipDuplicates: true,
+        });
+      }
+
+      const changed = listChangedAchievementRecords(plan.records, stored);
+      if (changed.length > 0) {
+        await upsertAchievementRecords(tx, input.userId, changed, now);
+      }
+
+      const pageData = buildAchievementsPageDataFromStatuses({
+        metrics: input.metrics,
+        achievements: mergeAchievementRecords(input.statuses, plan.records),
+      });
+      const summary = {
+        score: pageData.summary.score,
+        level: pageData.summary.level,
+        totalTokens: tokenCountToBigInt(input.metrics.totalTokens),
+        totalEstimatedCostUsd: input.metrics.totalEstimatedCostUsd,
+        totalActiveSeconds: input.metrics.totalActiveSeconds,
+        totalSessions: input.metrics.totalSessions,
+        totalActiveDays: pageData.summary.totalActiveDays,
+        computedAt: now,
+      };
+
+      await tx.userArenaSummary.upsert({
+        where: { userId: input.userId },
+        update: summary,
+        create: { userId: input.userId, ...summary },
+      });
+
+      return { records: plan.records, pageData };
+    },
+    { timeout: getTransactionTimeoutMs() },
+  );
+}
+
 async function synchronizeUserAchievements(input: {
   userId: string;
   metrics: AchievementInputMetrics;
   source: AchievementAwardSource;
 }) {
-  const existingRows = await prisma.userAchievement.findMany({
-    where: {
-      userId: input.userId,
-    },
-  });
-  const existingRecords = existingRows.reduce<StoredAchievementRecord[]>(
-    (acc, row) => {
-      const record = normalizeStoredAchievementRecord(row);
-      if (record) acc.push(record);
-      return acc;
-    },
-    [],
-  );
-  const plan = buildAchievementAwardPlan({
+  const evaluatedAt = new Date().toISOString();
+  const statuses = buildAchievementStatuses(input.metrics);
+  const draft = buildAchievementAwardPlan({
     userId: input.userId,
-    evaluatedAt: new Date().toISOString(),
+    evaluatedAt,
     source: input.source,
-    statuses: buildAchievementStatuses(input.metrics),
-    records: existingRecords,
+    statuses,
+    records: toStoredAchievementRecords(
+      await prisma.userAchievement.findMany({
+        where: { userId: input.userId },
+      }),
+    ),
   });
-  const existingCodes = new Set(existingRecords.map((record) => record.code));
 
-  if (plan.awards.length > 0 || plan.records.size > 0) {
-    await prisma.$transaction(async (tx) => {
-      if (plan.awards.length > 0) {
-        await tx.achievementAward.createMany({
-          data: plan.awards.map((award) => ({
-            userId: award.userId,
-            code: award.code,
-            awardedAt: new Date(award.awardedAt),
-            source: award.source,
-            dedupeKey: award.dedupeKey,
-            pointsAwarded: award.pointsAwarded,
-            progressValue: award.progressValue,
-            thresholdValue: award.thresholdValue,
-            context: award.context,
-          })),
-          skipDuplicates: true,
-        });
-      }
+  await insertAchievementAwards(draft.awards);
 
-      await Promise.all(
-        Array.from(plan.records.values()).map(async (record) => {
-          if (record.awardCount === 0 && !existingCodes.has(record.code)) {
-            return;
-          }
-
-          await tx.userAchievement.upsert({
-            where: {
-              userId_code: {
-                userId: input.userId,
-                code: record.code,
-              },
-            },
-            update: {
-              awardCount: record.awardCount,
-              firstAwardedAt: record.firstAwardedAt
-                ? new Date(record.firstAwardedAt)
-                : null,
-              lastAwardedAt: record.lastAwardedAt
-                ? new Date(record.lastAwardedAt)
-                : null,
-              ...(record.state ? { state: record.state } : {}),
-            },
-            create: {
-              userId: input.userId,
-              code: record.code,
-              awardCount: record.awardCount,
-              firstAwardedAt: record.firstAwardedAt
-                ? new Date(record.firstAwardedAt)
-                : null,
-              lastAwardedAt: record.lastAwardedAt
-                ? new Date(record.lastAwardedAt)
-                : null,
-              ...(record.state ? { state: record.state } : {}),
-            },
-          });
-        }),
-      );
-    });
-  }
-
-  return plan.records;
-}
-
-type ArenaSummary = {
-  score: number;
-  level: number;
-  totalTokens: number;
-  totalEstimatedCostUsd: number;
-  totalActiveSeconds: number;
-  totalSessions: number;
-  totalActiveDays: number;
-};
-
-async function persistArenaSummary(userId: string, summary: ArenaSummary) {
-  const row = {
-    score: summary.score,
-    level: summary.level,
-    totalTokens: tokenCountToBigInt(summary.totalTokens),
-    totalEstimatedCostUsd: summary.totalEstimatedCostUsd,
-    totalActiveSeconds: summary.totalActiveSeconds,
-    totalSessions: summary.totalSessions,
-    totalActiveDays: summary.totalActiveDays,
-    computedAt: new Date(),
-  };
-
-  await prisma.userArenaSummary.upsert({
-    where: { userId },
-    update: row,
-    create: { userId, ...row },
+  return writeAchievementState({
+    userId: input.userId,
+    metrics: input.metrics,
+    statuses,
+    source: input.source,
+    evaluatedAt,
+    insertedAwardKeys: new Set(draft.awards.map((award) => award.dedupeKey)),
   });
 }
 
@@ -642,7 +763,7 @@ async function persistArenaSummary(userId: string, summary: ArenaSummary) {
  * Re-evaluate every achievement for a user and persist the results.
  *
  * This is the expensive path: it replays the user's whole bucket and session
- * history and runs four global rank queries, so it only belongs on writes
+ * history and runs four global rank queries, so it only belongs after writes
  * (ingest, follow) and on the owner's own pages — never on a public profile
  * view. It refreshes `UserArenaSummary` so those views can read a row instead.
  */
@@ -650,33 +771,9 @@ async function refreshUserAchievements(
   userId: string,
   source: AchievementAwardSource,
 ) {
-  await finalizePendingLeaderboardPeriods();
+  await settlePendingLeaderboardPeriods();
   const metrics = await loadAchievementMetrics(userId);
-  const records = await synchronizeUserAchievements({
-    userId,
-    metrics,
-    source,
-  });
-  const pageData = buildAchievementsPageDataFromStatuses({
-    metrics,
-    achievements: mergeAchievementRecords(
-      buildAchievementStatuses(metrics),
-      records,
-    ),
-  });
-  const summary: ArenaSummary = {
-    score: pageData.summary.score,
-    level: pageData.summary.level,
-    totalTokens: metrics.totalTokens,
-    totalEstimatedCostUsd: metrics.totalEstimatedCostUsd,
-    totalActiveSeconds: metrics.totalActiveSeconds,
-    totalSessions: metrics.totalSessions,
-    totalActiveDays: pageData.summary.totalActiveDays,
-  };
-
-  await persistArenaSummary(userId, summary);
-
-  return { records, pageData, summary };
+  return synchronizeUserAchievements({ userId, metrics, source });
 }
 
 export async function synchronizeAchievementsForUser(
@@ -687,14 +784,117 @@ export async function synchronizeAchievementsForUser(
   return records;
 }
 
+type BackgroundAchievementSync = {
+  source: AchievementAwardSource;
+  rerun: boolean;
+  done: Promise<void>;
+};
+
+const backgroundAchievementSyncs = new Map<string, BackgroundAchievementSync>();
+
+async function runBackgroundAchievementSync(
+  userId: string,
+  sync: BackgroundAchievementSync,
+) {
+  try {
+    do {
+      sync.rerun = false;
+      try {
+        // react-doctor-disable-next-line react-doctor/async-await-in-loop -- a rerun has to see what the previous pass wrote
+        await synchronizeAchievementsForUser(userId, sync.source);
+      } catch (error) {
+        console.error("Failed to synchronize achievements", {
+          userId,
+          source: sync.source,
+          error,
+        });
+      }
+    } while (sync.rerun);
+  } finally {
+    backgroundAchievementSyncs.delete(userId);
+  }
+}
+
+/**
+ * Synchronize a user's achievements once the triggering response is sent.
+ *
+ * Callers have already committed the change that made achievements stale, so a
+ * failure is logged instead of thrown: an upload or a follow must not be
+ * reported as failed because the award pass behind it timed out. A call for a
+ * user whose pass is still running folds into one more pass after it, so
+ * repeated triggers cannot stack full-history replays.
+ */
+export function synchronizeAchievementsInBackground(
+  userId: string,
+  source: AchievementAwardSource,
+): Promise<void> {
+  const running = backgroundAchievementSyncs.get(userId);
+
+  if (running) {
+    running.source = source;
+    running.rerun = true;
+    return running.done;
+  }
+
+  const sync: BackgroundAchievementSync = {
+    source,
+    rerun: false,
+    done: Promise.resolve(),
+  };
+  backgroundAchievementSyncs.set(userId, sync);
+  sync.done = runBackgroundAchievementSync(userId, sync);
+  return sync.done;
+}
+
+/**
+ * Page data for the owner's achievement views.
+ *
+ * Awards are issued here too, but a failed award pass falls back to the awards
+ * already stored instead of failing the page: the owner still sees current
+ * progress, and the next upload or visit retries the pass.
+ */
+async function loadAchievementsPageData(
+  userId: string,
+): Promise<AchievementsPageData> {
+  await settlePendingLeaderboardPeriods();
+  const metrics = await loadAchievementMetrics(userId);
+
+  try {
+    const { pageData } = await synchronizeUserAchievements({
+      userId,
+      metrics,
+      source: "manual",
+    });
+    return pageData;
+  } catch (error) {
+    console.error("Failed to synchronize achievements for a page view", {
+      userId,
+      error,
+    });
+  }
+
+  const stored = toStoredAchievementRecords(
+    await prisma.userAchievement.findMany({ where: { userId } }),
+  );
+
+  return buildAchievementsPageDataFromStatuses({
+    metrics,
+    achievements: mergeAchievementRecords(
+      buildAchievementStatuses(metrics),
+      new Map(stored.map((record) => [record.code, record])),
+    ),
+  });
+}
+
 export async function getAchievementsPageData(
   userId: string,
 ): Promise<AchievementsPageData> {
-  const { pageData } = await refreshUserAchievements(userId, "manual");
-  return pageData;
+  return loadAchievementsPageData(userId);
 }
 
-type ProfileArenaSummary = Pick<ArenaSummary, "score" | "level"> & {
+type ProfileArenaSummary = {
+  score: number;
+  level: number;
   totalActiveDays: number | null;
 };
 
@@ -746,6 +946,7 @@ export async function getArenaSummaryForProfile(
 export async function getAchievementNotificationData(
   userId: string,
 ): Promise<AchievementNotificationData> {
-  const { pageData } = await refreshUserAchievements(userId, "manual");
-  return buildAchievementNotificationData(pageData);
+  return buildAchievementNotificationData(
+    await loadAchievementsPageData(userId),
+  );
 }

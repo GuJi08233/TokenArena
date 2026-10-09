@@ -10,7 +10,6 @@ import type { FollowTagFilter } from "@/lib/social/follow-tags";
 import { tokenCountToBigInt, tokenCountToNumber } from "@/lib/token-counts";
 import { Prisma } from "../../generated/prisma/client";
 import { resolveLeaderboardWindow, sameLeaderboardWindow } from "./date";
-import { finalizePendingLeaderboardPeriods } from "./finalize";
 import { LEADERBOARD_SNAPSHOT_TTL_MS } from "./snapshot";
 import type {
   LeaderboardDataset,
@@ -1169,6 +1168,10 @@ async function getFollowingLeaderboard(input: {
   });
 }
 
+/**
+ * Does not issue badges for finished periods: the page schedules that after
+ * it responds, so a failed issuance cannot take the board down with it.
+ */
 export async function getLeaderboardPageData(input: {
   period: LeaderboardPeriod;
   metric: LeaderboardMetric;
@@ -1177,7 +1180,6 @@ export async function getLeaderboardPageData(input: {
   now?: Date;
 }): Promise<LeaderboardPageData> {
   const now = input.now ?? new Date();
-  await finalizePendingLeaderboardPeriods(now);
   const [global, following, viewerPreference] = await Promise.all([
     getGlobalLeaderboard({
       period: input.period,

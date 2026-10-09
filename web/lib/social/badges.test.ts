@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   findUnique: vi.fn(),
@@ -417,5 +417,115 @@ describe("social badges", () => {
     );
     expect(costSvg).toContain(">$3.50<");
     expect(costSvg).toContain(">cost<");
+  });
+});
+
+describe("badge streak lookup", () => {
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const now = new Date("2026-04-30T18:00:00.000Z");
+
+  /** One bucket per day at noon UTC, for `days` days ending today. */
+  function dailyActivity(days: number) {
+    return Array.from(
+      { length: days },
+      (_, index) => new Date(Date.UTC(2026, 3, 30, 12) - index * DAY_MS),
+    );
+  }
+
+  function bucketWindows() {
+    return mocks.groupByBuckets.mock.calls.flatMap(([query]) =>
+      query.by[0] === "bucketStart"
+        ? [query.where.bucketStart?.gte ?? null]
+        : [],
+    );
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    vi.setSystemTime(now);
+    mocks.findUnique.mockResolvedValue({
+      id: "user_streak",
+      username: "streaker",
+      usagePreference: { publicProfileEnabled: true, timezone: "UTC" },
+    });
+    mocks.getPricingCatalog.mockResolvedValue(null);
+    mocks.findManySessions.mockResolvedValue([]);
+    mocks.aggregateSessions.mockResolvedValue({
+      _sum: { activeSeconds: 0, durationSeconds: 0 },
+      _count: { _all: 0 },
+    });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function useActivity(activity: Date[]) {
+    // Answers like the database would: only rows inside the requested window.
+    mocks.groupByBuckets.mockImplementation(({ by, where }) =>
+      Promise.resolve(
+        by[0] === "model"
+          ? []
+          : activity.flatMap((bucketStart) =>
+              !where.bucketStart || bucketStart >= where.bucketStart.gte
+                ? [{ bucketStart }]
+                : [],
+            ),
+      ),
+    );
+  }
+
+  it("reads only recent activity for a short streak", async () => {
+    useActivity([...dailyActivity(3), new Date("2025-01-01T12:00:00.000Z")]);
+
+    const { getPublicBadgeData } = await import("./badges");
+    const result = await getPublicBadgeData({ username: "streaker" });
+
+    expect(result).toMatchObject({ data: { currentStreakDays: 3 } });
+    // Every session the account ever synced used to be read on each request.
+    expect(bucketWindows()).toEqual([new Date(now.getTime() - 45 * DAY_MS)]);
+    expect(mocks.findManySessions).toHaveBeenCalledWith({
+      where: {
+        userId: "user_streak",
+        firstMessageAt: { gte: new Date(now.getTime() - 45 * DAY_MS) },
+      },
+      select: { firstMessageAt: true },
+    });
+  });
+
+  it("widens the window until the whole streak fits", async () => {
+    useActivity(dailyActivity(60));
+
+    const { getPublicBadgeData } = await import("./badges");
+    const result = await getPublicBadgeData({ username: "streaker" });
+
+    expect(result).toMatchObject({ data: { currentStreakDays: 60 } });
+    expect(bucketWindows()).toEqual([
+      new Date(now.getTime() - 45 * DAY_MS),
+      new Date(now.getTime() - 90 * DAY_MS),
+    ]);
+  });
+
+  it("stops after one window when there is no current streak", async () => {
+    useActivity([new Date("2026-04-20T12:00:00.000Z")]);
+
+    const { getPublicBadgeData } = await import("./badges");
+    const result = await getPublicBadgeData({ username: "streaker" });
+
+    expect(result).toMatchObject({ data: { currentStreakDays: 0 } });
+    expect(bucketWindows()).toHaveLength(1);
+  });
+
+  it("counts a session-only day inside the window", async () => {
+    useActivity(dailyActivity(2));
+    mocks.findManySessions.mockResolvedValue([
+      { firstMessageAt: new Date("2026-04-28T09:00:00.000Z") },
+    ]);
+
+    const { getPublicBadgeData } = await import("./badges");
+    const result = await getPublicBadgeData({ username: "streaker" });
+
+    expect(result).toMatchObject({ data: { currentStreakDays: 3 } });
   });
 });

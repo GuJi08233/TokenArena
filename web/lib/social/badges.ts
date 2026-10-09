@@ -288,36 +288,117 @@ function estimateBucketCostUsd(
   return estimate?.totalUsd ?? 0;
 }
 
-async function loadActiveUsageDates(input: {
+const DAY_MS = 24 * 60 * 60 * 1000;
+/** First window searched for the current streak. */
+const STREAK_LOOKBACK_DAYS = 45;
+/** Past this the search stops bounding the window and reads all history. */
+const STREAK_LOOKBACK_MAX_DAYS = STREAK_LOOKBACK_DAYS * 2 ** 7;
+
+function toSortedDayKeys(timestamps: Date[], timezone: string) {
+  return Array.from(
+    new Set(
+      timestamps.map((timestamp) => formatDateInput(timestamp, timezone)),
+    ),
+  ).sort();
+}
+
+function shiftDateKey(dateKey: string, days: number) {
+  const date = new Date(`${dateKey}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+/**
+ * The current streak, reading only as much history as the streak spans.
+ *
+ * The badge is public and embeddable, and it used to read the timestamp of
+ * every session the account had ever synced on each request. The search now
+ * starts with recent days and doubles its window only while the streak
+ * reaches the window's start, so the result is still exact.
+ */
+async function loadCurrentStreakDays(input: {
   userId: string;
   timezone: string;
+  now: Date;
 }) {
+  const todayKey = formatDateInput(input.now, input.timezone);
+  const yesterdayKey = formatDateInput(
+    new Date(input.now.getTime() - DAY_MS),
+    input.timezone,
+  );
+
   if (input.timezone === "Asia/Shanghai") {
+    // Leaderboard rows already hold one row per active Shanghai day.
     const rows = await prisma.leaderboardUserDay.findMany({
       where: { userId: input.userId },
       select: { statDate: true },
-      orderBy: { statDate: "asc" },
     });
 
-    return rows.map((row) => row.statDate);
+    return computeCurrentStreak({
+      activeDayKeys: toSortedDayKeys(
+        rows.map((row) => row.statDate),
+        input.timezone,
+      ),
+      todayKey,
+      yesterdayKey,
+    });
   }
 
-  const [bucketRows, sessionRows] = await Promise.all([
-    prisma.usageBucket.groupBy({
-      by: ["bucketStart"],
-      where: { userId: input.userId },
-    }),
-    prisma.usageSession.findMany({
-      where: { userId: input.userId },
-      select: { firstMessageAt: true },
-      orderBy: { firstMessageAt: "asc" },
-    }),
-  ]);
+  for (
+    let lookbackDays = STREAK_LOOKBACK_DAYS;
+    ;
+    lookbackDays = lookbackDays * 2
+  ) {
+    const since =
+      lookbackDays > STREAK_LOOKBACK_MAX_DAYS
+        ? null
+        : new Date(input.now.getTime() - lookbackDays * DAY_MS);
+    // react-doctor-disable-next-line react-doctor/async-await-in-loop -- each wider window is only read when the previous one could not settle the streak
+    const [bucketRows, sessionRows] = await Promise.all([
+      prisma.usageBucket.groupBy({
+        by: ["bucketStart"],
+        where: {
+          userId: input.userId,
+          ...(since ? { bucketStart: { gte: since } } : {}),
+        },
+      }),
+      prisma.usageSession.findMany({
+        where: {
+          userId: input.userId,
+          ...(since ? { firstMessageAt: { gte: since } } : {}),
+        },
+        select: { firstMessageAt: true },
+      }),
+    ]);
+    const activeDayKeys = toSortedDayKeys(
+      [
+        ...bucketRows.map((row) => row.bucketStart),
+        ...sessionRows.map((row) => row.firstMessageAt),
+      ],
+      input.timezone,
+    );
+    const streak = computeCurrentStreak({
+      activeDayKeys,
+      todayKey,
+      yesterdayKey,
+    });
 
-  return [
-    ...bucketRows.map((row) => row.bucketStart),
-    ...sessionRows.map((row) => row.firstMessageAt),
-  ];
+    if (since === null || streak === 0) {
+      return streak;
+    }
+
+    // The day before the streak was idle. That is only known once the whole
+    // day lies inside the window, whose first local day is partial.
+    const dayBeforeStreak = shiftDateKey(
+      activeDayKeys[activeDayKeys.length - streak],
+      -1,
+    );
+    if (
+      dayBeforeStreak >= shiftDateKey(formatDateInput(since, input.timezone), 1)
+    ) {
+      return streak;
+    }
+  }
 }
 
 export async function getPublicBadgeData(input: {
@@ -353,7 +434,8 @@ export async function getPublicBadgeData(input: {
   }
 
   const timezone = user.usagePreference?.timezone ?? "UTC";
-  const [catalog, modelTotals, activeUsageDates, sessionSummary] =
+  const now = new Date();
+  const [catalog, modelTotals, currentStreakDays, sessionSummary] =
     await Promise.all([
       getPricingCatalog(),
       prisma.usageBucket.groupBy({
@@ -368,7 +450,7 @@ export async function getPublicBadgeData(input: {
           cacheCreationTokens: true,
         },
       }),
-      loadActiveUsageDates({ userId: user.id, timezone }),
+      loadCurrentStreakDays({ userId: user.id, timezone, now }),
       prisma.usageSession.aggregate({
         where: { userId: user.id },
         _sum: {
@@ -383,7 +465,6 @@ export async function getPublicBadgeData(input: {
 
   let totalTokens = 0;
   let estimatedCostUsd = 0;
-  const activeDayKeys = new Set<string>();
 
   for (const row of modelTotals) {
     const normalized = {
@@ -409,14 +490,6 @@ export async function getPublicBadgeData(input: {
     );
   }
 
-  for (const timestamp of activeUsageDates) {
-    activeDayKeys.add(formatDateInput(timestamp, timezone));
-  }
-
-  const now = new Date();
-  const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-  const sortedDayKeys = Array.from(activeDayKeys).sort();
-
   return {
     kind: "ok",
     data: {
@@ -427,11 +500,7 @@ export async function getPublicBadgeData(input: {
       activeSeconds: sessionSummary._sum.activeSeconds ?? 0,
       totalSeconds: sessionSummary._sum.durationSeconds ?? 0,
       sessions: sessionSummary._count._all,
-      currentStreakDays: computeCurrentStreak({
-        activeDayKeys: sortedDayKeys,
-        todayKey: formatDateInput(now, timezone),
-        yesterdayKey: formatDateInput(yesterday, timezone),
-      }),
+      currentStreakDays,
     },
   };
 }

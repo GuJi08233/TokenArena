@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  finalizePendingLeaderboardPeriods: vi.fn().mockResolvedValue(undefined),
   getPricingCatalog: vi.fn().mockResolvedValue(null),
   prisma: {
     $transaction: vi.fn(),
@@ -16,9 +15,6 @@ const mocks = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("./finalize", () => ({
-  finalizePendingLeaderboardPeriods: mocks.finalizePendingLeaderboardPeriods,
-}));
 vi.mock("@/lib/pricing/catalog", () => ({
   getPricingCatalog: mocks.getPricingCatalog,
 }));

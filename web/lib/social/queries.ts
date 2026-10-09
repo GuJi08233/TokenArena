@@ -686,6 +686,24 @@ export async function getPublicProfileActivityShareData(input: {
   };
 }
 
+async function resolveLinkedIdentity(
+  accounts: Parameters<typeof pickLinkedAccount>[0],
+): Promise<PublicProfilePageData["linkedIdentity"]> {
+  const picked = pickLinkedAccount(accounts);
+
+  if (!picked) {
+    return null;
+  }
+
+  const profileUrl = await resolveLinkedProfileUrl(
+    picked.providerId,
+    picked.accountId,
+    picked.accessToken,
+  );
+
+  return profileUrl ? { providerId: picked.providerId, profileUrl } : null;
+}
+
 export async function getPublicProfilePageData(input: {
   username: string;
   viewerUserId?: string | null;
@@ -729,8 +747,9 @@ export async function getPublicProfilePageData(input: {
   ]);
 
   // Achievement reads must not replay history or prevent otherwise available
-  // usage statistics from rendering. An unavailable score stays unknown.
-  const [arenaSummary, achievementWall] = await Promise.all([
+  // usage statistics from rendering. An unavailable score stays unknown. The
+  // provider lookup is a network call, so it runs alongside them.
+  const [arenaSummary, achievementWall, linkedIdentity] = await Promise.all([
     getArenaSummaryForProfile(user.id).catch((error: unknown) => {
       console.error("Failed to load profile arena summary", {
         userId: user.id,
@@ -745,23 +764,8 @@ export async function getPublicProfilePageData(input: {
       });
       return [];
     }),
+    resolveLinkedIdentity(linkedAccounts),
   ]);
-
-  const pickedLinked = pickLinkedAccount(linkedAccounts);
-  let linkedIdentity: PublicProfilePageData["linkedIdentity"] = null;
-  if (pickedLinked) {
-    const profileUrl = await resolveLinkedProfileUrl(
-      pickedLinked.providerId,
-      pickedLinked.accountId,
-      pickedLinked.accessToken,
-    );
-    if (profileUrl) {
-      linkedIdentity = {
-        providerId: pickedLinked.providerId,
-        profileUrl,
-      };
-    }
-  }
 
   return {
     id: user.id,

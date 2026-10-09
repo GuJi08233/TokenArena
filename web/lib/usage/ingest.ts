@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { synchronizeAchievementsForUser } from "@/lib/achievements/queries";
 import {
   collectAffectedLeaderboardDates,
   findExistingSessionStartDates,
@@ -12,7 +11,9 @@ import {
   resolveOfficialPricingMatch,
 } from "@/lib/pricing/resolve";
 import { prisma } from "@/lib/prisma";
+import { toUtcTimestampLiteral } from "@/lib/sql-timestamp";
 import { tokenCountToBigInt } from "@/lib/token-counts";
+import { getTransactionTimeoutMs } from "@/lib/transaction-timeout";
 import { Prisma } from "../../generated/prisma/client";
 import type { ingestRequestSchema } from "./contracts";
 
@@ -72,20 +73,6 @@ function dedupeByConflictKey<T>(items: T[], key: (item: T) => string): T[] {
   }
 
   return Array.from(byKey.values());
-}
-
-/**
- * Bind a timestamp as an explicit UTC literal.
- *
- * `DateTime` lives in a `timestamp(3)` column — no time zone — holding the UTC
- * wall-clock value, and `::timestamp` ignores any offset in its input rather
- * than applying it. An ISO string therefore casts to exactly the value Prisma
- * writes. A bound `Date` lands on the same value today because the adapter
- * serializes via `getUTC*`, but that is its internal detail; spelling the
- * intent out keeps these statements correct regardless.
- */
-function toUtcTimestampLiteral(value: Date | string) {
-  return (value instanceof Date ? value : new Date(value)).toISOString();
 }
 
 function buildUsageSessionWriteInput(input: NormalizedSessionUsage) {
@@ -487,79 +474,91 @@ async function upsertSessions(
   );
 }
 
+/**
+ * Delete one device's usage and refresh the leaderboard days it touched.
+ *
+ * Achievements are not resynchronized here. The caller schedules that after
+ * responding, so an award pass that times out cannot report a committed delete
+ * as failed.
+ */
 export async function deleteUsageDeviceSnapshot(
   input: DeleteUsageDeviceSnapshotInput,
 ) {
-  const result = await prisma.$transaction(async (tx) => {
-    const [existingBuckets, existingSessions] = await Promise.all([
-      tx.usageBucket.findMany({
-        where: {
-          userId: input.userId,
-          deviceId: input.deviceId,
-        },
-        select: {
-          bucketStart: true,
-        },
-      }),
-      tx.usageSession.findMany({
-        where: {
-          userId: input.userId,
-          deviceId: input.deviceId,
-        },
-        select: {
-          firstMessageAt: true,
-        },
-      }),
-    ]);
+  return prisma.$transaction(
+    async (tx) => {
+      const [existingBuckets, existingSessions] = await Promise.all([
+        tx.usageBucket.findMany({
+          where: {
+            userId: input.userId,
+            deviceId: input.deviceId,
+          },
+          select: {
+            bucketStart: true,
+          },
+        }),
+        tx.usageSession.findMany({
+          where: {
+            userId: input.userId,
+            deviceId: input.deviceId,
+          },
+          select: {
+            firstMessageAt: true,
+          },
+        }),
+      ]);
 
-    const affectedDates = collectAffectedLeaderboardDates({
-      bucketStarts: existingBuckets.map((bucket) => bucket.bucketStart),
-      sessionStarts: existingSessions.map((session) => session.firstMessageAt),
-    });
-
-    const [deletedBuckets, deletedSessions] = await Promise.all([
-      tx.usageBucket.deleteMany({
-        where: {
-          userId: input.userId,
-          deviceId: input.deviceId,
-        },
-      }),
-      tx.usageSession.deleteMany({
-        where: {
-          userId: input.userId,
-          deviceId: input.deviceId,
-        },
-      }),
-    ]);
-
-    if (affectedDates.length > 0) {
-      await recomputeLeaderboardUserDays(tx, {
-        userId: input.userId,
-        dates: affectedDates,
+      const affectedDates = collectAffectedLeaderboardDates({
+        bucketStarts: existingBuckets.map((bucket) => bucket.bucketStart),
+        sessionStarts: existingSessions.map(
+          (session) => session.firstMessageAt,
+        ),
       });
-      await invalidateLeaderboardSnapshots(tx, { dates: affectedDates });
-    }
 
-    return {
-      deletedBuckets: deletedBuckets.count,
-      deletedSessions: deletedSessions.count,
-    };
-  });
+      const [deletedBuckets, deletedSessions] = await Promise.all([
+        tx.usageBucket.deleteMany({
+          where: {
+            userId: input.userId,
+            deviceId: input.deviceId,
+          },
+        }),
+        tx.usageSession.deleteMany({
+          where: {
+            userId: input.userId,
+            deviceId: input.deviceId,
+          },
+        }),
+      ]);
 
-  if (result.deletedBuckets > 0 || result.deletedSessions > 0) {
-    await synchronizeAchievementsForUser(input.userId, "ingest");
-  }
+      if (affectedDates.length > 0) {
+        await recomputeLeaderboardUserDays(tx, {
+          userId: input.userId,
+          dates: affectedDates,
+        });
+        await invalidateLeaderboardSnapshots(tx, { dates: affectedDates });
+      }
 
-  return result;
+      return {
+        deletedBuckets: deletedBuckets.count,
+        deletedSessions: deletedSessions.count,
+      };
+    },
+    { timeout: getTransactionTimeoutMs() },
+  );
 }
 
+/**
+ * Write one ingest batch and the leaderboard days it touched.
+ *
+ * Achievements are not synchronized here, even when the payload asks for it:
+ * the route schedules that after responding. Awaiting the award pass used to
+ * turn a timeout there into a 500 for an upload that had already committed,
+ * and the CLI then re-sent the same batch on every run.
+ */
 export async function ingestUsagePayload(input: IngestUsagePayloadInput) {
   const seenAt = new Date();
   const catalog = await getPricingCatalog();
 
-  const transactionTimeout = Number(process.env.TRANSACTION_TIMEOUT) || 5000;
-
-  const result = await prisma.$transaction(
+  return prisma.$transaction(
     async (tx) => {
       await upsertDevice(tx, {
         userId: input.userId,
@@ -610,12 +609,6 @@ export async function ingestUsagePayload(input: IngestUsagePayloadInput) {
         deviceId: input.payload.device.deviceId,
       };
     },
-    { timeout: transactionTimeout },
+    { timeout: getTransactionTimeoutMs() },
   );
-
-  if (input.payload.syncAchievements) {
-    await synchronizeAchievementsForUser(input.userId, "ingest");
-  }
-
-  return result;
 }

@@ -2,33 +2,76 @@ import { createHash } from "node:crypto";
 
 const LINUXDO_LOOKUP_TIMEOUT_MS = 1_000;
 const LINUXDO_SUCCESS_TTL_MS = 60 * 60 * 1_000;
-const LINUXDO_FAILURE_TTL_MS = 60 * 1_000;
-const LINUXDO_CACHE_MAX_ENTRIES = 256;
+const GITHUB_LOOKUP_TIMEOUT_MS = 2_000;
+const GITHUB_SUCCESS_TTL_MS = 24 * 60 * 60 * 1_000;
+const PROVIDER_LOOKUP_FAILURE_TTL_MS = 60 * 1_000;
+const PROVIDER_LOOKUP_CACHE_MAX_ENTRIES = 256;
 
-type LinuxdoUsernameCacheEntry = {
-  username: string | null;
+type ProviderLookupCacheEntry = {
+  value: string | null;
   expiresAt: number;
 };
 
-// The public profile is reachable by anyone. Keep resolved usernames in a
-// bounded process-local cache so repeated views do not call the provider with
-// the owner's access token. Keys contain a token digest, never the token.
-const linuxdoUsernameCache = new Map<string, LinuxdoUsernameCacheEntry>();
-const linuxdoLookups = new Map<string, Promise<string | null>>();
+/**
+ * A bounded, process-local cache for one provider's profile lookups.
+ *
+ * The public profile is reachable by anyone and waits for these lookups, so
+ * repeated views must not call the provider again — failures included, or an
+ * unreachable provider would hold up every view until its request gave up.
+ * Concurrent views of one profile share a single pending request.
+ */
+function createProviderLookup(successTtlMs: number) {
+  const entries = new Map<string, ProviderLookupCacheEntry>();
+  const pending = new Map<string, Promise<string | null>>();
 
-function cacheLinuxdoUsername(key: string, username: string | null) {
-  linuxdoUsernameCache.delete(key);
-  linuxdoUsernameCache.set(key, {
-    username,
-    expiresAt:
-      Date.now() + (username ? LINUXDO_SUCCESS_TTL_MS : LINUXDO_FAILURE_TTL_MS),
-  });
+  function remember(key: string, value: string | null) {
+    entries.delete(key);
+    entries.set(key, {
+      value,
+      expiresAt:
+        Date.now() + (value ? successTtlMs : PROVIDER_LOOKUP_FAILURE_TTL_MS),
+    });
 
-  if (linuxdoUsernameCache.size > LINUXDO_CACHE_MAX_ENTRIES) {
-    const oldestKey = linuxdoUsernameCache.keys().next().value;
-    if (oldestKey) linuxdoUsernameCache.delete(oldestKey);
+    if (entries.size > PROVIDER_LOOKUP_CACHE_MAX_ENTRIES) {
+      const oldestKey = entries.keys().next().value;
+      if (oldestKey) entries.delete(oldestKey);
+    }
   }
+
+  return async function lookup(
+    key: string,
+    load: () => Promise<string | null>,
+  ): Promise<string | null> {
+    const cached = entries.get(key);
+    if (cached) {
+      if (cached.expiresAt > Date.now()) {
+        // Refresh insertion order so the cap evicts the least recently used key.
+        entries.delete(key);
+        entries.set(key, cached);
+        return cached.value;
+      }
+      entries.delete(key);
+    }
+
+    const inflight = pending.get(key);
+    if (inflight) return inflight;
+
+    const request = load();
+    pending.set(key, request);
+
+    try {
+      const value = await request;
+      remember(key, value);
+      return value;
+    } finally {
+      pending.delete(key);
+    }
+  };
 }
+
+// Keys contain a digest of the owner's access token, never the token.
+const lookupLinuxdoUsername = createProviderLookup(LINUXDO_SUCCESS_TTL_MS);
+const lookupGithubProfileUrl = createProviderLookup(GITHUB_SUCCESS_TTL_MS);
 
 export const LINKED_PROFILE_PROVIDER_IDS = [
   "github",
@@ -79,24 +122,29 @@ async function resolveGithubProfileUrl(
     return `https://github.com/${encodeURIComponent(trimmed)}`;
   }
 
-  try {
-    const response = await fetch(`https://api.github.com/user/${trimmed}`, {
-      headers: {
-        Accept: "application/vnd.github+json",
-        "User-Agent": "tokenarena-web",
-      },
-      next: { revalidate: 86_400 },
-    });
+  // GitHub OAuth stores the numeric user id, so every GitHub-linked profile
+  // takes this path.
+  return lookupGithubProfileUrl(trimmed, async () => {
+    try {
+      const response = await fetch(`https://api.github.com/user/${trimmed}`, {
+        headers: {
+          Accept: "application/vnd.github+json",
+          "User-Agent": "tokenarena-web",
+        },
+        next: { revalidate: 86_400 },
+        signal: AbortSignal.timeout(GITHUB_LOOKUP_TIMEOUT_MS),
+      });
 
-    if (!response.ok) {
+      if (!response.ok) {
+        return null;
+      }
+
+      const data = (await response.json()) as { html_url?: string };
+      return typeof data.html_url === "string" ? data.html_url : null;
+    } catch {
       return null;
     }
-
-    const data = (await response.json()) as { html_url?: string };
-    return typeof data.html_url === "string" ? data.html_url : null;
-  } catch {
-    return null;
-  }
+  });
 }
 
 async function resolveLinuxdoUsernameFromAccessToken(
@@ -110,22 +158,8 @@ async function resolveLinuxdoUsernameFromAccessToken(
   }
 
   const tokenDigest = createHash("sha256").update(trimmedToken).digest("hex");
-  const cacheKey = `${accountId}:${tokenDigest}`;
-  const cached = linuxdoUsernameCache.get(cacheKey);
-  if (cached) {
-    if (cached.expiresAt > Date.now()) {
-      // Refresh insertion order so the cap evicts the least recently used key.
-      linuxdoUsernameCache.delete(cacheKey);
-      linuxdoUsernameCache.set(cacheKey, cached);
-      return cached.username;
-    }
-    linuxdoUsernameCache.delete(cacheKey);
-  }
 
-  const pending = linuxdoLookups.get(cacheKey);
-  if (pending) return pending;
-
-  const lookup = (async () => {
+  return lookupLinuxdoUsername(`${accountId}:${tokenDigest}`, async () => {
     try {
       const response = await fetch("https://connect.linux.do/api/user", {
         headers: {
@@ -148,16 +182,7 @@ async function resolveLinuxdoUsernameFromAccessToken(
     } catch {
       return null;
     }
-  })();
-  linuxdoLookups.set(cacheKey, lookup);
-
-  try {
-    const username = await lookup;
-    cacheLinuxdoUsername(cacheKey, username);
-    return username;
-  } finally {
-    linuxdoLookups.delete(cacheKey);
-  }
+  });
 }
 
 async function resolveLinuxdoProfileUrl(
