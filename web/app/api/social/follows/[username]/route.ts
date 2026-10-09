@@ -1,9 +1,26 @@
-import { NextResponse } from "next/server";
-import { synchronizeAchievementsForUser } from "@/lib/achievements/queries";
+import { after, NextResponse } from "next/server";
+import { synchronizeAchievementsInBackground } from "@/lib/achievements/queries";
 import { normalizeUsername } from "@/lib/auth-username";
 import { prisma } from "@/lib/prisma";
 import { getOptionalSession } from "@/lib/session";
 import { followTagUpdateSchema } from "@/lib/social/contracts";
+
+/**
+ * Re-evaluate both sides' social achievements once the response is sent.
+ *
+ * Only a follow that actually changed reaches this: repeating a request used
+ * to replay the other account's whole history every time, and a failed
+ * replay reported a follow that had already been saved as failed.
+ */
+function synchronizeSocialAchievements(
+  followerId: string,
+  followingId: string,
+) {
+  after(async () => {
+    await synchronizeAchievementsInBackground(followerId, "social");
+    await synchronizeAchievementsInBackground(followingId, "social");
+  });
+}
 
 async function getTargetUser(username: string) {
   return prisma.user.findUnique({
@@ -46,24 +63,19 @@ export async function POST(
     return NextResponse.json({ error: "PROFILE_PRIVATE" }, { status: 403 });
   }
 
-  await prisma.follow.upsert({
-    where: {
-      followerId_followingId: {
+  const created = await prisma.follow.createMany({
+    data: [
+      {
         followerId: session.user.id,
         followingId: targetUser.id,
       },
-    },
-    update: {},
-    create: {
-      followerId: session.user.id,
-      followingId: targetUser.id,
-    },
+    ],
+    skipDuplicates: true,
   });
 
-  await Promise.all([
-    synchronizeAchievementsForUser(session.user.id, "social"),
-    synchronizeAchievementsForUser(targetUser.id, "social"),
-  ]);
+  if (created.count > 0) {
+    synchronizeSocialAchievements(session.user.id, targetUser.id);
+  }
 
   return NextResponse.json({ success: true });
 }
@@ -85,17 +97,16 @@ export async function DELETE(
     return NextResponse.json({ error: "NOT_FOUND" }, { status: 404 });
   }
 
-  await prisma.follow.deleteMany({
+  const removed = await prisma.follow.deleteMany({
     where: {
       followerId: session.user.id,
       followingId: targetUser.id,
     },
   });
 
-  await Promise.all([
-    synchronizeAchievementsForUser(session.user.id, "social"),
-    synchronizeAchievementsForUser(targetUser.id, "social"),
-  ]);
+  if (removed.count > 0) {
+    synchronizeSocialAchievements(session.user.id, targetUser.id);
+  }
 
   return NextResponse.json({ success: true });
 }

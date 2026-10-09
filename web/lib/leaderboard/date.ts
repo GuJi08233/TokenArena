@@ -184,6 +184,41 @@ export function resolveLatestFinalizableLeaderboardWindow(
   };
 }
 
+/**
+ * The most recent `count` finalizable windows of a period, oldest first.
+ *
+ * Finalization only runs when a request triggers it, so a window whose pass
+ * failed, or that no request reached in time, would never be revisited once a
+ * newer window became the latest.
+ */
+export function resolveFinalizableLeaderboardWindows(
+  period: LeaderboardPeriod,
+  now = new Date(),
+  count = 1,
+): Array<{ start: Date; end: Date }> {
+  const latest = resolveLatestFinalizableLeaderboardWindow(period, now);
+
+  if (!latest?.start || !latest.end) {
+    return [];
+  }
+
+  const windows = [{ start: latest.start, end: latest.end }];
+
+  while (windows.length < count) {
+    const end = windows[0].start;
+    const start =
+      period === "day"
+        ? addDays(end, -1)
+        : period === "week"
+          ? addDays(end, -7)
+          : startOfShanghaiMonth(addDays(end, -1));
+
+    windows.unshift({ start, end });
+  }
+
+  return windows;
+}
+
 export function formatLeaderboardWindowLabel(input: {
   period: LeaderboardPeriod;
   windowStart: string | null;

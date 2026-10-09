@@ -1,6 +1,6 @@
 [![tokenarena](assets/banner.png)](https://token.guji.uno)
 
-[![Docker Image](https://img.shields.io/badge/Docker%20Image-tokenarena%3Alatest-blue?logo=docker&logoColor=white)](https://github.com/GuJi08233/TokenArena/pkgs/container/tokenarena) [![pnpm](https://img.shields.io/badge/pnpm-monorepo-blue?logo=pnpm)](https://pnpm.io/) [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square)](https://github.com/GuJi08233/TokenArena/pulls) [![License](https://img.shields.io/github/license/GuJi08233/TokenArena)](LICENSE) [![React Doctor](https://www.react.doctor/share/badge?p=web&s=89&e=0&w=40&f=30)](https://www.react.doctor/share?p=web&s=89&e=0&w=40&f=30)
+[![Docker Image](https://img.shields.io/badge/Docker%20Image-tokenarena%3Alatest-blue?logo=docker&logoColor=white)](https://github.com/GuJi08233/TokenArena/pkgs/container/tokenarena) [![pnpm](https://img.shields.io/badge/pnpm-monorepo-blue?logo=pnpm)](https://pnpm.io/) [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square)](https://github.com/GuJi08233/TokenArena/pulls) [![License](https://img.shields.io/github/license/GuJi08233/TokenArena)](LICENSE) [![React Doctor](https://www.react.doctor/share/badge?p=web&s=89&e=0&w=38&f=28)](https://www.react.doctor/share?p=web&s=89&e=0&w=38&f=28)
 
 你有没有好奇过：
 
@@ -171,6 +171,7 @@ git add --renormalize .
 | `GITLAB_BASE_URL` | GitLab 实例地址，支持 `gitlab.com` 或自建实例 | `https://gitlab.example.com` |
 | `GITLAB_CLIENT_ID` | GitLab OAuth Application Client ID | `glapp-xxxxx` |
 | `GITLAB_CLIENT_SECRET` | GitLab OAuth Application Client Secret | `secret` |
+| `TRANSACTION_TIMEOUT` | 可选。数据库交互式事务的超时时间（毫秒），作用于上传、成就同步和榜单结算；未设置时为 5000。数据库延迟较高时可调大 | `15000` |
 
 当 `AUTH_MODE=production` 时，还需要按需配置以下 OAuth 变量：
 

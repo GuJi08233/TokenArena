@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { after } from "next/server";
 import { getTranslations } from "next-intl/server";
 import { Suspense } from "react";
 import { LeaderboardMetricSelect } from "@/components/social/leaderboard-metric-select";
@@ -13,6 +14,7 @@ import {
   leaderboardMetricSchema,
   leaderboardPeriodSchema,
 } from "@/lib/leaderboard/contracts";
+import { settlePendingLeaderboardPeriods } from "@/lib/leaderboard/finalize";
 import { getLeaderboardPageData } from "@/lib/leaderboard/queries";
 import {
   defaultLeaderboardMetric,
@@ -154,6 +156,9 @@ export default async function LeaderboardPage({
   ]);
   const period = resolvePeriod(firstValue(resolvedSearchParams?.period));
   const metric = resolveMetric(firstValue(resolvedSearchParams?.metric));
+  // The board does not read finished-period results, so issuing their badges
+  // waits until the page is sent and cannot fail it.
+  after(settlePendingLeaderboardPeriods);
   const [data, t, tCard, tNav] = await Promise.all([
     getLeaderboardPageData({
       period,

@@ -1,7 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  synchronizeAchievementsForUser: vi.fn().mockResolvedValue([]),
   getPricingCatalog: vi.fn().mockResolvedValue([]),
   collectAffectedLeaderboardDates: vi.fn((): Date[] => []),
   findExistingSessionStartDates: vi.fn().mockResolvedValue([]),
@@ -12,9 +11,6 @@ const mocks = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("@/lib/achievements/queries", () => ({
-  synchronizeAchievementsForUser: mocks.synchronizeAchievementsForUser,
-}));
 vi.mock("@/lib/pricing/catalog", () => ({
   getPricingCatalog: mocks.getPricingCatalog,
 }));
@@ -63,7 +59,7 @@ function boundValues(executeRaw: ReturnType<typeof vi.fn>): unknown[] {
   return executeRaw.mock.calls.flatMap(([statement]) => statement.values);
 }
 
-describe("ingestUsagePayload achievement synchronization", () => {
+describe("ingestUsagePayload", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getPricingCatalog.mockResolvedValue(null);
@@ -72,6 +68,10 @@ describe("ingestUsagePayload achievement synchronization", () => {
     mocks.prisma.$transaction.mockImplementation(async (callback) =>
       callback(buildTransactionClient()),
     );
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it("persists cache writes in buckets and derives session totals from model usage", async () => {
@@ -259,25 +259,26 @@ describe("ingestUsagePayload achievement synchronization", () => {
     expect(values.filter((value) => value === BigInt(30))).toHaveLength(2);
   });
 
-  it("keeps achievement synchronization enabled for direct API payloads", async () => {
-    await ingestUsagePayload({
-      userId: "user-1",
-      payload: buildPayload(),
-    });
+  it("bounds the write transaction with TRANSACTION_TIMEOUT", async () => {
+    await ingestUsagePayload({ userId: "user-1", payload: buildPayload() });
+    vi.stubEnv("TRANSACTION_TIMEOUT", "20000");
+    await ingestUsagePayload({ userId: "user-1", payload: buildPayload() });
 
-    expect(mocks.synchronizeAchievementsForUser).toHaveBeenCalledWith(
-      "user-1",
-      "ingest",
-    );
+    expect(
+      mocks.prisma.$transaction.mock.calls.map(([, options]) => options),
+    ).toEqual([{ timeout: 5_000 }, { timeout: 20_000 }]);
   });
 
-  it("defers achievement synchronization when requested by a batch client", async () => {
-    await ingestUsagePayload({
-      userId: "user-1",
-      payload: buildPayload(false),
+  it("returns once the batch commits, leaving achievements to the route", async () => {
+    await expect(
+      ingestUsagePayload({ userId: "user-1", payload: buildPayload(true) }),
+    ).resolves.toEqual({
+      ok: true,
+      bucketCount: 0,
+      sessionCount: 0,
+      deviceId: "device-1234",
     });
-
-    expect(mocks.synchronizeAchievementsForUser).not.toHaveBeenCalled();
+    expect(mocks.prisma.$transaction).toHaveBeenCalledOnce();
   });
 
   it("writes bounded batches and refreshes affected leaderboard days", async () => {
@@ -349,7 +350,6 @@ describe("ingestUsagePayload achievement synchronization", () => {
     expect(tx.$executeRaw).toHaveBeenCalledTimes(2);
     expect(mocks.recomputeLeaderboardUserDays).toHaveBeenCalledOnce();
     expect(mocks.invalidateLeaderboardSnapshots).toHaveBeenCalledOnce();
-    expect(mocks.synchronizeAchievementsForUser).not.toHaveBeenCalled();
     expect(result).toEqual({
       ok: true,
       bucketCount: 25,

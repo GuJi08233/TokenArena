@@ -1,7 +1,6 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  synchronizeAchievementsForUser: vi.fn().mockResolvedValue([]),
   getPricingCatalog: vi.fn().mockResolvedValue(null),
   collectAffectedLeaderboardDates: vi.fn((): Date[] => []),
   findExistingSessionStartDates: vi.fn().mockResolvedValue([]),
@@ -10,9 +9,6 @@ const mocks = vi.hoisted(() => ({
   prisma: { $transaction: vi.fn() },
 }));
 
-vi.mock("@/lib/achievements/queries", () => ({
-  synchronizeAchievementsForUser: mocks.synchronizeAchievementsForUser,
-}));
 vi.mock("@/lib/pricing/catalog", () => ({
   getPricingCatalog: mocks.getPricingCatalog,
 }));

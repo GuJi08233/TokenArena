@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 
+import { synchronizeAchievementsInBackground } from "@/lib/achievements/queries";
 import { findUsageApiKeyByRaw } from "@/lib/usage/api-keys";
 import {
   INGEST_MAX_PAYLOAD_BYTES,
@@ -127,6 +128,12 @@ export async function POST(request: Request) {
     payload: parsed.data,
   });
 
+  // The upload has committed; the award pass behind it runs after the
+  // response, so its failure cannot make the CLI re-send the batch.
+  if (parsed.data.syncAchievements) {
+    after(() => synchronizeAchievementsInBackground(apiKey.userId, "ingest"));
+  }
+
   return NextResponse.json(result);
 }
 
@@ -156,6 +163,10 @@ export async function DELETE(request: Request) {
     userId: apiKey.userId,
     deviceId: parsed.data.deviceId,
   });
+
+  if (result.deletedBuckets > 0 || result.deletedSessions > 0) {
+    after(() => synchronizeAchievementsInBackground(apiKey.userId, "ingest"));
+  }
 
   return NextResponse.json(result);
 }

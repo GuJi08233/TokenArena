@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   formatLeaderboardWindowLabel,
   getShanghaiDateKey,
+  resolveFinalizableLeaderboardWindows,
   resolveLatestFinalizableLeaderboardWindow,
   resolveLeaderboardWindow,
   SHANGHAI_TIMEZONE,
@@ -73,6 +74,84 @@ describe("leaderboard date helpers", () => {
       end: new Date("2026-04-30T16:00:00.000Z"),
       finalizeAt: new Date("2026-04-30T20:00:00.000Z"),
     });
+  });
+
+  it("lists recent finalizable windows oldest first across calendar lengths", () => {
+    expect(
+      resolveFinalizableLeaderboardWindows(
+        "day",
+        new Date("2026-04-06T12:00:00.000Z"),
+        3,
+      ),
+    ).toEqual([
+      {
+        start: new Date("2026-04-02T16:00:00.000Z"),
+        end: new Date("2026-04-03T16:00:00.000Z"),
+      },
+      {
+        start: new Date("2026-04-03T16:00:00.000Z"),
+        end: new Date("2026-04-04T16:00:00.000Z"),
+      },
+      {
+        start: new Date("2026-04-04T16:00:00.000Z"),
+        end: new Date("2026-04-05T16:00:00.000Z"),
+      },
+    ]);
+    expect(
+      resolveFinalizableLeaderboardWindows(
+        "week",
+        new Date("2026-04-05T20:00:00.000Z"),
+        2,
+      ),
+    ).toEqual([
+      {
+        start: new Date("2026-03-22T16:00:00.000Z"),
+        end: new Date("2026-03-29T16:00:00.000Z"),
+      },
+      {
+        start: new Date("2026-03-29T16:00:00.000Z"),
+        end: new Date("2026-04-05T16:00:00.000Z"),
+      },
+    ]);
+    // March has 31 days and February 28: each window still ends where the
+    // next one starts.
+    expect(
+      resolveFinalizableLeaderboardWindows(
+        "month",
+        new Date("2026-04-30T20:00:00.000Z"),
+        3,
+      ),
+    ).toEqual([
+      {
+        start: new Date("2026-01-31T16:00:00.000Z"),
+        end: new Date("2026-02-28T16:00:00.000Z"),
+      },
+      {
+        start: new Date("2026-02-28T16:00:00.000Z"),
+        end: new Date("2026-03-31T16:00:00.000Z"),
+      },
+      {
+        start: new Date("2026-03-31T16:00:00.000Z"),
+        end: new Date("2026-04-30T16:00:00.000Z"),
+      },
+    ]);
+  });
+
+  it("lists no finalizable windows before 4am Shanghai time", () => {
+    expect(
+      resolveFinalizableLeaderboardWindows(
+        "day",
+        new Date("2026-04-05T19:59:59.999Z"),
+        7,
+      ),
+    ).toEqual([]);
+    expect(
+      resolveFinalizableLeaderboardWindows(
+        "all_time",
+        new Date("2026-04-06T12:00:00.000Z"),
+        7,
+      ),
+    ).toEqual([]);
   });
 
   it("formats window labels for display beside the metric filter", () => {
