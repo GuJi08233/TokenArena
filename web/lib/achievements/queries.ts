@@ -609,7 +609,7 @@ async function synchronizeUserAchievements(input: {
   return plan.records;
 }
 
-export type ArenaSummary = {
+type ArenaSummary = {
   score: number;
   level: number;
   totalTokens: number;
@@ -694,42 +694,36 @@ export async function getAchievementsPageData(
   return pageData;
 }
 
-export async function getAchievementArenaSummary(
-  userId: string,
-): Promise<ArenaSummary> {
-  const { summary } = await refreshUserAchievements(userId, "manual");
-  return summary;
-}
+type ProfileArenaSummary = Pick<ArenaSummary, "score" | "level"> & {
+  totalActiveDays: number | null;
+};
 
 /**
- * Arena score/level for a profile view, read from the materialized row.
- *
- * Falls back to a full recompute only when no row exists yet. An award written
- * after the summary was computed only needs a small score/level correction from
- * stored achievement counts; usage history is not replayed on that path.
+ * Read a profile's score without issuing awards or replaying usage history.
+ * Missing or older summaries use the per-code achievement counts, whose size
+ * does not grow with the award ledger. Only achievement synchronization writes
+ * the summary; a public read must not overwrite a concurrent synchronization.
  */
 export async function getArenaSummaryForProfile(
   userId: string,
-): Promise<ArenaSummary> {
+): Promise<ProfileArenaSummary> {
   const stored = await prisma.userArenaSummary.findUnique({
     where: { userId },
   });
 
-  if (!stored) {
-    return getAchievementArenaSummary(userId);
-  }
+  let score = stored?.score ?? 0;
+  let level = stored?.level ?? getArenaLevelFromScore(score);
+  const hasNewAchievement = stored
+    ? await prisma.userAchievement.findFirst({
+        where: { userId, updatedAt: { gt: stored.computedAt } },
+        select: { code: true },
+      })
+    : null;
 
-  let score = stored.score;
-  let level = stored.level;
-  const hasNewAchievement = await prisma.userAchievement.findFirst({
-    where: { userId, updatedAt: { gt: stored.computedAt } },
-    select: { code: true },
-  });
-
-  if (hasNewAchievement) {
+  if (!stored || hasNewAchievement) {
     const achievements = await prisma.userAchievement.findMany({
       where: { userId },
-      select: { code: true, awardCount: true, updatedAt: true },
+      select: { code: true, awardCount: true },
     });
     score = achievements.reduce(
       (sum, achievement) =>
@@ -740,26 +734,12 @@ export async function getArenaSummaryForProfile(
       0,
     );
     level = getArenaLevelFromScore(score);
-    const latestAchievementUpdate = achievements.reduce(
-      (latest, achievement) =>
-        achievement.updatedAt > latest ? achievement.updatedAt : latest,
-      stored.computedAt,
-    );
-
-    await prisma.userArenaSummary.update({
-      where: { userId },
-      data: { score, level, computedAt: latestAchievementUpdate },
-    });
   }
 
   return {
     score,
     level,
-    totalTokens: tokenCountToNumber(stored.totalTokens),
-    totalEstimatedCostUsd: stored.totalEstimatedCostUsd,
-    totalActiveSeconds: stored.totalActiveSeconds,
-    totalSessions: stored.totalSessions,
-    totalActiveDays: stored.totalActiveDays,
+    totalActiveDays: stored?.totalActiveDays ?? null,
   };
 }
 
