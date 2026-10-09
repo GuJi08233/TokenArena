@@ -276,10 +276,12 @@ export default async function PublicProfilePage({
                 <span className="text-muted-foreground">{t("following")}</span>
               </div>
 
-              <ProfileArenaLevelBar
-                locale={locale}
-                score={profile.overview.arenaScore}
-              />
+              {profile.overview.arenaScore !== null ? (
+                <ProfileArenaLevelBar
+                  locale={locale}
+                  score={profile.overview.arenaScore}
+                />
+              ) : null}
 
               {profile.achievementWall.length > 0 ? (
                 <div className="space-y-2 border-t border-border/50 pt-4">

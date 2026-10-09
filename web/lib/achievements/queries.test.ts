@@ -38,36 +38,26 @@ vi.mock("@/lib/prisma", () => ({ prisma: mocks.prisma }));
 
 import { getArenaSummaryForProfile } from "./queries";
 
-/** Wire up the mocks an all-time recompute walks through, all empty. */
-function stubEmptyHistory() {
-  mocks.prisma.user.findUniqueOrThrow.mockResolvedValue({
-    usagePreference: { publicProfileEnabled: true, updatedAt: new Date() },
-  });
-  mocks.prisma.usageBucket.findMany.mockResolvedValue([]);
-  mocks.prisma.usageSession.findMany.mockResolvedValue([]);
-  mocks.prisma.follow.findMany.mockResolvedValue([]);
-  mocks.prisma.userAchievement.findMany.mockResolvedValue([]);
-  mocks.prisma.$transaction.mockImplementation(async (callback) =>
-    callback({
-      achievementAward: { createMany: vi.fn().mockResolvedValue({}) },
-      userAchievement: { upsert: vi.fn().mockResolvedValue({}) },
-    }),
-  );
-  mocks.prisma.userArenaSummary.upsert.mockResolvedValue({});
+function expectReadOnlyProfile() {
+  expect(mocks.prisma.usageBucket.findMany).not.toHaveBeenCalled();
+  expect(mocks.prisma.usageSession.findMany).not.toHaveBeenCalled();
+  expect(mocks.prisma.follow.findMany).not.toHaveBeenCalled();
+  expect(
+    mocks.getUserGlobalLeaderboardRanksByTotalTokens,
+  ).not.toHaveBeenCalled();
+  expect(mocks.finalizePendingLeaderboardPeriods).not.toHaveBeenCalled();
+  expect(mocks.prisma.$transaction).not.toHaveBeenCalled();
+  expect(mocks.prisma.userArenaSummary.upsert).not.toHaveBeenCalled();
+  expect(mocks.prisma.userArenaSummary.update).not.toHaveBeenCalled();
 }
 
 describe("getArenaSummaryForProfile", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     mocks.prisma.userAchievement.findFirst.mockResolvedValue(null);
-    mocks.getUsagePreference.mockResolvedValue({ timezone: "Asia/Shanghai" });
-    mocks.getPricingCatalog.mockResolvedValue(null);
-    mocks.getUserGlobalLeaderboardRanksByTotalTokens.mockResolvedValue({
-      day: null,
-      week: null,
-      month: null,
-      all_time: null,
-    });
+    mocks.prisma.userAchievement.findMany.mockResolvedValue([]);
+    // Profiles must work even when the full synchronization would time out.
+    mocks.prisma.$transaction.mockRejectedValue(new Error("P2028"));
   });
 
   it("serves the materialized row without replaying usage history", async () => {
@@ -88,24 +78,13 @@ describe("getArenaSummaryForProfile", () => {
     expect(summary).toEqual({
       score: 420,
       level: 7,
-      totalTokens: 9_000,
-      totalEstimatedCostUsd: 12.5,
-      totalActiveSeconds: 3_600,
-      totalSessions: 42,
       totalActiveDays: 30,
     });
-    // The whole point of the table: none of the expensive work runs.
-    expect(mocks.prisma.usageBucket.findMany).not.toHaveBeenCalled();
-    expect(mocks.prisma.usageSession.findMany).not.toHaveBeenCalled();
-    expect(
-      mocks.getUserGlobalLeaderboardRanksByTotalTokens,
-    ).not.toHaveBeenCalled();
-    expect(mocks.finalizePendingLeaderboardPeriods).not.toHaveBeenCalled();
-    expect(mocks.prisma.userArenaSummary.upsert).not.toHaveBeenCalled();
-    expect(mocks.prisma.userArenaSummary.update).not.toHaveBeenCalled();
+    expect(mocks.prisma.userAchievement.findMany).not.toHaveBeenCalled();
+    expectReadOnlyProfile();
   });
 
-  it("repairs an older score from stored achievements without replaying usage", async () => {
+  it("reads an updated score without overwriting a concurrent synchronization", async () => {
     const computedAt = new Date("2026-04-05T12:00:00.000Z");
     const updatedAt = new Date("2026-04-06T12:00:00.000Z");
     mocks.prisma.userArenaSummary.findUnique.mockResolvedValue({
@@ -130,27 +109,41 @@ describe("getArenaSummaryForProfile", () => {
 
     expect(summary.score).toBe(100);
     expect(summary.level).toBe(2);
-    expect(mocks.prisma.userArenaSummary.update).toHaveBeenCalledWith({
-      where: { userId: "user-1" },
-      data: { score: 100, level: 2, computedAt: updatedAt },
-    });
-    expect(mocks.prisma.usageBucket.findMany).not.toHaveBeenCalled();
-    expect(mocks.prisma.usageSession.findMany).not.toHaveBeenCalled();
-    expect(
-      mocks.getUserGlobalLeaderboardRanksByTotalTokens,
-    ).not.toHaveBeenCalled();
+    expect(summary.totalActiveDays).toBe(30);
+    expectReadOnlyProfile();
   });
 
-  it("recomputes and persists once when no row exists yet", async () => {
+  it("reads large award counts without rebuilding a missing summary on repeated views", async () => {
     mocks.prisma.userArenaSummary.findUnique.mockResolvedValue(null);
-    stubEmptyHistory();
+    mocks.prisma.userAchievement.findMany.mockResolvedValue([
+      { code: "leaderboard_day_top50", awardCount: 14_046 },
+      { code: "unknown_achievement", awardCount: 10_640 },
+    ]);
 
-    const summary = await getArenaSummaryForProfile("user-1");
+    for (let view = 0; view < 2; view += 1) {
+      expect(await getArenaSummaryForProfile("user-1")).toEqual({
+        score: 140_460,
+        level: 10,
+        totalActiveDays: null,
+      });
+    }
 
-    expect(summary.score).toBe(0);
-    expect(mocks.prisma.usageBucket.findMany).toHaveBeenCalled();
-    expect(mocks.prisma.userArenaSummary.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { userId: "user-1" } }),
-    );
+    expect(mocks.prisma.userAchievement.findMany).toHaveBeenCalledWith({
+      where: { userId: "user-1" },
+      select: { code: true, awardCount: true },
+    });
+    expect(mocks.prisma.userAchievement.findFirst).not.toHaveBeenCalled();
+    expectReadOnlyProfile();
+  });
+
+  it("returns the initial level when no achievements have been awarded", async () => {
+    mocks.prisma.userArenaSummary.findUnique.mockResolvedValue(null);
+
+    expect(await getArenaSummaryForProfile("user-1")).toEqual({
+      score: 0,
+      level: 1,
+      totalActiveDays: null,
+    });
+    expectReadOnlyProfile();
   });
 });

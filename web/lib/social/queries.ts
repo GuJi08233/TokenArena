@@ -154,13 +154,13 @@ export type PublicProfilePageData = {
     timezone: string;
   };
   overview: {
-    arenaScore: number;
-    arenaLevel: number;
+    arenaScore: number | null;
+    arenaLevel: number | null;
     totalTokens: number;
     estimatedCostUsd: number;
     activeSeconds: number;
     sessions: number;
-    activeDays: number;
+    activeDays: number | null;
   };
   heatmap: ProfileHeatmapDay[];
   topTools: Array<{
@@ -728,13 +728,23 @@ export async function getPublicProfilePageData(input: {
     }),
   ]);
 
-  // Both of these read materialized rows (`UserArenaSummary`,
-  // `UserAchievement`) rather than replaying the user's history: a public
-  // profile is reachable by anyone, so nothing on this path may scale with how
-  // much the account has ever synced.
+  // Achievement reads must not replay history or prevent otherwise available
+  // usage statistics from rendering. An unavailable score stays unknown.
   const [arenaSummary, achievementWall] = await Promise.all([
-    getArenaSummaryForProfile(user.id),
-    getProfileAchievementWall(user.id, 5),
+    getArenaSummaryForProfile(user.id).catch((error: unknown) => {
+      console.error("Failed to load profile arena summary", {
+        userId: user.id,
+        error,
+      });
+      return null;
+    }),
+    getProfileAchievementWall(user.id, 5).catch((error: unknown) => {
+      console.error("Failed to load profile achievement wall", {
+        userId: user.id,
+        error,
+      });
+      return [];
+    }),
   ]);
 
   const pickedLinked = pickLinkedAccount(linkedAccounts);
@@ -777,9 +787,9 @@ export async function getPublicProfilePageData(input: {
     overview: {
       // The arena score and active-day streak stay lifetime metrics: they back
       // the level badge, which a range filter must not appear to change.
-      arenaScore: arenaSummary.score,
-      arenaLevel: arenaSummary.level,
-      activeDays: arenaSummary.totalActiveDays,
+      arenaScore: arenaSummary?.score ?? null,
+      arenaLevel: arenaSummary?.level ?? null,
+      activeDays: arenaSummary?.totalActiveDays ?? null,
       ...usageSnapshot.overview,
     },
     heatmap: usageSnapshot.activityHeatmap,
