@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.1](https://github.com/GuJi08233/TokenArena/compare/v0.19.0...v0.19.1) (2026-10-09)
+
+
+### Bug Fixes
+
+* **web:** prevent achievement refresh from blocking public profiles ([#57](https://github.com/GuJi08233/TokenArena/issues/57)) ([c9e8595](https://github.com/GuJi08233/TokenArena/commit/c9e8595f1e24f5323893008e2e51f99f6bd89bca))
+
 ## [0.19.0](https://github.com/GuJi08233/TokenArena/compare/v0.18.4...v0.19.0) (2026-10-08)
 
 
