@@ -198,6 +198,8 @@ describe("resolveLinkedProfileUrl", () => {
     );
   });
 
+  // Lookups are cached per account id for the whole process, so every GitHub
+  // case below uses its own id.
   it("resolves GitHub numeric account ids via the user API", async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
@@ -216,7 +218,7 @@ describe("resolveLinkedProfileUrl", () => {
     }) as typeof fetch;
 
     await expect(
-      resolveLinkedProfileUrl("github", "12345"),
+      resolveLinkedProfileUrl("github", "12346"),
     ).resolves.toBeNull();
   });
 
@@ -224,7 +226,7 @@ describe("resolveLinkedProfileUrl", () => {
     globalThis.fetch = vi.fn().mockRejectedValue(new Error("network error"));
 
     await expect(
-      resolveLinkedProfileUrl("github", "12345"),
+      resolveLinkedProfileUrl("github", "12347"),
     ).resolves.toBeNull();
   });
 
@@ -235,8 +237,103 @@ describe("resolveLinkedProfileUrl", () => {
     }) as typeof fetch;
 
     await expect(
-      resolveLinkedProfileUrl("github", "12345"),
+      resolveLinkedProfileUrl("github", "12348"),
     ).resolves.toBeNull();
+  });
+
+  it("caches a resolved GitHub profile URL", async () => {
+    const mockedFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ html_url: "https://github.com/cached-user" }),
+    });
+    globalThis.fetch = mockedFetch as typeof fetch;
+
+    await expect(resolveLinkedProfileUrl("github", "500001")).resolves.toBe(
+      "https://github.com/cached-user",
+    );
+    await expect(resolveLinkedProfileUrl("github", "500001")).resolves.toBe(
+      "https://github.com/cached-user",
+    );
+    expect(mockedFetch).toHaveBeenCalledOnce();
+    expect(mockedFetch).toHaveBeenCalledWith(
+      "https://api.github.com/user/500001",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+  });
+
+  it("shares a pending GitHub lookup between concurrent profile views", async () => {
+    let resolveResponse!: (value: unknown) => void;
+    const mockedFetch = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          resolveResponse = resolve;
+        }),
+    );
+    globalThis.fetch = mockedFetch as typeof fetch;
+
+    const first = resolveLinkedProfileUrl("github", "500002");
+    const second = resolveLinkedProfileUrl("github", "500002");
+    expect(mockedFetch).toHaveBeenCalledOnce();
+
+    resolveResponse({
+      ok: true,
+      json: async () => ({ html_url: "https://github.com/shared-user" }),
+    });
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      "https://github.com/shared-user",
+      "https://github.com/shared-user",
+    ]);
+  });
+
+  it("does not retry a failed GitHub lookup until its short cache lifetime ends", async () => {
+    let now = 2_000_000;
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+    const mockedFetch = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("connect ETIMEDOUT"))
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ html_url: "https://github.com/recovered-user" }),
+      });
+    globalThis.fetch = mockedFetch as typeof fetch;
+
+    // An unreachable API used to be called again, and waited for, on every
+    // profile view.
+    await expect(
+      resolveLinkedProfileUrl("github", "500003"),
+    ).resolves.toBeNull();
+    now += 59_000;
+    await expect(
+      resolveLinkedProfileUrl("github", "500003"),
+    ).resolves.toBeNull();
+    expect(mockedFetch).toHaveBeenCalledOnce();
+
+    now += 1_001;
+    await expect(resolveLinkedProfileUrl("github", "500003")).resolves.toBe(
+      "https://github.com/recovered-user",
+    );
+    expect(mockedFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("aborts a stalled GitHub request after two seconds", async () => {
+    const timeout = vi.spyOn(AbortSignal, "timeout");
+    globalThis.fetch = vi.fn(
+      (_url, options) =>
+        new Promise((_resolve, reject) => {
+          const signal = (options as RequestInit).signal;
+          expect(signal).toBeInstanceOf(AbortSignal);
+          signal?.addEventListener("abort", () => reject(signal.reason), {
+            once: true,
+          });
+        }),
+    ) as typeof fetch;
+
+    const startedAt = performance.now();
+    await expect(
+      resolveLinkedProfileUrl("github", "500004"),
+    ).resolves.toBeNull();
+    expect(timeout).toHaveBeenCalledWith(2_000);
+    expect(performance.now() - startedAt).toBeGreaterThanOrEqual(1_900);
   });
 
   it("returns null for GitHub when account id is empty/whitespace", async () => {
