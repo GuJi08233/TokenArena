@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.19.2](https://github.com/GuJi08233/TokenArena/compare/v0.19.1...v0.19.2) (2026-10-09)
+
+
+### Bug Fixes
+
+* **web:** issue leaderboard badges that a failed pass skipped ([dbb7a9d](https://github.com/GuJi08233/TokenArena/commit/dbb7a9d5b9da0cc3e4fdae509b5304997bb7ef17))
+* **web:** keep leaderboard badge issuance from failing the board ([dbb7a9d](https://github.com/GuJi08233/TokenArena/commit/dbb7a9d5b9da0cc3e4fdae509b5304997bb7ef17))
+* **web:** show stored achievements when the award pass fails ([dbb7a9d](https://github.com/GuJi08233/TokenArena/commit/dbb7a9d5b9da0cc3e4fdae509b5304997bb7ef17))
+* **web:** stop achievement syncs from failing uploads and follows ([#59](https://github.com/GuJi08233/TokenArena/issues/59)) ([dbb7a9d](https://github.com/GuJi08233/TokenArena/commit/dbb7a9d5b9da0cc3e4fdae509b5304997bb7ef17))
+* **web:** stop achievement syncs from undoing new leaderboard badges ([dbb7a9d](https://github.com/GuJi08233/TokenArena/commit/dbb7a9d5b9da0cc3e4fdae509b5304997bb7ef17))
+* **web:** time out and cache GitHub lookups on public profiles ([dbb7a9d](https://github.com/GuJi08233/TokenArena/commit/dbb7a9d5b9da0cc3e4fdae509b5304997bb7ef17))
+
+
+### Performance Improvements
+
+* **web:** read only as much history as a badge's streak spans ([dbb7a9d](https://github.com/GuJi08233/TokenArena/commit/dbb7a9d5b9da0cc3e4fdae509b5304997bb7ef17))
+
 ## [0.19.1](https://github.com/GuJi08233/TokenArena/compare/v0.19.0...v0.19.1) (2026-10-09)
 
 
