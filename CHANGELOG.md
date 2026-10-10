@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.0](https://github.com/GuJi08233/TokenArena/compare/v0.19.2...v0.20.0) (2026-10-10)
+
+
+### Features
+
+* **web:** keep the CLI install and update guide on the usage page ([256f00c](https://github.com/GuJi08233/TokenArena/commit/256f00c8c21c5f20066d3c09dac26c47046b3e8d))
+
 ## [0.19.2](https://github.com/GuJi08233/TokenArena/compare/v0.19.1...v0.19.2) (2026-10-09)
 
 
