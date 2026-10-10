@@ -27,9 +27,9 @@ export function getApiUrl(origin?: string): string {
   return DEFAULT_API_URL;
 }
 
-/** npm install command */
+/** npm install command; re-running it also upgrades an existing install. */
 export const USAGE_EMPTY_INSTALL_COMMAND =
-  "npm install -g @yishiguji/tokenarena";
+  "npm install -g @yishiguji/tokenarena@latest";
 
 /**
  * Generate init command with API URL.

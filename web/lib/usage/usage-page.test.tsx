@@ -27,6 +27,9 @@ const mocks = vi.hoisted(() => ({
   BreakdownGrid: vi.fn(() =>
     React.createElement("div", { "data-slot": "breakdown-grid" }),
   ),
+  CliSetupSection: vi.fn(() =>
+    React.createElement("div", { "data-slot": "cli-setup-section" }),
+  ),
   EmptyState: vi.fn(() =>
     React.createElement("div", { "data-slot": "empty-state" }),
   ),
@@ -110,6 +113,10 @@ vi.mock("@/lib/social/queries", () => ({
 
 vi.mock("@/components/usage/breakdown-grid", () => ({
   BreakdownGrid: mocks.BreakdownGrid,
+}));
+
+vi.mock("@/components/usage/cli-setup-section", () => ({
+  CliSetupSection: mocks.CliSetupSection,
 }));
 
 vi.mock("@/components/usage/empty-state", () => ({
@@ -340,6 +347,8 @@ describe("UsagePage", () => {
     expect(markup).toContain('data-slot="share-badges-dialog"');
     expect(markup).toContain('data-slot="usage-visualization-card"');
     expect(markup).toContain('data-slot="sessions-section"');
+    expect(markup).toContain('data-slot="cli-setup-section"');
+    expect(mocks.EmptyState).not.toHaveBeenCalled();
   });
 
   it("warns about partial figures and disables report sharing", async () => {

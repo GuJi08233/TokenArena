@@ -11,6 +11,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BreakdownGrid } from "@/components/usage/breakdown-grid";
+import { CliSetupSection } from "@/components/usage/cli-setup-section";
 import { EmptyState } from "@/components/usage/empty-state";
 import { FiltersBar } from "@/components/usage/filters-bar";
 import { KpiGrid } from "@/components/usage/kpi-grid";
@@ -133,6 +134,9 @@ export default async function UsagePage({
       })
     : t("noSyncYet");
   const hasKeys = filterOptions.apiKeys.length > 0;
+  const cliKeysHref = hasKeys
+    ? SETTINGS_CLI_KEYS_HREF
+    : settingsCliKeysHrefWithCreateDialog();
   const appUrl = getAppOrigin() ?? "http://localhost:3000";
   const compactSvgUrl =
     preference.publicProfileEnabled && session.user.username
@@ -224,18 +228,23 @@ export default async function UsagePage({
                 sessions={dashboard.sessions}
                 timezone={preference.timezone}
               />
+              <CliSetupSection
+                step1Action={
+                  <Button asChild size="default" type="button">
+                    <Link href={cliKeysHref}>
+                      {hasKeys
+                        ? t("cliSetup.manageKeys")
+                        : t("emptyState.createFirstKey")}
+                    </Link>
+                  </Button>
+                }
+              />
             </>
           ) : (
             <EmptyState
               step1Action={
                 <Button asChild size="default" type="button">
-                  <Link
-                    href={
-                      hasKeys
-                        ? SETTINGS_CLI_KEYS_HREF
-                        : settingsCliKeysHrefWithCreateDialog()
-                    }
-                  >
+                  <Link href={cliKeysHref}>
                     {t("emptyState.createFirstKey")}
                   </Link>
                 </Button>

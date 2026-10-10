@@ -199,9 +199,14 @@
         "disabled": "Disabled"
       }
     },
+    "cliSetup": {
+      "title": "CLI install & update",
+      "description": "Copy the install, upgrade, and init commands anytime",
+      "manageKeys": "Manage API keys"
+    },
     "emptyState": {
       "title": "No usage data yet",
-      "step2": "Install the CLI globally:",
+      "step2": "Install or update the CLI globally (re-run anytime to upgrade to the latest version):",
       "copyCommand": "Copy command",
       "step3": "Run the command below in your CLI and paste your API key when prompted:",
       "createFirstKey": "Create your first key"

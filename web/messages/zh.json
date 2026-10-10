@@ -199,9 +199,14 @@
         "disabled": "禁用"
       }
     },
+    "cliSetup": {
+      "title": "CLI 安装与更新",
+      "description": "随时复制安装、升级和初始化命令",
+      "manageKeys": "管理 API Key"
+    },
     "emptyState": {
       "title": "还没有使用数据",
-      "step2": "安装 CLI：",
+      "step2": "安装或更新 CLI（重复运行即可升级到最新版）：",
       "copyCommand": "复制命令",
       "step3": "运行下面的指令，并按照提示粘贴 API 密钥：",
       "createFirstKey": "创建第一个 Key"
