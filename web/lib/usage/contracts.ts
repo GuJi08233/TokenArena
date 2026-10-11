@@ -148,14 +148,32 @@ const timezoneSchema = z
   })
   .transform(normalizeTimezone);
 
+// Ranges never need dates outside these years. Near the end of the Date range
+// (`+275760-09-13`), the day arithmetic of a range overflowed and the page
+// failed with a RangeError instead of rejecting the value.
+const DASHBOARD_DATE_MIN = Date.UTC(2000, 0, 1);
+const DASHBOARD_DATE_MAX = Date.UTC(2100, 0, 1);
+
+function parseDashboardDateParam(value: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value)
+    ? Date.parse(`${value}T00:00:00.000Z`)
+    : new Date(value).getTime();
+}
+
 export const dashboardDateParamSchema = z
   .string()
   .trim()
   .min(1)
   .refine(
-    (value) =>
-      /^\d{4}-\d{2}-\d{2}$/.test(value) ||
-      !Number.isNaN(new Date(value).getTime()),
+    (value) => {
+      const time = parseDashboardDateParam(value);
+
+      return (
+        !Number.isNaN(time) &&
+        time >= DASHBOARD_DATE_MIN &&
+        time < DASHBOARD_DATE_MAX
+      );
+    },
     {
       message: "Invalid date value.",
     },

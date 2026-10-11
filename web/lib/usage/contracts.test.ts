@@ -513,6 +513,22 @@ describe("dashboardQuerySchema wall-clock custom edges", () => {
     expect(result.success).toBe(true);
   });
 
+  it("rejects dates outside the supported years", () => {
+    for (const value of [
+      "+275760-09-13T00:00:00.000Z",
+      "9999-12-31",
+      "1999-12-31",
+    ]) {
+      expect(
+        dashboardQuerySchema.safeParse({
+          preset: "custom",
+          from: "2025-01-01",
+          to: value,
+        }).success,
+      ).toBe(false);
+    }
+  });
+
   it("rejects an impossible wall-clock time", () => {
     const result = dashboardQuerySchema.safeParse({
       preset: "custom",
