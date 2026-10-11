@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
-import { aggregateToBuckets } from "../domain/aggregator";
+import { aggregateToBuckets, roundToHalfHour } from "../domain/aggregator";
 import { extractSessions } from "../domain/session-extractor";
 import type {
   ParseResult,
@@ -558,14 +558,57 @@ export class CodexParser implements IParser {
       return true;
     };
 
-    let incomplete = false;
+    const deferred: Thread[] = [];
     for (const thread of threads.values()) {
-      if (!processThread(thread)) incomplete = true;
+      if (!processThread(thread)) deferred.push(thread);
     }
+
+    if (deferred.length === 0) {
+      return {
+        buckets: aggregateToBuckets(entries),
+        sessions: extractSessions(sessionEvents, entries),
+      };
+    }
+
+    // One fork that could not be verified used to mark the whole source
+    // incomplete, which withheld every Codex bucket on every sync until the
+    // file went away. Withhold only what it could add to: every model and
+    // half hour it has tokens in, across projects, because the disabled
+    // project mode uploads all projects under one key. A session that lost an
+    // entry is held back too, so a partial total cannot overwrite its own.
+    const withheldKey = (model: string, timestamp: Date) =>
+      `${model}|${roundToHalfHour(timestamp).toISOString()}`;
+    const withheldKeys = new Set<string>();
+    for (const thread of deferred) {
+      for (const file of thread.files) {
+        for (const token of file.tokens) {
+          if (token.timestamp) {
+            withheldKeys.add(withheldKey(token.model, token.timestamp));
+          }
+        }
+      }
+    }
+
+    const keptEntries = entries.filter(
+      (entry) => !withheldKeys.has(withheldKey(entry.model, entry.timestamp)),
+    );
+    const withheldSessionIds = new Set(
+      entries
+        .filter((entry) =>
+          withheldKeys.has(withheldKey(entry.model, entry.timestamp)),
+        )
+        .map((entry) => entry.sessionId),
+    );
+
     return {
-      buckets: aggregateToBuckets(entries),
-      sessions: extractSessions(sessionEvents, entries),
-      ...(incomplete ? { incomplete: true } : {}),
+      buckets: aggregateToBuckets(keptEntries),
+      sessions: extractSessions(
+        sessionEvents.filter(
+          (event) => !withheldSessionIds.has(event.sessionId),
+        ),
+        keptEntries.filter((entry) => !withheldSessionIds.has(entry.sessionId)),
+      ),
+      partial: true,
     };
   }
 }

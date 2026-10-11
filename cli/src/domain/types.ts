@@ -130,6 +130,12 @@ export interface ParseResult {
   sessions: SessionMetadata[];
   /** 已知有数据暂缓处理时禁止用该结果替换完整云端快照。 */
   incomplete?: boolean;
+  /**
+   * Part of the source was withheld because it could not be read reliably.
+   * The buckets and sessions returned are exact and may be uploaded, but the
+   * result must neither replace the remote snapshot nor be cached.
+   */
+  partial?: boolean;
 }
 
 /**

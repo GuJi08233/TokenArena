@@ -860,9 +860,9 @@ describe("Codex usage and replay regressions", () => {
     const warning = vi.spyOn(logger, "warn").mockImplementation(() => {});
     try {
       const parser = new CodexParser(directory);
-      const incomplete = await parser.parse();
-      expect(bucketTotal(incomplete)).toBe(0);
-      expect(incomplete.incomplete).toBe(true);
+      const pending = await parser.parse();
+      expect(bucketTotal(pending)).toBe(0);
+      expect(pending.partial).toBe(true);
       expect(warning).toHaveBeenCalledOnce();
       writeFixture(directory, "parent", [
         metadata("parent"),
@@ -871,7 +871,40 @@ describe("Codex usage and replay regressions", () => {
       ]);
       const complete = await parser.parse();
       expect(bucketTotal(complete)).toBe(150);
+      expect(complete.partial).not.toBe(true);
       expect(complete.incomplete).not.toBe(true);
+    } finally {
+      warning.mockRestore();
+    }
+  });
+
+  it("still uploads unrelated threads while a fork waits for its parent", async () => {
+    // One unverifiable fork used to withhold every Codex bucket.
+    const directory = makeTempDir("tokenarena-codex-unrelated-");
+    writeFixture(directory, "other", [
+      { ...metadata("other"), timestamp: "2026-07-10T01:00:00Z" },
+      {
+        // Two hours before the fork's tokens, so it shares no bucket.
+        ...tokenEvent(5, counters(400)),
+        timestamp: "2026-07-10T01:00:05Z",
+      },
+    ]);
+    writeFixture(directory, "child", [
+      {
+        ...metadata("child", { forked_from_id: "missing-parent" }),
+        timestamp: "2026-07-10T03:00:05Z",
+      },
+      tokenEvent(6, counters(100)),
+    ]);
+    const warning = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    try {
+      const result = await new CodexParser(directory).parse();
+
+      expect(result.partial).toBe(true);
+      expect(result.incomplete).not.toBe(true);
+      expect(bucketTotal(result)).toBe(400);
+      expect(result.sessions).toHaveLength(1);
+      expect(warning).toHaveBeenCalledWith(expect.stringContaining("child"));
     } finally {
       warning.mockRestore();
     }

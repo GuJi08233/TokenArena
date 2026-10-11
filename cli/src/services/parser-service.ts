@@ -122,7 +122,7 @@ export async function runAllParsers(): Promise<AllParsersResult> {
       continue;
     }
 
-    const { buckets, sessions, incomplete } = outcome.result;
+    const { buckets, sessions, incomplete, partial } = outcome.result;
 
     if (incomplete) {
       failedSources.add(parser.tool.id);
@@ -131,6 +131,15 @@ export async function runAllParsers(): Promise<AllParsersResult> {
       );
       // 上传的是桶的完整快照，部分结果会覆盖云端完整计数，因此整工具暂缓。
       continue;
+    }
+
+    if (partial) {
+      // What was returned is exact and uploads; only a rebuild or snapshot
+      // reset, which would drop the withheld part remotely, stays blocked.
+      failedSources.add(parser.tool.id);
+      logger.warn(
+        `${parser.tool.id} parser withheld usage it could not verify; uploading the rest and preserving its remote history.`,
+      );
     }
 
     if (buckets.length > 0) allBuckets.push(...buckets);

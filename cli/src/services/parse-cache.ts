@@ -131,7 +131,9 @@ export function saveCachedParseResult(
   fingerprint: string | null,
   result: ParseResult,
 ): void {
-  if (!fingerprint || result.incomplete) {
+  // A partial result would come back from the cache without that mark, and
+  // a rebuild would then drop the withheld usage remotely.
+  if (!fingerprint || result.incomplete || result.partial) {
     return;
   }
 

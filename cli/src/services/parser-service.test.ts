@@ -113,6 +113,21 @@ describe("parser-service", () => {
       expect(result.parserResults).toHaveLength(0);
     });
 
+    it("uploads a partial result but blocks replacing the remote snapshot", async () => {
+      const parsers = getAllParsers();
+      const partial = await parsers[1].parse();
+      vi.mocked(getAllParsers).mockReturnValueOnce([
+        {
+          tool: parsers[1].tool,
+          parse: vi.fn().mockResolvedValue({ ...partial, partial: true }),
+        },
+      ]);
+      const result = await runAllParsers();
+      expect(result.failedSources).toEqual(["tool-with-data"]);
+      expect(result.buckets).toEqual(partial.buckets);
+      expect(result.sessions).toEqual(partial.sessions);
+    });
+
     it("runs parsers concurrently instead of one after another", async () => {
       let running = 0;
       let peak = 0;
