@@ -10,6 +10,24 @@ import type {
 } from "./types";
 import { achievementCategories } from "./types";
 
+/**
+ * The follow count each social achievement unlocks at. Shared with the check
+ * that decides whether a follow change can award anything at all.
+ */
+export const SOCIAL_ACHIEVEMENT_TARGETS = {
+  first_follow: { count: "following", target: 1 },
+  following_10: { count: "following", target: 10 },
+  first_follower: { count: "followers", target: 1 },
+  followers_10: { count: "followers", target: 10 },
+  mutual_3: { count: "mutual", target: 3 },
+  mutual_10: { count: "mutual", target: 10 },
+} as const satisfies Partial<
+  Record<
+    AchievementCode,
+    { count: "following" | "followers" | "mutual"; target: number }
+  >
+>;
+
 export type AchievementTimelinePoint = {
   at: string;
   value: number;
@@ -592,44 +610,53 @@ export function buildAchievementStatuses(
     createStatus({
       code: "first_follow",
       current: metrics.followingCount,
-      target: 1,
+      target: SOCIAL_ACHIEVEMENT_TARGETS.first_follow.target,
       unit: "count",
       unlockedAt: metrics.firstFollowingAt,
     }),
     createStatus({
       code: "following_10",
       current: metrics.followingCount,
-      target: 10,
+      target: SOCIAL_ACHIEVEMENT_TARGETS.following_10.target,
       unit: "count",
-      unlockedAt: nthTimelineIso(metrics.followingTimeline, 10),
+      unlockedAt: nthTimelineIso(
+        metrics.followingTimeline,
+        SOCIAL_ACHIEVEMENT_TARGETS.following_10.target,
+      ),
     }),
     createStatus({
       code: "first_follower",
       current: metrics.followerCount,
-      target: 1,
+      target: SOCIAL_ACHIEVEMENT_TARGETS.first_follower.target,
       unit: "count",
       unlockedAt: metrics.firstFollowerAt,
     }),
     createStatus({
       code: "followers_10",
       current: metrics.followerCount,
-      target: 10,
+      target: SOCIAL_ACHIEVEMENT_TARGETS.followers_10.target,
       unit: "count",
-      unlockedAt: nthTimelineIso(metrics.followerTimeline, 10),
+      unlockedAt: nthTimelineIso(
+        metrics.followerTimeline,
+        SOCIAL_ACHIEVEMENT_TARGETS.followers_10.target,
+      ),
     }),
     createStatus({
       code: "mutual_3",
       current: metrics.mutualCount,
-      target: 3,
+      target: SOCIAL_ACHIEVEMENT_TARGETS.mutual_3.target,
       unit: "count",
       unlockedAt: metrics.mutualReachedAt,
     }),
     createStatus({
       code: "mutual_10",
       current: metrics.mutualCount,
-      target: 10,
+      target: SOCIAL_ACHIEVEMENT_TARGETS.mutual_10.target,
       unit: "count",
-      unlockedAt: nthTimelineIso(metrics.mutualTimeline, 10),
+      unlockedAt: nthTimelineIso(
+        metrics.mutualTimeline,
+        SOCIAL_ACHIEVEMENT_TARGETS.mutual_10.target,
+      ),
     }),
     createStatus({
       code: "leaderboard_day_top50",

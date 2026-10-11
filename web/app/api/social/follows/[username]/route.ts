@@ -1,5 +1,5 @@
 import { after, NextResponse } from "next/server";
-import { synchronizeAchievementsInBackground } from "@/lib/achievements/queries";
+import { synchronizeSocialAchievementsIfDue } from "@/lib/achievements/queries";
 import { normalizeUsername } from "@/lib/auth-username";
 import { prisma } from "@/lib/prisma";
 import { getOptionalSession } from "@/lib/session";
@@ -8,17 +8,18 @@ import { followTagUpdateSchema } from "@/lib/social/contracts";
 /**
  * Re-evaluate both sides' social achievements once the response is sent.
  *
- * Only a follow that actually changed reaches this: repeating a request used
- * to replay the other account's whole history every time, and a failed
- * replay reported a follow that had already been saved as failed.
+ * Only a new follow reaches this: repeating a request used to replay the
+ * other account's whole history every time, and a failed replay reported a
+ * follow that had already been saved as failed. Social awards are issued once
+ * each, so an unfollow cannot award anything and schedules nothing.
  */
 function synchronizeSocialAchievements(
   followerId: string,
   followingId: string,
 ) {
   after(async () => {
-    await synchronizeAchievementsInBackground(followerId, "social");
-    await synchronizeAchievementsInBackground(followingId, "social");
+    await synchronizeSocialAchievementsIfDue(followerId);
+    await synchronizeSocialAchievementsIfDue(followingId);
   });
 }
 
@@ -97,16 +98,12 @@ export async function DELETE(
     return NextResponse.json({ error: "NOT_FOUND" }, { status: 404 });
   }
 
-  const removed = await prisma.follow.deleteMany({
+  await prisma.follow.deleteMany({
     where: {
       followerId: session.user.id,
       followingId: targetUser.id,
     },
   });
-
-  if (removed.count > 0) {
-    synchronizeSocialAchievements(session.user.id, targetUser.id);
-  }
 
   return NextResponse.json({ success: true });
 }

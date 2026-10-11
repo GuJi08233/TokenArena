@@ -34,6 +34,14 @@ export type PlannedAchievementAward = {
   context: Prisma.InputJsonValue;
 };
 
+/**
+ * How often each achievement can be awarded.
+ *
+ * Social thresholds (`following_10`, `followers_10`, `mutual_*`) fall under
+ * the default `once`. As `recross` awards, unfollowing and following again
+ * re-issued them on demand: anyone could farm points, or farm them for
+ * someone else from a few extra accounts.
+ */
 function getRepeatRule(code: AchievementCode): RepeatRule {
   switch (code) {
     case "streak_3":
@@ -46,10 +54,6 @@ function getRepeatRule(code: AchievementCode): RepeatRule {
     case "cache_30":
     case "project_focus_70":
     case "project_focus_90":
-    case "following_10":
-    case "followers_10":
-    case "mutual_3":
-    case "mutual_10":
     case "leaderboard_all_time_top100":
     case "leaderboard_all_time_top10":
     case "leaderboard_all_time_first":

@@ -15,7 +15,7 @@ const mocks = vi.hoisted(() => ({
     user: { findUniqueOrThrow: vi.fn() },
     usageBucket: { findMany: vi.fn() },
     usageSession: { findMany: vi.fn() },
-    follow: { findMany: vi.fn() },
+    follow: { findMany: vi.fn(), count: vi.fn() },
     achievementAward: { createMany: vi.fn() },
     userAchievement: { findMany: vi.fn(), findFirst: vi.fn() },
     userArenaSummary: { findUnique: vi.fn(), upsert: vi.fn(), update: vi.fn() },
@@ -49,6 +49,7 @@ import {
   getArenaSummaryForProfile,
   synchronizeAchievementsForUser,
   synchronizeAchievementsInBackground,
+  synchronizeSocialAchievementsIfDue,
 } from "./queries";
 
 function expectReadOnlyProfile() {
@@ -468,5 +469,87 @@ describe("synchronizeAchievementsInBackground", () => {
     expect(second).not.toBe(first);
     await Promise.all([first, second]);
     expect(mocks.prisma.$transaction).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("synchronizeSocialAchievementsIfDue", () => {
+  let errorSpy: ReturnType<typeof vi.spyOn>;
+
+  function followCounts(counts: {
+    following: number;
+    followers: number;
+    mutual: number;
+  }) {
+    mocks.prisma.follow.count.mockImplementation(
+      async ({ where }: { where: Record<string, unknown> }) =>
+        "following" in where
+          ? counts.mutual
+          : "followerId" in where
+            ? counts.following
+            : counts.followers,
+    );
+  }
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    mocks.settlePendingLeaderboardPeriods.mockResolvedValue(undefined);
+    mocks.getUsagePreference.mockResolvedValue({ timezone: "UTC" });
+    mocks.getUserGlobalLeaderboardRanksByTotalTokens.mockResolvedValue({
+      day: null,
+      week: null,
+      month: null,
+      all_time: null,
+    });
+    mocks.prisma.user.findUniqueOrThrow.mockResolvedValue({
+      usagePreference: { publicProfileEnabled: false, updatedAt: null },
+    });
+    mocks.prisma.usageBucket.findMany.mockResolvedValue([]);
+    mocks.prisma.usageSession.findMany.mockResolvedValue([]);
+    mocks.prisma.follow.findMany.mockResolvedValue([]);
+    mocks.tx.userAchievement.findMany.mockResolvedValue([]);
+    mocks.prisma.$transaction.mockImplementation(async (callback) =>
+      callback(mocks.tx),
+    );
+  });
+
+  afterEach(() => {
+    errorSpy.mockRestore();
+  });
+
+  it("replays nothing when every reached social award is already held", async () => {
+    followCounts({ following: 10, followers: 1, mutual: 1 });
+    mocks.prisma.userAchievement.findMany.mockResolvedValue([
+      { code: "first_follow" },
+      { code: "following_10" },
+      { code: "first_follower" },
+    ]);
+
+    await synchronizeSocialAchievementsIfDue("user-1");
+
+    expect(mocks.prisma.usageBucket.findMany).not.toHaveBeenCalled();
+    expect(mocks.prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("synchronizes when a follow reaches an award not held yet", async () => {
+    followCounts({ following: 1, followers: 0, mutual: 0 });
+    mocks.prisma.userAchievement.findMany.mockResolvedValue([]);
+
+    await synchronizeSocialAchievementsIfDue("user-1");
+
+    expect(mocks.prisma.$transaction).toHaveBeenCalledOnce();
+  });
+
+  it("logs a failed check instead of throwing", async () => {
+    mocks.prisma.follow.count.mockRejectedValue(new Error("connection lost"));
+
+    await expect(
+      synchronizeSocialAchievementsIfDue("user-1"),
+    ).resolves.toBeUndefined();
+    expect(errorSpy).toHaveBeenCalledWith(
+      "Failed to check social achievements",
+      expect.objectContaining({ userId: "user-1" }),
+    );
+    expect(mocks.prisma.$transaction).not.toHaveBeenCalled();
   });
 });

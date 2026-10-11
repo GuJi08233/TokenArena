@@ -33,6 +33,7 @@ import {
   buildAchievementNotificationData,
   buildAchievementStatuses,
   buildAchievementsPageDataFromStatuses,
+  SOCIAL_ACHIEVEMENT_TARGETS,
 } from "./evaluate";
 import {
   buildAchievementAwardPlan,
@@ -817,6 +818,62 @@ async function runBackgroundAchievementSync(
   } finally {
     backgroundAchievementSyncs.delete(userId);
   }
+}
+
+/**
+ * Whether a user's follow counts reach a social award they do not hold yet.
+ *
+ * Social awards are issued once each, so this is the only way a follow change
+ * can award anything. Three counts answer it, where a full synchronization
+ * replays the user's entire usage history.
+ */
+async function hasDueSocialAward(userId: string) {
+  const [following, followers, mutual, held] = await Promise.all([
+    prisma.follow.count({ where: { followerId: userId } }),
+    prisma.follow.count({ where: { followingId: userId } }),
+    prisma.follow.count({
+      where: {
+        followerId: userId,
+        following: { following: { some: { followingId: userId } } },
+      },
+    }),
+    prisma.userAchievement.findMany({
+      where: {
+        userId,
+        code: { in: Object.keys(SOCIAL_ACHIEVEMENT_TARGETS) },
+        awardCount: { gt: 0 },
+      },
+      select: { code: true },
+    }),
+  ]);
+  const counts = { following, followers, mutual };
+  const heldCodes = new Set(held.map((row) => row.code));
+
+  return Object.entries(SOCIAL_ACHIEVEMENT_TARGETS).some(
+    ([code, { count, target }]) =>
+      counts[count] >= target && !heldCodes.has(code),
+  );
+}
+
+/**
+ * Re-evaluate a user after a new follow, if it can have awarded anything.
+ *
+ * A follow change used to replay both accounts' whole histories every time,
+ * so toggling a follow on many targets queued that many full replays. Like
+ * `synchronizeAchievementsInBackground`, this logs a failure instead of
+ * throwing: it runs after the follow has been saved and answered.
+ */
+export async function synchronizeSocialAchievementsIfDue(userId: string) {
+  try {
+    if (!(await hasDueSocialAward(userId))) {
+      return;
+    }
+  } catch (error) {
+    console.error("Failed to check social achievements", { userId, error });
+    return;
+  }
+
+  await synchronizeAchievementsInBackground(userId, "social");
 }
 
 /**

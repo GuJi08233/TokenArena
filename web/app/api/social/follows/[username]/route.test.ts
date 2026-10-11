@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   after: vi.fn(),
   getOptionalSession: vi.fn(),
-  synchronizeAchievementsInBackground: vi.fn(),
+  synchronizeSocialAchievementsIfDue: vi.fn(),
   prisma: {
     user: { findUnique: vi.fn() },
     follow: {
@@ -19,8 +19,7 @@ vi.mock("next/server", async (importOriginal) => ({
   after: mocks.after,
 }));
 vi.mock("@/lib/achievements/queries", () => ({
-  synchronizeAchievementsInBackground:
-    mocks.synchronizeAchievementsInBackground,
+  synchronizeSocialAchievementsIfDue: mocks.synchronizeSocialAchievementsIfDue,
 }));
 vi.mock("@/lib/session", () => ({
   getOptionalSession: mocks.getOptionalSession,
@@ -63,7 +62,7 @@ describe("follow route", () => {
       user: { id: "user-alice" },
     });
     mocks.prisma.user.findUnique.mockResolvedValue(target(true));
-    mocks.synchronizeAchievementsInBackground.mockResolvedValue(undefined);
+    mocks.synchronizeSocialAchievementsIfDue.mockResolvedValue(undefined);
   });
 
   it("requires a session", async () => {
@@ -104,12 +103,12 @@ describe("follow route", () => {
       skipDuplicates: true,
     });
     // A failed award pass used to report a saved follow as failed.
-    expect(mocks.synchronizeAchievementsInBackground).not.toHaveBeenCalled();
+    expect(mocks.synchronizeSocialAchievementsIfDue).not.toHaveBeenCalled();
 
     await runScheduledWork();
-    expect(mocks.synchronizeAchievementsInBackground.mock.calls).toEqual([
-      ["user-alice", "social"],
-      ["user-bob", "social"],
+    expect(mocks.synchronizeSocialAchievementsIfDue.mock.calls).toEqual([
+      ["user-alice"],
+      ["user-bob"],
     ]);
   });
 
@@ -122,17 +121,16 @@ describe("follow route", () => {
     expect(mocks.after).not.toHaveBeenCalled();
   });
 
-  it("re-evaluates both users after an unfollow", async () => {
+  it("schedules nothing after an unfollow", async () => {
+    // Social awards are issued once each, so an unfollow cannot award
+    // anything; scheduling a replay per unfollow let a follow toggle queue
+    // full-history replays of every target.
     mocks.prisma.follow.deleteMany.mockResolvedValue({ count: 1 });
 
     const response = await DELETE(request("DELETE"), context("bob"));
 
     expect(response.status).toBe(200);
-    await runScheduledWork();
-    expect(mocks.synchronizeAchievementsInBackground.mock.calls).toEqual([
-      ["user-alice", "social"],
-      ["user-bob", "social"],
-    ]);
+    expect(mocks.after).not.toHaveBeenCalled();
   });
 
   it("does nothing more for an unfollow that removed nothing", async () => {

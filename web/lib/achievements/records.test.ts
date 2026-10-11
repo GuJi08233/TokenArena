@@ -142,6 +142,33 @@ describe("buildAchievementAwardPlan", () => {
     });
   });
 
+  it("awards a social threshold once, however often it is re-crossed", () => {
+    // Unfollowing and following again used to re-issue these on demand.
+    for (const code of [
+      "following_10",
+      "followers_10",
+      "mutual_3",
+      "mutual_10",
+    ] as const) {
+      const requalified = buildAchievementAwardPlan({
+        userId: "user_1",
+        evaluatedAt: "2026-04-02T00:00:00.000Z",
+        source: "social",
+        statuses: [createStatus({ code })],
+        records: [
+          createRecord({
+            code,
+            awardCount: 1,
+            state: { lastQualified: false },
+          }),
+        ],
+      });
+
+      expect(requalified.awards).toHaveLength(0);
+      expect(requalified.records.get(code)).toMatchObject({ awardCount: 1 });
+    }
+  });
+
   it("keeps recurring leaderboard period badges out of generic achievement sync", () => {
     const plan = buildAchievementAwardPlan({
       userId: "user_1",
