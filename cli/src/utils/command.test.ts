@@ -26,8 +26,9 @@ describe("getCommandCheck", () => {
 
 describe("isCommandAvailable", () => {
   it("returns true for commands that exist", () => {
-    // Use 'node' which exists on all platforms in CI
-    expect(isCommandAvailable("node")).toBe(true);
+    // Use a platform-appropriate command that always exists
+    const command = process.platform === "win32" ? "cmd.exe" : "sh";
+    expect(isCommandAvailable(command)).toBe(true);
   });
 
   it("returns false for commands that do not exist", () => {

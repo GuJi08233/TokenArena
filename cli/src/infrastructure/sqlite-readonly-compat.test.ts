@@ -14,6 +14,10 @@ vi.mock("node:child_process", async (importOriginal) => ({
   ...(await importOriginal<typeof import("node:child_process")>()),
   execFileSync: vi.fn(),
 }));
+vi.mock("../utils/command", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../utils/command")>()),
+  resolveCommandPath: vi.fn((command: string) => command),
+}));
 const importFailure = vi.hoisted(() => ({ error: null as Error | null }));
 vi.mock("node:sqlite", () => ({
   DatabaseSync,

@@ -8,6 +8,10 @@ const { DatabaseSync, closeProbe } = vi.hoisted(() => ({
 }));
 vi.mock("node:child_process", () => ({ execFileSync: vi.fn() }));
 vi.mock("node:sqlite", () => ({ DatabaseSync }));
+vi.mock("../utils/command", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../utils/command")>()),
+  resolveCommandPath: vi.fn((command: string) => command),
+}));
 
 beforeEach(() => {
   vi.stubEnv("TOKEN_ARENA_SQLITE3", "");
