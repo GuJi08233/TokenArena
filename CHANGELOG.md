@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.20.2](https://github.com/GuJi08233/TokenArena/compare/v0.20.1...v0.20.2) (2026-10-11)
+
+
+### Bug Fixes
+
+* **ci:** install sqlite3 CLI on Windows runner for sqlite fallback tests ([2176cd9](https://github.com/GuJi08233/TokenArena/commit/2176cd9cb91b6afad46c607eafaf2922cf58e5d7))
+* **cli:** mock resolveCommandPath in sqlite tests for Windows compatibility ([f1981a5](https://github.com/GuJi08233/TokenArena/commit/f1981a5317ba1da7b28e985027aeca8092246e9a))
+
 ## [0.20.1](https://github.com/GuJi08233/TokenArena/compare/v0.20.0...v0.20.1) (2026-10-11)
 
 
