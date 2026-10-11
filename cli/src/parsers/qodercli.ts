@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { aggregateToBuckets } from "../domain/aggregator";
 import { extractSessions } from "../domain/session-extractor";
+import { isHumanPromptRecord } from "../domain/transcript-roles";
 import type {
   ParseResult,
   SessionEvent,
@@ -342,7 +343,7 @@ export class QoderCliParser implements IParser {
       for (const line of content.split("\n")) {
         if (!line.trim()) continue;
         try {
-          const obj = JSON.parse(line) as {
+          const obj = JSON.parse(line) as Record<string, unknown> & {
             type?: string;
             timestamp?: string | number;
             entrypoint?: string;
@@ -365,7 +366,7 @@ export class QoderCliParser implements IParser {
             source: TOOL_ID,
             project,
             timestamp: ts,
-            role: obj.type === "user" ? "user" : "assistant",
+            role: isHumanPromptRecord(obj) ? "user" : "assistant",
           });
         } catch {
           // Ignore malformed lines

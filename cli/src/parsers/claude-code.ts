@@ -5,6 +5,7 @@ import { join, sep } from "node:path";
 import { aggregateToBuckets } from "../domain/aggregator";
 import { extractSessions } from "../domain/session-extractor";
 import { hasInvalidTokenCounts } from "../domain/token-usage";
+import { isHumanPromptRecord } from "../domain/transcript-roles";
 import type {
   ParseResult,
   SessionEvent,
@@ -222,7 +223,7 @@ class ClaudeCodeParser implements IParser {
               source: "claude-code",
               project,
               timestamp,
-              role: record.type === "user" ? "user" : "assistant",
+              role: isHumanPromptRecord(record) ? "user" : "assistant",
             });
           }
 
