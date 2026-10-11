@@ -7,11 +7,17 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * `hooks/` and `lib/` trees. It had no test, so a wrong condition here would
  * have shipped silently.
  *
- * next-intl's middleware is replaced with a marker: these cases are about the
+ * next-intl's middleware is replaced with a marked response: these cases are about the
  * auth decisions, and the real middleware cannot be imported under Node (it
  * pulls the extensionless `next/server`).
  */
-const i18nRouting = vi.hoisted(() => vi.fn(() => ({ marker: "i18n-routing" })));
+const i18nRouting = vi.hoisted(() =>
+  vi.fn(() => new Response(null, { headers: { "x-test-route": "i18n" } })),
+);
+
+function isI18nFallthrough(response: Response) {
+  return response.headers.get("x-test-route") === "i18n";
+}
 vi.mock("next-intl/middleware", () => ({
   default: () => i18nRouting,
 }));
@@ -62,7 +68,7 @@ describe("proxy protected routes", () => {
       }),
     );
 
-    expect(response).toEqual({ marker: "i18n-routing" });
+    expect(isI18nFallthrough(response)).toBe(true);
     expect(i18nRouting).toHaveBeenCalledTimes(1);
   });
 
@@ -102,14 +108,14 @@ describe("proxy auth pages", () => {
       }),
     );
 
-    expect(response).toEqual({ marker: "i18n-routing" });
+    expect(isI18nFallthrough(response)).toBe(true);
     expect(i18nRouting).toHaveBeenCalledTimes(1);
   });
 
   it("lets an unauthenticated request reach the login page", () => {
     const response = proxy(buildRequest("http://localhost:3000/en/login"));
 
-    expect(response).toEqual({ marker: "i18n-routing" });
+    expect(isI18nFallthrough(response)).toBe(true);
   });
 });
 
@@ -122,7 +128,7 @@ describe("proxy public routes", () => {
   ])("passes %s through to i18n routing", (path) => {
     const response = proxy(buildRequest(`http://localhost:3000${path}`));
 
-    expect(response).toEqual({ marker: "i18n-routing" });
+    expect(isI18nFallthrough(response)).toBe(true);
     expect(i18nRouting).toHaveBeenCalledTimes(1);
   });
 
@@ -140,7 +146,7 @@ describe("proxy public routes", () => {
     // but `/setting` is a different path and must pass through.
     const response = proxy(buildRequest("http://localhost:3000/en/setting"));
 
-    expect(response).toEqual({ marker: "i18n-routing" });
+    expect(isI18nFallthrough(response)).toBe(true);
   });
 
   it("knows the prefix match is deliberate, not path-segment aware", () => {
@@ -185,6 +191,29 @@ describe("proxy locale detection for redirects", () => {
 
     expect(new URL(response.headers.get("location") ?? "").pathname).toBe(
       "/en/login",
+    );
+  });
+});
+
+describe("proxy security headers", () => {
+  it.each([
+    ["an i18n fallthrough", "http://localhost:3000/en/leaderboard", undefined],
+    ["a login redirect", "http://localhost:3000/en/usage", undefined],
+    [
+      "an authenticated bounce",
+      "http://localhost:3000/en/login",
+      SESSION_COOKIE,
+    ],
+  ])("forbids framing on %s", (_case, url, cookie) => {
+    const response = proxy(buildRequest(url, { cookie }));
+
+    expect(response.headers.get("x-frame-options")).toBe("DENY");
+    expect(response.headers.get("content-security-policy")).toBe(
+      "frame-ancestors 'none'; base-uri 'self'; object-src 'none'",
+    );
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(response.headers.get("referrer-policy")).toBe(
+      "strict-origin-when-cross-origin",
     );
   });
 });

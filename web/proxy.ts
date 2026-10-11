@@ -12,6 +12,27 @@ const PROTECTED_PREFIXES = ["/usage", "/settings", "/following", "/followers"];
 const AUTH_PAGES = ["/login", "/register"];
 const handleI18nRouting = createMiddleware(routing);
 
+/**
+ * Baseline protections for every page, which had none: any site could frame
+ * them to stage clickjacking. The matcher below skips `/api` and file paths,
+ * so the SVG routes keep their own, stricter policy.
+ */
+const PAGE_SECURITY_HEADERS = {
+  "content-security-policy":
+    "frame-ancestors 'none'; base-uri 'self'; object-src 'none'",
+  "x-frame-options": "DENY",
+  "x-content-type-options": "nosniff",
+  "referrer-policy": "strict-origin-when-cross-origin",
+} as const;
+
+function withSecurityHeaders<T extends Response>(response: T) {
+  for (const [name, value] of Object.entries(PAGE_SECURITY_HEADERS)) {
+    response.headers.set(name, value);
+  }
+
+  return response;
+}
+
 function detectLocale(request: NextRequest) {
   return getPreferredLocale({
     cookieLocale: request.cookies.get(localeCookieName)?.value,
@@ -33,15 +54,17 @@ export function proxy(request: NextRequest) {
     const locale = detectLocale(request);
     const loginUrl = new URL(`/${locale}/login`, request.url);
     loginUrl.searchParams.set("invalid", "1");
-    return NextResponse.redirect(loginUrl);
+    return withSecurityHeaders(NextResponse.redirect(loginUrl));
   }
 
   if (isAuthPage && hasSessionCookie && !isInvalidSessionBounce) {
     const locale = detectLocale(request);
-    return NextResponse.redirect(new URL(`/${locale}/usage`, request.url));
+    return withSecurityHeaders(
+      NextResponse.redirect(new URL(`/${locale}/usage`, request.url)),
+    );
   }
 
-  return handleI18nRouting(request);
+  return withSecurityHeaders(handleI18nRouting(request));
 }
 
 export const config = {
