@@ -4,6 +4,7 @@ import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { aggregateToBuckets } from "../domain/aggregator";
 import type { ParseResult, TokenUsageEntry } from "../domain/types";
+import { getSqliteCliCandidates } from "../infrastructure/sqlite";
 import { registerParser } from "./registry";
 import type { IParser, ToolDefinition } from "./types";
 
@@ -61,11 +62,7 @@ function getCursorStateDbPath(): string | null {
 
 function queryAccessToken(dbPath: string): string | null {
   const sql = `SELECT value FROM ItemTable WHERE key = '${ACCESS_TOKEN_KEY}' LIMIT 1`;
-  const candidates = [
-    process.env.TOKEN_ARENA_SQLITE3,
-    "sqlite3",
-    "sqlite3.exe",
-  ].filter((value): value is string => Boolean(value));
+  const candidates = getSqliteCliCandidates();
 
   for (const command of candidates) {
     try {

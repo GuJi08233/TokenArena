@@ -12,6 +12,7 @@ import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { aggregateToBuckets } from "../domain/aggregator";
 import type { ParseResult, TokenUsageEntry } from "../domain/types";
+import { getSqliteCliCandidates } from "../infrastructure/sqlite";
 import { registerParser } from "./registry";
 import type { IParser, ToolDefinition } from "./types";
 
@@ -68,7 +69,13 @@ const TOKENS_SQL =
   "ORDER BY id ASC";
 
 function queryDb(dbPath: string, sql: string): unknown[] {
-  const out = execFileSync("sqlite3", ["-json", dbPath, sql], {
+  const [command] = getSqliteCliCandidates();
+  if (!command) {
+    // Same shape as the spawn error, which `parse()` turns into a hint.
+    throw new Error("spawnSync sqlite3 ENOENT");
+  }
+
+  const out = execFileSync(command, ["-json", dbPath, sql], {
     encoding: "utf-8",
     maxBuffer: 100 * 1024 * 1024,
     timeout: 30000,

@@ -24,6 +24,7 @@ import {
 import { promptConfirm, promptPassword } from "../infrastructure/ui/prompts";
 import { getDetectedTools } from "../services/parser-service";
 import { runSync } from "../services/sync-service";
+import { getWindowsSystemCommand, resolveCommandPath } from "../utils/command";
 import { logger } from "../utils/logger";
 
 interface BrowserLaunchCommand {
@@ -77,7 +78,7 @@ export function getBrowserLaunchCommand(
       };
     case "win32":
       return {
-        command: "cmd.exe",
+        command: getWindowsSystemCommand("cmd.exe"),
         args: ["/d", "/s", "/c", "start", "", url],
       };
     default:
@@ -108,9 +109,9 @@ function openBrowser(url: string): void {
 function resolvePowerShellProfilePath(): string | null {
   const systemRoot = process.env.SYSTEMROOT || "C:\\Windows";
   const candidates = [
-    "pwsh.exe",
+    resolveCommandPath("pwsh.exe"),
     join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
-  ];
+  ].filter((command): command is string => command !== null);
 
   for (const command of candidates) {
     try {

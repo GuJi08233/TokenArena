@@ -59,6 +59,9 @@ export function reportFatalError(error: unknown): void {
 }
 
 if (isMainModule(import.meta.url)) {
+  // Stop Windows from starting a program found in the current directory before
+  // PATH. libuv honors this from 1.48; `resolveCommandPath` covers older ones.
+  process.env.NoDefaultCurrentDirectoryInExePath ??= "1";
   // Never `void` this: without a catch every rejecting command handler surfaces
   // as an unhandled rejection with a raw stack trace instead of CLI output.
   run().catch(reportFatalError);

@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { statSync } from "node:fs";
 import { pathToFileURL } from "node:url";
+import { resolveCommandPath } from "../utils/command";
 import { logger } from "../utils/logger";
 
 type SqliteDatabaseSync<TRow> = {
@@ -151,16 +152,26 @@ async function readSqliteRowsWithBuiltin<TRow>(
   }
 }
 
+/**
+ * sqlite3 programs to try, in order: `TOKEN_ARENA_SQLITE3` first, then the
+ * `sqlite3` on PATH. Bare names resolve through `resolveCommandPath`, so the
+ * current directory is never searched on Windows.
+ */
+export function getSqliteCliCandidates(): string[] {
+  const candidates = [process.env.TOKEN_ARENA_SQLITE3, "sqlite3", "sqlite3.exe"]
+    .filter((value): value is string => Boolean(value))
+    .map((command) => resolveCommandPath(command))
+    .filter((value): value is string => value !== null);
+
+  return Array.from(new Set(candidates));
+}
+
 export function readSqliteRowsWithCli<TRow>(
   dbPath: string,
   query: string,
   readOnly = false,
 ): TRow[] {
-  const candidates = [
-    process.env.TOKEN_ARENA_SQLITE3,
-    "sqlite3",
-    "sqlite3.exe",
-  ].filter((value): value is string => Boolean(value));
+  const candidates = getSqliteCliCandidates();
 
   let lastError: Error | null = null;
 

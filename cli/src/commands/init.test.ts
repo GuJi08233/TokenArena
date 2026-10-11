@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { getWindowsSystemCommand } from "../utils/command";
 import { getBrowserLaunchCommand, resolveShellAliasSetup } from "./init";
 
 describe("getBrowserLaunchCommand", () => {
-  it("uses cmd.exe start on Windows", () => {
+  it("uses cmd.exe start on Windows, by its full path", () => {
     expect(getBrowserLaunchCommand("https://example.com", "win32")).toEqual({
-      command: "cmd.exe",
+      command: getWindowsSystemCommand("cmd.exe"),
       args: ["/d", "/s", "/c", "start", "", "https://example.com"],
     });
   });

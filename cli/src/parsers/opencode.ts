@@ -9,7 +9,10 @@ import type {
   SessionEvent,
   TokenUsageEntry,
 } from "../domain/types";
-import { withSuppressedSqliteWarning } from "../infrastructure/sqlite";
+import {
+  getSqliteCliCandidates,
+  withSuppressedSqliteWarning,
+} from "../infrastructure/sqlite";
 import { registerParser } from "./registry";
 import type { IParser, ToolDefinition } from "./types";
 
@@ -130,11 +133,7 @@ async function readSqliteRowsWithBuiltin(
 }
 
 function readSqliteRowsWithCli(dbPath: string, query: string): SqliteRow[] {
-  const candidates = [
-    process.env.TOKEN_ARENA_SQLITE3,
-    "sqlite3",
-    "sqlite3.exe",
-  ].filter((value): value is string => Boolean(value));
+  const candidates = getSqliteCliCandidates();
 
   let lastError: Error | null = null;
 
