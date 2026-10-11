@@ -123,15 +123,25 @@ export async function findExistingSessionStartDates(
 }
 
 /**
- * Drop every global snapshot immediately.
+ * Age every global snapshot, as `invalidateLeaderboardSnapshots` ages the
+ * periods a usage change touches.
  *
- * For changes that must not be served from cache even briefly — a user turning
- * their public profile off has to leave the board at once.
+ * For a profile visibility change, which affects every board. Reads re-check
+ * visibility (`hydrateEntries`), so a profile turning private leaves every
+ * board at once; ageing lets one turning public join within the snapshot's
+ * minimum lifetime. Deleting the snapshots instead let one account force a
+ * full rebuild of every board on each view just by toggling its visibility.
  */
-export async function expireLeaderboardSnapshots(
+export async function ageAllLeaderboardSnapshots(
   db: Pick<LeaderboardAggregateWriteClient, "leaderboardSnapshot"> = prisma,
+  now = new Date(),
 ) {
-  await db.leaderboardSnapshot.deleteMany({});
+  const staleGeneratedAt = resolveStaleSnapshotGeneratedAt(now);
+
+  await db.leaderboardSnapshot.updateMany({
+    where: { generatedAt: { gt: staleGeneratedAt } },
+    data: { generatedAt: staleGeneratedAt },
+  });
 }
 
 /**
@@ -139,8 +149,8 @@ export async function expireLeaderboardSnapshots(
  *
  * See `resolveStaleSnapshotGeneratedAt` for why this ages rather than deletes:
  * the snapshot stays serveable for a short floor so a burst of ingests cannot
- * force a full rebuild per request. Use `expireLeaderboardSnapshots` when a
- * change must take effect immediately.
+ * force a full rebuild per request. `ageAllLeaderboardSnapshots` does the
+ * same for every period.
  */
 export async function invalidateLeaderboardSnapshots(
   db: Pick<LeaderboardAggregateWriteClient, "leaderboardSnapshot"> = prisma,

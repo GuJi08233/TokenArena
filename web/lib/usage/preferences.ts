@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 
 import type { AppLocale } from "@/lib/i18n";
-import { expireLeaderboardSnapshots } from "@/lib/leaderboard/aggregates";
+import { ageAllLeaderboardSnapshots } from "@/lib/leaderboard/aggregates";
 import { prisma } from "@/lib/prisma";
 import type { ThemeMode } from "@/lib/theme";
 import type { ProjectMode } from "./types";
@@ -97,9 +97,10 @@ export async function updateUsagePreference(
       input.publicProfileEnabled !== undefined &&
       input.publicProfileEnabled !== existing.publicProfileEnabled
     ) {
-      // Visibility changes must not be served from a cached board, so this
-      // clears the snapshots outright rather than ageing them.
-      await expireLeaderboardSnapshots(tx);
+      // Reads re-check visibility, so a profile turning private leaves the
+      // boards at once. Ageing rather than deleting the snapshots lets one
+      // turning public join shortly, without letting a toggle force rebuilds.
+      await ageAllLeaderboardSnapshots(tx);
     }
 
     return preference;

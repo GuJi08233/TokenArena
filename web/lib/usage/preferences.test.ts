@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => ({
   usagePreferenceCreate: vi.fn(),
   usagePreferenceFindUniqueOrThrow: vi.fn(),
   usagePreferenceUpdate: vi.fn(),
-  expireLeaderboardSnapshots: vi.fn(),
+  ageAllLeaderboardSnapshots: vi.fn(),
   prismaTransaction: vi.fn(),
 }));
 
@@ -22,7 +22,7 @@ vi.mock("@/lib/prisma", () => ({
 }));
 
 vi.mock("@/lib/leaderboard/aggregates", () => ({
-  expireLeaderboardSnapshots: mocks.expireLeaderboardSnapshots,
+  ageAllLeaderboardSnapshots: mocks.ageAllLeaderboardSnapshots,
 }));
 
 import {
@@ -178,7 +178,7 @@ describe("updateUsagePreference", () => {
     });
     expect(mocks.usagePreferenceCreate).toHaveBeenCalledTimes(1);
     expect(tx.usagePreference.create).not.toHaveBeenCalled();
-    expect(mocks.expireLeaderboardSnapshots).toHaveBeenCalledWith(tx);
+    expect(mocks.ageAllLeaderboardSnapshots).toHaveBeenCalledWith(tx);
   });
 
   it("uses the row a concurrent request created first", async () => {
@@ -209,25 +209,25 @@ describe("updateUsagePreference", () => {
 
     expect(result).toEqual({ ...existing, locale: "zh" });
     expect(mocks.usagePreferenceCreate).not.toHaveBeenCalled();
-    expect(mocks.expireLeaderboardSnapshots).not.toHaveBeenCalled();
+    expect(mocks.ageAllLeaderboardSnapshots).not.toHaveBeenCalled();
   });
 
-  it("triggers expireLeaderboardSnapshots when publicProfileEnabled changes", async () => {
+  it("triggers ageAllLeaderboardSnapshots when publicProfileEnabled changes", async () => {
     const existing = createPreference({ publicProfileEnabled: false });
     mocks.usagePreferenceFindUnique.mockResolvedValueOnce(existing);
     const tx = createTransaction(existing);
-    mocks.expireLeaderboardSnapshots.mockResolvedValueOnce(undefined);
+    mocks.ageAllLeaderboardSnapshots.mockResolvedValueOnce(undefined);
 
     const result = await updateUsagePreference("user_123", {
       publicProfileEnabled: true,
     });
 
     expect(result).toMatchObject({ publicProfileEnabled: true });
-    expect(mocks.expireLeaderboardSnapshots).toHaveBeenCalledTimes(1);
-    expect(mocks.expireLeaderboardSnapshots).toHaveBeenCalledWith(tx);
+    expect(mocks.ageAllLeaderboardSnapshots).toHaveBeenCalledTimes(1);
+    expect(mocks.ageAllLeaderboardSnapshots).toHaveBeenCalledWith(tx);
   });
 
-  it("does not trigger expireLeaderboardSnapshots when publicProfileEnabled stays the same", async () => {
+  it("does not trigger ageAllLeaderboardSnapshots when publicProfileEnabled stays the same", async () => {
     const existing = createPreference({ publicProfileEnabled: true });
     mocks.usagePreferenceFindUnique.mockResolvedValueOnce(existing);
     createTransaction(existing);
@@ -241,6 +241,6 @@ describe("updateUsagePreference", () => {
       publicProfileEnabled: true,
       timezone: "Asia/Shanghai",
     });
-    expect(mocks.expireLeaderboardSnapshots).not.toHaveBeenCalled();
+    expect(mocks.ageAllLeaderboardSnapshots).not.toHaveBeenCalled();
   });
 });

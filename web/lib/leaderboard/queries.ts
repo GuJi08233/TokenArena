@@ -675,7 +675,7 @@ function snapshotEntryToSummary(row: {
  * change in between would otherwise be written into a fresh snapshot and served
  * until it expires. Locking the preference rows makes `updateUsagePreference`
  * either commit first, so its change is seen here, or wait until this snapshot
- * is written and then expire it. The lock has to come before the transaction
+ * is written and then age it. The lock has to come before the transaction
  * touches the snapshot, because the preference update deletes snapshots while
  * holding its row lock; taking them in the other order would deadlock.
  */
@@ -832,7 +832,41 @@ async function ensureGlobalSnapshot(
     };
   }
 
-  return rebuildGlobalSnapshot(period, metric, now);
+  return rebuildGlobalSnapshotOnce(period, metric, now, requestedWindow);
+}
+
+/** Rebuilds in progress, keyed by board and window. */
+const pendingSnapshotRebuilds = new Map<
+  string,
+  ReturnType<typeof rebuildGlobalSnapshot>
+>();
+
+/**
+ * Share one rebuild among the requests that find the same board expired.
+ *
+ * Each of them used to run its own full aggregation, so the moment a popular
+ * board expired, every concurrent view queued the same `GROUP BY` against a
+ * small connection pool.
+ */
+function rebuildGlobalSnapshotOnce(
+  period: LeaderboardPeriod,
+  metric: LeaderboardMetric,
+  now: Date,
+  window: LeaderboardWindow,
+) {
+  const key = `${period}:${metric}:${window.start?.toISOString() ?? "all"}`;
+  const pending = pendingSnapshotRebuilds.get(key);
+
+  if (pending) {
+    return pending;
+  }
+
+  const rebuild = rebuildGlobalSnapshot(period, metric, now).finally(() => {
+    pendingSnapshotRebuilds.delete(key);
+  });
+  pendingSnapshotRebuilds.set(key, rebuild);
+
+  return rebuild;
 }
 
 async function getFollowingCostRankedSummaries(input: {

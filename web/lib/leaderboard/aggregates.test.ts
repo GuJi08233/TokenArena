@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  ageAllLeaderboardSnapshots,
   collectAffectedLeaderboardDates,
-  expireLeaderboardSnapshots,
   findExistingSessionStartDates,
   invalidateLeaderboardSnapshots,
   recomputeLeaderboardUserDays,
@@ -169,17 +169,26 @@ describe("invalidateLeaderboardSnapshots", () => {
   });
 });
 
-describe("expireLeaderboardSnapshots", () => {
-  it("deletes every snapshot so a visibility change applies at once", async () => {
+describe("ageAllLeaderboardSnapshots", () => {
+  it("ages every snapshot instead of deleting them", async () => {
+    // Deleting let a visibility toggle force a rebuild of every board on the
+    // next view; reads drop a newly private profile on their own.
     const deleteMany = vi.fn().mockResolvedValue({ count: 0 });
     const updateMany = vi.fn().mockResolvedValue({ count: 0 });
+    const now = new Date("2026-03-25T06:00:00.000Z");
+    // TTL (5min) minus the min lifetime (30s) before `now`.
+    const staleGeneratedAt = new Date("2026-03-25T05:55:30.000Z");
 
-    await expireLeaderboardSnapshots({
-      leaderboardSnapshot: { deleteMany, updateMany },
+    await ageAllLeaderboardSnapshots(
+      { leaderboardSnapshot: { deleteMany, updateMany } },
+      now,
+    );
+
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { generatedAt: { gt: staleGeneratedAt } },
+      data: { generatedAt: staleGeneratedAt },
     });
-
-    expect(deleteMany).toHaveBeenCalledWith({});
-    expect(updateMany).not.toHaveBeenCalled();
+    expect(deleteMany).not.toHaveBeenCalled();
   });
 });
 

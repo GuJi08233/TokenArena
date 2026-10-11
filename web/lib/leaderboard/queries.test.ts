@@ -357,6 +357,58 @@ describe("cost leaderboard viewer rank", () => {
     ).toEqual([["runner-up", 1]]);
   });
 
+  it("shares one rebuild among concurrent views of an expired board", async () => {
+    const snapshot = {
+      id: "rebuilt",
+      generatedAt: now,
+      windowStart: null,
+      windowEnd: null,
+    };
+    mocks.prisma.leaderboardSnapshot.findUnique.mockResolvedValue(null);
+    const releaseAggregates: Array<() => void> = [];
+    mocks.prisma.leaderboardUserDay.groupBy.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          releaseAggregates.push(() =>
+            resolve([{ userId: "leader", _sum: snapshotEntry("leader", 1) }]),
+          );
+        }),
+    );
+    mocks.prisma.$transaction.mockImplementation(
+      async (fn: (tx: unknown) => unknown) =>
+        fn({
+          $queryRaw: async () => [{ userId: "leader" }],
+          leaderboardSnapshot: { upsert: async () => snapshot },
+          leaderboardSnapshotEntry: {
+            deleteMany: async () => undefined,
+            createMany: async () => undefined,
+          },
+        }),
+    );
+
+    const views = Promise.all(
+      Array.from({ length: 5 }, () =>
+        getLeaderboardPageData({
+          period: "all_time",
+          metric: "total_tokens",
+          now,
+        }),
+      ),
+    );
+    // Let every view reach the expired snapshot before the aggregate returns.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    for (const release of releaseAggregates) release();
+    const pages = await views;
+
+    expect(mocks.prisma.leaderboardUserDay.groupBy).toHaveBeenCalledOnce();
+    expect(mocks.prisma.$transaction).toHaveBeenCalledOnce();
+    for (const page of pages) {
+      expect(page.global.entries.map((entry) => entry.userId)).toEqual([
+        "leader",
+      ]);
+    }
+  });
+
   it("adds a token viewer outside the cached top 50 using the SQL rank", async () => {
     mocks.prisma.leaderboardSnapshotEntry.findMany.mockResolvedValue([
       { ...snapshotEntry("leader", 1), estimatedCostUsd: 0 },
