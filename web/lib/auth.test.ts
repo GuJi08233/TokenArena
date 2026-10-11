@@ -305,3 +305,96 @@ describe("update-user", () => {
     expect(mocks.db.user[0]?.image ?? null).toBeNull();
   });
 });
+
+describe("GitLab OAuth account linking", () => {
+  let auth: Auth;
+  let gitlabProfile: Record<string, unknown> = {};
+
+  async function fakeProviderFetch(input: RequestInfo | URL) {
+    const url = input instanceof Request ? input.url : String(input);
+
+    switch (url) {
+      case "https://gitlab.example.com/oauth/token":
+        return Response.json({ access_token: "gl_test", token_type: "bearer" });
+      case "https://gitlab.example.com/api/v4/user":
+        return Response.json(gitlabProfile);
+      default:
+        return fakeGitHubFetch(input);
+    }
+  }
+
+  async function signInWithGitLab() {
+    const signIn = await auth.handler(
+      new Request(`${BASE_URL}/api/auth/sign-in/oauth2`, {
+        method: "POST",
+        headers: { "content-type": "application/json", origin: BASE_URL },
+        body: JSON.stringify({
+          providerId: "gitlab",
+          callbackURL: "/zh/usage",
+          errorCallbackURL: "/zh/login",
+        }),
+      }),
+    );
+    const { url } = (await signIn.json()) as { url: string };
+    const state = new URL(url).searchParams.get("state");
+
+    return auth.handler(
+      new Request(
+        `${BASE_URL}/api/auth/oauth2/callback/gitlab?code=test-code&state=${state}`,
+        { headers: { cookie: toCookieHeader(signIn) } },
+      ),
+    );
+  }
+
+  async function sessionUserId(response: Response) {
+    const session = await auth.handler(
+      new Request(`${BASE_URL}/api/auth/get-session`, {
+        headers: { cookie: toCookieHeader(response) },
+      }),
+    );
+    const body = (await session.json()) as { user?: { id: string } } | null;
+    return body?.user?.id ?? null;
+  }
+
+  beforeAll(async () => {
+    vi.stubGlobal("fetch", fakeProviderFetch);
+    vi.stubEnv("GITLAB_BASE_URL", "https://gitlab.example.com");
+    vi.stubEnv("GITLAB_CLIENT_ID", "gitlab-client-id");
+    vi.stubEnv("GITLAB_CLIENT_SECRET", "gitlab-client-secret");
+    auth = await loadAuth("production");
+  }, 60_000);
+
+  it("does not hand an existing account to an unconfirmed GitLab email", async () => {
+    const victim = await sessionUserId(await signInWithGitHub(auth));
+    expect(victim).not.toBeNull();
+
+    gitlabProfile = {
+      id: 999,
+      username: "mallory",
+      name: "Mallory",
+      email: githubProfile.email,
+      confirmed_at: null,
+    };
+    const callback = await signInWithGitLab();
+
+    expect(await sessionUserId(callback)).toBeNull();
+    expect(
+      mocks.db.account.filter((account) => account.providerId === "gitlab"),
+    ).toEqual([]);
+  });
+
+  it("still links a GitLab account whose email GitLab confirmed", async () => {
+    const owner = await sessionUserId(await signInWithGitHub(auth));
+
+    gitlabProfile = {
+      id: 1000,
+      username: "octocat",
+      name: "The Octocat",
+      email: githubProfile.email,
+      confirmed_at: "2026-01-01T00:00:00Z",
+    };
+    const callback = await signInWithGitLab();
+
+    expect(await sessionUserId(callback)).toBe(owner);
+  });
+});

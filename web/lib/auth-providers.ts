@@ -73,8 +73,11 @@ async function getWatchaUserInfo(tokens: OAuth2Tokens) {
     id: String(data.data.user_id),
     name: data.data.nickname,
     image: data.data.avatar_url || undefined,
+    // Watcha shares no email. A synthesized address is verified by nobody, and
+    // better-auth links an existing account on a verified email match, so it
+    // must not be reported as verified.
     email: `${data.data.user_id}@watcha.local`,
-    emailVerified: true,
+    emailVerified: false,
   };
 }
 
@@ -105,19 +108,21 @@ async function getGitLabUserInfo(tokens: OAuth2Tokens, env = process.env) {
   };
 
   const id = String(data.id);
-  const email =
-    data.email ||
-    data.public_email ||
-    (data.username ? `${data.username}@gitlab.local` : `${id}@gitlab.local`);
+  const profileEmail = data.email || data.public_email;
 
   return {
     id,
     name: data.name || data.username || "GitLab User",
     image: data.avatar_url || undefined,
-    email,
-    emailVerified: Boolean(
-      data.confirmed_at || data.email || data.public_email,
-    ),
+    email:
+      profileEmail ||
+      (data.username ? `${data.username}@gitlab.local` : `${id}@gitlab.local`),
+    // better-auth links an existing account whose email matches a verified
+    // provider email. A self-managed GitLab with "soft" or "off" email
+    // confirmation lets users sign in before confirming, so an address GitLab
+    // returns is only verified once `confirmed_at` says so; otherwise any
+    // GitLab user could claim someone else's email and take over their account.
+    emailVerified: Boolean(profileEmail && data.confirmed_at),
   };
 }
 

@@ -131,6 +131,28 @@ describe("GitLab user info", () => {
     );
   });
 
+  it("treats an unconfirmed GitLab email as unverified", async () => {
+    // Self-managed instances with soft or no email confirmation let users sign
+    // in before confirming, so the address alone proves nothing.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        Response.json({
+          id: 42,
+          username: "mallory",
+          email: "victim@example.com",
+          public_email: "victim@example.com",
+          confirmed_at: null,
+        }),
+      ),
+    );
+
+    await expect(getUserInfo(gitlabEnv)).resolves.toMatchObject({
+      email: "victim@example.com",
+      emailVerified: false,
+    });
+  });
+
   it("falls back to a placeholder email when the profile has none", async () => {
     vi.stubGlobal(
       "fetch",
@@ -175,7 +197,7 @@ describe("Watcha user info", () => {
       name: "Bob",
       image: "https://watcha.cn/bob.png",
       email: "7@watcha.local",
-      emailVerified: true,
+      emailVerified: false,
     });
     expect(fetchMock).toHaveBeenCalledWith(
       "https://watcha.cn/oauth/api/userinfo?access_token=access-token",
