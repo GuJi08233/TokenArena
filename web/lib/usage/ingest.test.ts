@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   findExistingSessionStartDates: vi.fn().mockResolvedValue([]),
   invalidateLeaderboardSnapshots: vi.fn().mockResolvedValue(undefined),
   recomputeLeaderboardUserDays: vi.fn().mockResolvedValue(undefined),
+  lockAdvisoryKeys: vi.fn().mockResolvedValue(undefined),
   prisma: {
     $transaction: vi.fn(),
   },
@@ -15,6 +16,12 @@ vi.mock("@/lib/pricing/catalog", () => ({
   getPricingCatalog: mocks.getPricingCatalog,
 }));
 vi.mock("@/lib/prisma", () => ({ prisma: mocks.prisma }));
+// The lock statement has its own tests; here it would shift every captured
+// `$executeRaw` call by one.
+vi.mock("@/lib/advisory-lock", () => ({
+  ADVISORY_LOCK_NAMESPACE: { usageWrite: 3 },
+  lockAdvisoryKeys: mocks.lockAdvisoryKeys,
+}));
 vi.mock("@/lib/leaderboard/aggregates", () => ({
   collectAffectedLeaderboardDates: mocks.collectAffectedLeaderboardDates,
   findExistingSessionStartDates: mocks.findExistingSessionStartDates,
@@ -23,7 +30,7 @@ vi.mock("@/lib/leaderboard/aggregates", () => ({
 }));
 
 import { ingestRequestSchema } from "./contracts";
-import { ingestUsagePayload } from "./ingest";
+import { deleteUsageDeviceSnapshot, ingestUsagePayload } from "./ingest";
 
 function buildPayload(syncAchievements?: boolean) {
   return ingestRequestSchema.parse({
@@ -72,6 +79,47 @@ describe("ingestUsagePayload", () => {
 
   afterEach(() => {
     vi.unstubAllEnvs();
+  });
+
+  it("locks the user's usage before reading or writing any of it", async () => {
+    const tx = buildTransactionClient();
+    mocks.prisma.$transaction.mockImplementation(async (callback) =>
+      callback(tx),
+    );
+
+    await ingestUsagePayload({
+      userId: "user-1",
+      apiKeyId: "key-1",
+      payload: buildPayload(false),
+    });
+
+    expect(mocks.lockAdvisoryKeys).toHaveBeenCalledWith(tx, 3, ["user-1"]);
+    expect(mocks.lockAdvisoryKeys.mock.invocationCallOrder[0]).toBeLessThan(
+      tx.device.upsert.mock.invocationCallOrder[0] ?? 0,
+    );
+  });
+
+  it("locks the user's usage before deleting a device snapshot", async () => {
+    const tx = {
+      usageBucket: {
+        findMany: vi.fn().mockResolvedValue([]),
+        deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+      },
+      usageSession: {
+        findMany: vi.fn().mockResolvedValue([]),
+        deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+      },
+    };
+    mocks.prisma.$transaction.mockImplementation(async (callback) =>
+      callback(tx),
+    );
+
+    await deleteUsageDeviceSnapshot({ userId: "user-1", deviceId: "dev-1" });
+
+    expect(mocks.lockAdvisoryKeys).toHaveBeenCalledWith(tx, 3, ["user-1"]);
+    expect(mocks.lockAdvisoryKeys.mock.invocationCallOrder[0]).toBeLessThan(
+      tx.usageBucket.findMany.mock.invocationCallOrder[0] ?? 0,
+    );
   });
 
   it("persists cache writes in buckets and derives session totals from model usage", async () => {

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { ADVISORY_LOCK_NAMESPACE, lockAdvisoryKeys } from "@/lib/advisory-lock";
 import {
   collectAffectedLeaderboardDates,
   findExistingSessionStartDates,
@@ -499,6 +500,19 @@ async function upsertSessions(
 }
 
 /**
+ * Serialize one user's usage writes until the transaction ends.
+ *
+ * Leaderboard days are recomputed from the rows a transaction can see and
+ * then written as absolute totals. Two uploads from different devices that
+ * touch the same day each missed the other's uncommitted rows, and the later
+ * commit overwrote the day without the earlier device's usage. Later uploads
+ * only resend changed buckets, so the day stayed short.
+ */
+async function lockUserUsage(db: UsageWriteClient, userId: string) {
+  await lockAdvisoryKeys(db, ADVISORY_LOCK_NAMESPACE.usageWrite, [userId]);
+}
+
+/**
  * Delete one device's usage and refresh the leaderboard days it touched.
  *
  * Achievements are not resynchronized here. The caller schedules that after
@@ -510,6 +524,7 @@ export async function deleteUsageDeviceSnapshot(
 ) {
   return prisma.$transaction(
     async (tx) => {
+      await lockUserUsage(tx, input.userId);
       const [existingBuckets, existingSessions] = await Promise.all([
         tx.usageBucket.findMany({
           where: {
@@ -584,6 +599,7 @@ export async function ingestUsagePayload(input: IngestUsagePayloadInput) {
 
   return prisma.$transaction(
     async (tx) => {
+      await lockUserUsage(tx, input.userId);
       await upsertDevice(tx, {
         userId: input.userId,
         apiKeyId: input.apiKeyId,

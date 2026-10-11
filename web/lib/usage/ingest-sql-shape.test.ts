@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   findExistingSessionStartDates: vi.fn().mockResolvedValue([]),
   invalidateLeaderboardSnapshots: vi.fn().mockResolvedValue(undefined),
   recomputeLeaderboardUserDays: vi.fn().mockResolvedValue(undefined),
+  lockAdvisoryKeys: vi.fn().mockResolvedValue(undefined),
   prisma: { $transaction: vi.fn() },
 }));
 
@@ -13,6 +14,12 @@ vi.mock("@/lib/pricing/catalog", () => ({
   getPricingCatalog: mocks.getPricingCatalog,
 }));
 vi.mock("@/lib/prisma", () => ({ prisma: mocks.prisma }));
+// The lock statement has its own tests; here it would shift every captured
+// `$executeRaw` call by one.
+vi.mock("@/lib/advisory-lock", () => ({
+  ADVISORY_LOCK_NAMESPACE: { usageWrite: 3 },
+  lockAdvisoryKeys: mocks.lockAdvisoryKeys,
+}));
 vi.mock("@/lib/leaderboard/aggregates", () => ({
   collectAffectedLeaderboardDates: mocks.collectAffectedLeaderboardDates,
   findExistingSessionStartDates: mocks.findExistingSessionStartDates,

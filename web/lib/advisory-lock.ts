@@ -9,6 +9,8 @@ export const ADVISORY_LOCK_NAMESPACE = {
   achievementState: 1,
   /** One leaderboard window while its badges are issued. */
   leaderboardFinalize: 2,
+  /** One user's usage rows and the leaderboard days derived from them. */
+  usageWrite: 3,
 } as const;
 
 type AdvisoryLockClient = Pick<Prisma.TransactionClient, "$executeRaw">;
