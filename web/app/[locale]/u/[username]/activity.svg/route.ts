@@ -9,8 +9,6 @@ import {
 import { getPublicProfileActivityShareData } from "@/lib/social/queries";
 import { SVG_SECURITY_HEADERS } from "@/lib/social/svg-headers";
 
-export const revalidate = 3600;
-
 export async function GET(
   request: Request,
   context: { params: Promise<{ locale: string; username: string }> },
@@ -48,8 +46,9 @@ export async function GET(
   return new Response(svg, {
     headers: {
       "Content-Type": "image/svg+xml; charset=utf-8",
-      "Cache-Control":
-        "public, max-age=300, s-maxage=3600, stale-while-revalidate=86400",
+      // Kept short and without stale-while-revalidate: shared caches served
+      // the heatmap for up to a day after its profile was made private.
+      "Cache-Control": "public, max-age=300, s-maxage=300",
       ...SVG_SECURITY_HEADERS,
     },
   });

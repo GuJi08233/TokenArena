@@ -532,12 +532,12 @@ export function renderBadgeSvg(
   state: PublicBadgeState,
   config: BadgeRenderConfig,
 ) {
+  // A private profile and a missing one render alike, so a badge cannot be
+  // used to tell whether an account exists behind a private profile.
   const value =
     state.kind === "ok"
       ? getMetricValue(state.data, config.metric)
-      : state.kind === "private"
-        ? "private"
-        : "not found";
+      : "unavailable";
   const label = config.label?.trim() || getMetricLabel(config.metric);
 
   // Neutral palette aligned with web/app/globals.css (:root / .dark), hex for SVG portability.

@@ -47,6 +47,9 @@ describe("activity svg route", () => {
       "default-src 'none'; style-src 'unsafe-inline'",
     );
     expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(response.headers.get("cache-control")).toBe(
+      "public, max-age=300, s-maxage=300",
+    );
     await expect(response.text()).resolves.toContain("activityTitle");
   });
 

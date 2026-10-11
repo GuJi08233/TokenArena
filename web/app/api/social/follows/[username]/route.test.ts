@@ -75,8 +75,9 @@ describe("follow route", () => {
   });
 
   it("refuses to follow a private profile or yourself", async () => {
+    // A private profile answers like a missing user.
     mocks.prisma.user.findUnique.mockResolvedValueOnce(target(false));
-    expect((await POST(request("POST"), context("bob"))).status).toBe(403);
+    expect((await POST(request("POST"), context("bob"))).status).toBe(404);
 
     mocks.prisma.user.findUnique.mockResolvedValueOnce({
       ...target(true),

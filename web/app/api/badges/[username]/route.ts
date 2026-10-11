@@ -39,7 +39,9 @@ export async function GET(
     status: 200,
     headers: {
       "content-type": "image/svg+xml; charset=utf-8",
-      "cache-control": "public, s-maxage=300, stale-while-revalidate=3600",
+      // No stale-while-revalidate: a profile turned private must stop
+      // showing within the five minutes, not up to an hour later.
+      "cache-control": "public, max-age=300, s-maxage=300",
       ...SVG_SECURITY_HEADERS,
     },
   });

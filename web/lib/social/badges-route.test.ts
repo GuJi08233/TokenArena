@@ -74,7 +74,11 @@ describe("badge route", () => {
       { params: Promise.resolve({ username: "alice" }) } as never,
     );
 
-    await expect(response.text()).resolves.toContain("private");
+    await expect(response.text()).resolves.toContain(">unavailable<");
+    // A profile turned private must not linger in shared caches.
+    expect(response.headers.get("cache-control")).toBe(
+      "public, max-age=300, s-maxage=300",
+    );
   });
 
   it("escapes a hostile label and serves the SVG under a restrictive CSP", async () => {
@@ -95,7 +99,7 @@ describe("badge route", () => {
     const svg = await response.text();
     expect(svg).not.toContain("<script");
     expect(svg).toContain(
-      'aria-label="TokenArena &quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;: private"',
+      'aria-label="TokenArena &quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;: unavailable"',
     );
     expect(response.headers.get("content-security-policy")).toBe(
       "default-src 'none'; style-src 'unsafe-inline'",

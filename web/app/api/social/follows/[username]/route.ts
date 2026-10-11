@@ -61,8 +61,10 @@ export async function POST(
     return NextResponse.json({ error: "INVALID_TARGET" }, { status: 400 });
   }
 
+  // Answered like a missing user, so a follow attempt cannot reveal that a
+  // private profile exists.
   if (!targetUser.usagePreference?.publicProfileEnabled) {
-    return NextResponse.json({ error: "PROFILE_PRIVATE" }, { status: 403 });
+    return NextResponse.json({ error: "NOT_FOUND" }, { status: 404 });
   }
 
   const created = await prisma.follow.createMany({

@@ -357,21 +357,24 @@ describe("social badges", () => {
     );
 
     expect(svg).toContain("<svg");
-    expect(svg).toContain("not found");
+    expect(svg).toContain(">unavailable<");
     expect(svg).toContain(">tokens<");
   });
 
-  it("renders badge SVG for private status", async () => {
+  it("renders a private profile exactly like a missing one", async () => {
     const { renderBadgeSvg } = await import("@/lib/social/badges");
+    const config = { metric: "cost", theme: "dark", style: "flat" } as const;
 
-    const svg = renderBadgeSvg(
+    const privateSvg = renderBadgeSvg(
       { kind: "private", username: "hidden_user" },
-      { metric: "cost", theme: "dark", style: "flat" },
+      config,
     );
 
-    expect(svg).toContain("<svg");
-    expect(svg).toContain("private");
-    expect(svg).toContain(">cost<");
+    expect(privateSvg).toContain(">cost<");
+    expect(privateSvg).not.toContain("private");
+    expect(privateSvg).toBe(
+      renderBadgeSvg({ kind: "not_found", username: "ghost_user" }, config),
+    );
   });
 
   it("renders badge SVG with light theme", async () => {
