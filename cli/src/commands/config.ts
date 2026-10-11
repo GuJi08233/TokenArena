@@ -1,3 +1,4 @@
+import { getInsecureApiUrlReason } from "../infrastructure/api/url-policy";
 import {
   getDefaultApiUrl,
   isValidConfigKey,
@@ -325,6 +326,12 @@ export async function handleConfig(args: string[]): Promise<void> {
           logger.error("apiUrl must be a valid URL");
           process.exit(1);
         }
+
+        const insecureUrlReason = getInsecureApiUrlReason(String(normalized));
+        if (insecureUrlReason) {
+          logger.error(insecureUrlReason);
+          process.exit(1);
+        }
       }
 
       if (key === "syncInterval") {
@@ -342,7 +349,8 @@ export async function handleConfig(args: string[]): Promise<void> {
         logger.info(formatHeader("配置已更新"));
         logger.info(formatKeyValue(key, formatConfigValue(key, normalized)));
       } else {
-        logger.info(`Set ${key} = ${normalized}`);
+        // Masked here too: piped or CI output ends up in logs.
+        logger.info(`Set ${key} = ${formatConfigValue(key, normalized)}`);
       }
       break;
     }
@@ -351,7 +359,16 @@ export async function handleConfig(args: string[]): Promise<void> {
         printConfigShow();
       } else {
         const config = loadConfig();
-        console.log(config ? JSON.stringify(config, null, 2) : "{}");
+        // `config get apiKey` prints the key on request; `show` never does.
+        console.log(
+          config
+            ? JSON.stringify(
+                { ...config, apiKey: maskSecret(config.apiKey) },
+                null,
+                2,
+              )
+            : "{}",
+        );
       }
       break;
     }

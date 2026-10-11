@@ -4,6 +4,7 @@ import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { homedir, platform } from "node:os";
 import { dirname, join, posix, win32 } from "node:path";
 import { ApiClient } from "../infrastructure/api/client";
+import { getInsecureApiUrlReason } from "../infrastructure/api/url-policy";
 import {
   type Config,
   getDefaultApiUrl,
@@ -260,6 +261,12 @@ export async function runInit(opts: InitOptions = {}): Promise<void> {
   }
 
   const apiUrl = opts.apiUrl || getDefaultApiUrl();
+  const insecureUrlReason = getInsecureApiUrlReason(apiUrl);
+  if (insecureUrlReason) {
+    logger.error(insecureUrlReason);
+    process.exit(1);
+  }
+
   const cliKeysUrl = `${apiUrl}/zh/settings/cli-keys`;
   logger.info(formatSection("第 1 步：准备 API Key"));
   logger.info(formatBullet("浏览器将尝试自动打开 CLI Key 页面。"));

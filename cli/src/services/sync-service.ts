@@ -15,6 +15,7 @@ import {
   type UploadManifestScopeChange,
 } from "../domain/upload-manifest";
 import { ApiClient, getIngestPayloadSize } from "../infrastructure/api/client";
+import { getInsecureApiUrlReason } from "../infrastructure/api/url-policy";
 import {
   type Config,
   getOrCreateDeviceId,
@@ -418,6 +419,11 @@ export async function runSync(
     }
 
     const apiUrl = config.apiUrl || "https://token.guji.uno";
+    const insecureUrlReason = getInsecureApiUrlReason(apiUrl);
+    if (insecureUrlReason) {
+      throw new SyncFailure(insecureUrlReason, "error");
+    }
+
     const apiClient = new ApiClient(apiUrl, config.apiKey);
 
     let settings: ApiSettings | null;

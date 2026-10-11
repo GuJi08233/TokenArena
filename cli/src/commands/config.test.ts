@@ -210,6 +210,66 @@ describe("config command", () => {
       mockExit.mockRestore();
     });
 
+    it("set subcommand refuses plain HTTP to a public server", async () => {
+      vi.mocked(isInteractiveTerminal).mockReturnValue(false);
+      vi.mocked(loadConfig).mockReturnValue({
+        apiKey: "ta_test",
+        apiUrl: "https://example.com",
+      });
+      const mockExit = vi.spyOn(process, "exit").mockImplementation(() => {
+        throw new Error("exit");
+      });
+      await expect(
+        handleConfig(["set", "apiUrl", "http://token.guji.uno"]),
+      ).rejects.toThrow("exit");
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.stringContaining("plain HTTP"),
+      );
+      expect(saveConfig).not.toHaveBeenCalled();
+      mockExit.mockRestore();
+    });
+
+    it("set subcommand keeps plain HTTP for a local server", async () => {
+      vi.mocked(isInteractiveTerminal).mockReturnValue(false);
+      vi.mocked(loadConfig).mockReturnValue({
+        apiKey: "ta_test",
+        apiUrl: "https://example.com",
+      });
+      await handleConfig(["set", "apiUrl", "http://192.168.1.10:3000"]);
+      expect(saveConfig).toHaveBeenCalledWith(
+        expect.objectContaining({ apiUrl: "http://192.168.1.10:3000" }),
+      );
+    });
+
+    it("set subcommand masks the key in piped output", async () => {
+      vi.mocked(isInteractiveTerminal).mockReturnValue(false);
+      vi.mocked(validateApiKey).mockReturnValue(true);
+      vi.mocked(loadConfig).mockReturnValue({
+        apiKey: "ta_old",
+        apiUrl: "https://example.com",
+      });
+      await handleConfig(["set", "apiKey", "ta_new123456789abcdef"]);
+      const output = vi.mocked(logger.info).mock.calls.flat().join("\n");
+      expect(output).not.toContain("ta_new123456789abcdef");
+      expect(output).toContain("ta_new12");
+    });
+
+    it("show subcommand masks the key in piped output", async () => {
+      vi.mocked(isInteractiveTerminal).mockReturnValue(false);
+      vi.mocked(loadConfig).mockReturnValue({
+        apiKey: "ta_secret123456789",
+        apiUrl: "https://example.com",
+      });
+      const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      await handleConfig(["show"]);
+      const output = logSpy.mock.calls.flat().join("\n");
+      expect(output).not.toContain("ta_secret123456789");
+      expect(JSON.parse(output)).toMatchObject({
+        apiUrl: "https://example.com",
+      });
+      logSpy.mockRestore();
+    });
+
     it("set subcommand rejects non-positive syncInterval", async () => {
       vi.mocked(isInteractiveTerminal).mockReturnValue(false);
       vi.mocked(loadConfig).mockReturnValue({
