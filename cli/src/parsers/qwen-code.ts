@@ -1,6 +1,6 @@
 import { existsSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { aggregateToBuckets } from "../domain/aggregator";
 import { extractSessions } from "../domain/session-extractor";
 import type {
@@ -117,22 +117,41 @@ export function resolveQwenProject(
 
 export class QwenCodeParser implements IParser {
   readonly tool: ToolDefinition;
+  /**
+   * Where current releases keep chats: `<qwen home>/projects/<cwd>/chats`,
+   * beside the `tmp` directory older ones used (0.25.0 writes only here).
+   * Reading `tmp` alone found nothing while `isInstalled()` stayed true,
+   * which made the whole source a silent zero, as ffbd1ad found for dsh.
+   */
+  private readonly projectsDir: string;
 
   constructor(private readonly dataDir = DEFAULT_DATA_DIR) {
     this.tool = createToolDefinition(dataDir);
+    this.projectsDir = join(dirname(dataDir), "projects");
   }
 
   async parse(): Promise<ParseResult> {
-    const sessionFiles = findSessionFiles(this.dataDir);
+    const sessionFiles = [
+      ...findSessionFiles(this.dataDir).map((filePath) => ({
+        filePath,
+        root: this.dataDir,
+      })),
+      ...findSessionFiles(this.projectsDir).map((filePath) => ({
+        filePath,
+        root: this.projectsDir,
+      })),
+    ];
     if (sessionFiles.length === 0) {
       return { buckets: [], sessions: [] };
     }
 
     const entries: TokenUsageEntry[] = [];
     const sessionEvents: SessionEvent[] = [];
+    // A record seen once is skipped everywhere: a chat present in both
+    // layouts, as after a migration, must count once, tokens and session.
     const seenUuids = new Set<string>();
 
-    for (const filePath of sessionFiles) {
+    for (const { filePath, root } of sessionFiles) {
       const content = readFileSafe(filePath);
       if (!content) continue;
 
@@ -148,7 +167,12 @@ export class QwenCodeParser implements IParser {
           const timestamp = new Date(obj.timestamp);
           if (Number.isNaN(timestamp.getTime())) continue;
 
-          const project = resolveQwenProject(obj.cwd, filePath, this.dataDir);
+          const project = resolveQwenProject(obj.cwd, filePath, root);
+
+          if (obj.uuid) {
+            if (seenUuids.has(obj.uuid)) continue;
+            seenUuids.add(obj.uuid);
+          }
 
           if (obj.type === "user" || obj.type === "assistant") {
             sessionEvents.push({
@@ -183,11 +207,6 @@ export class QwenCodeParser implements IParser {
             continue;
           }
 
-          if (obj.uuid) {
-            if (seenUuids.has(obj.uuid)) continue;
-            seenUuids.add(obj.uuid);
-          }
-
           entries.push({
             sessionId,
             source: TOOL_ID,
@@ -212,7 +231,7 @@ export class QwenCodeParser implements IParser {
   }
 
   isInstalled(): boolean {
-    return existsSync(this.dataDir);
+    return existsSync(this.dataDir) || existsSync(this.projectsDir);
   }
 }
 

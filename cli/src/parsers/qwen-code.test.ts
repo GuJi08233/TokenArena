@@ -100,3 +100,71 @@ describe("QwenCodeParser", () => {
     });
   });
 });
+
+describe("QwenCodeParser project layout", () => {
+  function chatLines(uuidPrefix: string) {
+    return [
+      JSON.stringify({
+        type: "user",
+        sessionId: "6b0389ac",
+        uuid: `${uuidPrefix}-user`,
+        timestamp: "2026-10-01T10:00:00.000Z",
+        cwd: "/Users/dev/work",
+      }),
+      JSON.stringify({
+        type: "assistant",
+        sessionId: "6b0389ac",
+        uuid: `${uuidPrefix}-assistant`,
+        timestamp: "2026-10-01T10:00:05.000Z",
+        cwd: "/Users/dev/work",
+        model: "qwen3-coder-plus",
+        usageMetadata: {
+          promptTokenCount: 2_100,
+          candidatesTokenCount: 31,
+          cachedContentTokenCount: 0,
+          thoughtsTokenCount: 0,
+        },
+      }),
+    ].join("\n");
+  }
+
+  it("reads chats that current releases keep under projects/", async () => {
+    // Qwen Code 0.25.0 writes `<home>/projects/<cwd>/chats/<session>.jsonl`
+    // and nothing under `tmp`.
+    const home = makeTempDir("tokenarena-qwen-home-");
+    const chatsDir = join(home, "projects", "-Users-dev-work", "chats");
+    mkdirSync(chatsDir, { recursive: true });
+    writeFileSync(join(chatsDir, "6b0389ac.jsonl"), chatLines("a"), "utf-8");
+
+    const parser = new QwenCodeParser(join(home, "tmp"));
+    const result = await parser.parse();
+
+    expect(parser.isInstalled()).toBe(true);
+    expect(result.buckets).toEqual([
+      expect.objectContaining({
+        project: "work",
+        inputTokens: 2_100,
+        outputTokens: 31,
+        totalTokens: 2_131,
+      }),
+    ]);
+    expect(result.sessions).toHaveLength(1);
+  });
+
+  it("counts a chat present in both layouts once", async () => {
+    const home = makeTempDir("tokenarena-qwen-home-");
+    const oldDir = join(home, "tmp", "caed98fe", "chats");
+    const newDir = join(home, "projects", "-Users-dev-work", "chats");
+    mkdirSync(oldDir, { recursive: true });
+    mkdirSync(newDir, { recursive: true });
+    writeFileSync(join(oldDir, "session-1.jsonl"), chatLines("a"), "utf-8");
+    writeFileSync(join(newDir, "6b0389ac.jsonl"), chatLines("a"), "utf-8");
+
+    const result = await new QwenCodeParser(join(home, "tmp")).parse();
+
+    expect(result.buckets).toEqual([
+      expect.objectContaining({ totalTokens: 2_131 }),
+    ]);
+    expect(result.sessions).toHaveLength(1);
+  });
+});
