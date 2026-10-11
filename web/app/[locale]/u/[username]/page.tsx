@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Link } from "@/i18n/navigation";
+import { createFormatterCache } from "@/lib/bounded-map";
 import { getOptionalSession } from "@/lib/session";
 import { buildAbsoluteUrl, getAppOrigin } from "@/lib/site-url";
 import { buildActivitySvgUrl } from "@/lib/social/heatmap-svg";
@@ -40,7 +41,7 @@ type PublicProfilePageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
 
-const joinedDateFormatterCache = new Map<string, Intl.DateTimeFormat>();
+const joinedDateFormatterCache = createFormatterCache<Intl.DateTimeFormat>();
 
 function formatJoinedDate(value: Date, locale: string) {
   let formatter = joinedDateFormatterCache.get(locale);

@@ -49,4 +49,22 @@ describe("activity svg route", () => {
     expect(response.headers.get("x-content-type-options")).toBe("nosniff");
     await expect(response.text()).resolves.toContain("activityTitle");
   });
+
+  it("answers 404 for a locale the app does not serve", async () => {
+    // Each distinct BCP 47 tag used to leave a cached formatter behind, and a
+    // malformed one threw a RangeError while rendering.
+    mocks.getPublicProfileActivityShareData.mockClear();
+    const { GET } = await import(
+      "@/app/[locale]/u/[username]/activity.svg/route"
+    );
+
+    for (const locale of ["en-x-abc12345", "foo_bar", "fr"]) {
+      await expect(
+        GET(new Request(`https://example.com/${locale}/u/alice/activity.svg`), {
+          params: Promise.resolve({ locale, username: "alice" }),
+        }),
+      ).rejects.toMatchObject({ digest: "NEXT_HTTP_ERROR_FALLBACK;404" });
+    }
+    expect(mocks.getPublicProfileActivityShareData).not.toHaveBeenCalled();
+  });
 });

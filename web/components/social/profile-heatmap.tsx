@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { createFormatterCache } from "@/lib/bounded-map";
 import type { ProfileHeatmapDay } from "@/lib/social/queries";
 import { formatDuration, formatTokenCount } from "@/lib/usage/format";
 import { cn } from "@/lib/utils";
@@ -46,7 +47,7 @@ function buildWeeks(days: ProfileHeatmapDay[]) {
   return chunk(padded, 7);
 }
 
-const monthLabelFormatterCache = new Map<string, Intl.DateTimeFormat>();
+const monthLabelFormatterCache = createFormatterCache<Intl.DateTimeFormat>();
 
 function formatMonthLabel(value: string, locale: string) {
   let formatter = monthLabelFormatterCache.get(locale);

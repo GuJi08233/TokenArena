@@ -13,6 +13,7 @@ import dynamic from "next/dynamic";
 import Image from "next/image";
 import { useTranslations } from "next-intl";
 import { Badge } from "@/components/ui/badge";
+import { createFormatterCache } from "@/lib/bounded-map";
 import { buildAbsoluteUrl } from "@/lib/site-url";
 import {
   formatDuration,
@@ -145,7 +146,7 @@ const sizePresets = {
   },
 } as const;
 
-const shortDateFormatterCache = new Map<string, Intl.DateTimeFormat>();
+const shortDateFormatterCache = createFormatterCache<Intl.DateTimeFormat>();
 
 function formatShortDate(value: string, locale: string, timezone: string) {
   const cacheKey = `${locale}:${timezone}`;
@@ -841,7 +842,7 @@ function buildThermalReceiptClipPath(
   return `polygon(${pts.join(", ")})`;
 }
 
-const mmddFormatterCache = new Map<string, Intl.DateTimeFormat>();
+const mmddFormatterCache = createFormatterCache<Intl.DateTimeFormat>();
 
 function formatMmddInTimezone(iso: string, timeZone: string): string {
   const instant = new Date(iso);

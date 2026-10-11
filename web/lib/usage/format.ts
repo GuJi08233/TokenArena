@@ -1,10 +1,12 @@
-const datePartsFormatterCache = new Map<string, Intl.DateTimeFormat>();
-const dateFormatterCache = new Map<string, Intl.DateTimeFormat>();
-const timeFormatterCache = new Map<string, Intl.DateTimeFormat>();
-const percentageFormatterCache = new Map<string, Intl.NumberFormat>();
-const compactCurrencyFormatterCache = new Map<string, Intl.NumberFormat>();
-const preciseCurrencyFormatterCache = new Map<string, Intl.NumberFormat>();
-const rateCurrencyFormatterCache = new Map<string, Intl.NumberFormat>();
+import { createFormatterCache } from "@/lib/bounded-map";
+
+const datePartsFormatterCache = createFormatterCache<Intl.DateTimeFormat>();
+const dateFormatterCache = createFormatterCache<Intl.DateTimeFormat>();
+const timeFormatterCache = createFormatterCache<Intl.DateTimeFormat>();
+const percentageFormatterCache = createFormatterCache<Intl.NumberFormat>();
+const compactCurrencyFormatterCache = createFormatterCache<Intl.NumberFormat>();
+const preciseCurrencyFormatterCache = createFormatterCache<Intl.NumberFormat>();
+const rateCurrencyFormatterCache = createFormatterCache<Intl.NumberFormat>();
 
 function getDatePartsFormatter(timezone: string) {
   const cached = datePartsFormatterCache.get(timezone);
@@ -243,7 +245,7 @@ export function formatDateTime(
   return `${datePart} ${timePart}`;
 }
 
-const dateTimeInputFormatterCache = new Map<string, Intl.DateTimeFormat>();
+const dateTimeInputFormatterCache = createFormatterCache<Intl.DateTimeFormat>();
 
 function getDateTimeInputFormatter(timezone: string) {
   const cached = dateTimeInputFormatterCache.get(timezone);

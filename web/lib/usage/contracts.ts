@@ -119,6 +119,25 @@ export function isValidTimezone(timezone: string): boolean {
   }
 }
 
+const timezoneByLowerCase = new Map(
+  ["UTC", ...Intl.supportedValuesOf("timeZone")].map(
+    (name) => [name.toLowerCase(), name] as const,
+  ),
+);
+
+/**
+ * Spell a valid zone the way `Intl` lists it.
+ *
+ * Zone names match case-insensitively, so `asia/shanghai` passes validation.
+ * Stored as typed, each casing became a separate formatter cache key and
+ * missed the `Asia/Shanghai` fast paths. Names `Intl` does not list, such as
+ * the `Asia/Kolkata` alias the settings form offers, are kept as entered:
+ * resolving aliases would no longer match the form's options.
+ */
+export function normalizeTimezone(timezone: string) {
+  return timezoneByLowerCase.get(timezone.toLowerCase()) ?? timezone;
+}
+
 const timezoneSchema = z
   .string()
   .trim()
@@ -126,7 +145,8 @@ const timezoneSchema = z
   .max(100)
   .refine(isValidTimezone, {
     message: "Invalid timezone. Use IANA format like Asia/Shanghai.",
-  });
+  })
+  .transform(normalizeTimezone);
 
 export const dashboardDateParamSchema = z
   .string()

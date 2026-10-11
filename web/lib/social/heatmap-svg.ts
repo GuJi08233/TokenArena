@@ -1,3 +1,4 @@
+import { createFormatterCache } from "@/lib/bounded-map";
 import type { ProfileHeatmapDay } from "@/lib/social/queries";
 import { formatDuration } from "@/lib/usage/format";
 
@@ -46,7 +47,7 @@ function parseDateKey(value: string) {
   return new Date(`${value}T00:00:00Z`);
 }
 
-const monthLabelFormatterCache = new Map<string, Intl.DateTimeFormat>();
+const monthLabelFormatterCache = createFormatterCache<Intl.DateTimeFormat>();
 
 function formatMonthLabel(value: string, locale: string) {
   let formatter = monthLabelFormatterCache.get(locale);

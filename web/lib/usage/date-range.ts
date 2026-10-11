@@ -1,3 +1,4 @@
+import { createFormatterCache } from "@/lib/bounded-map";
 import type { DashboardPreset, DashboardRange } from "./types";
 
 export type ZonedDateParts = {
@@ -17,8 +18,9 @@ type ResolveDashboardRangeInput = {
   now?: Date;
 };
 
-const zonedDateFormatterCache = new Map<string, Intl.DateTimeFormat>();
-const zonedWeekdayHourFormatterCache = new Map<string, Intl.DateTimeFormat>();
+const zonedDateFormatterCache = createFormatterCache<Intl.DateTimeFormat>();
+const zonedWeekdayHourFormatterCache =
+  createFormatterCache<Intl.DateTimeFormat>();
 const weekdayIndex: Record<string, number> = {
   Sun: 0,
   Mon: 1,

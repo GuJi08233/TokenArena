@@ -1,5 +1,7 @@
 import { notFound } from "next/navigation";
+import { hasLocale } from "next-intl";
 import { getTranslations } from "next-intl/server";
+import { routing } from "@/i18n/routing";
 import {
   renderActivityHeatmapSvg,
   resolveActivityHeatmapSvgTheme,
@@ -14,6 +16,14 @@ export async function GET(
   context: { params: Promise<{ locale: string; username: string }> },
 ) {
   const { locale, username } = await context.params;
+
+  // A route handler is not wrapped by `[locale]/layout.tsx`, and the proxy
+  // skips paths with a dot, so nothing else has checked this segment. The
+  // month labels format with it.
+  if (!hasLocale(routing.locales, locale)) {
+    notFound();
+  }
+
   const { searchParams } = new URL(request.url);
   const theme = resolveActivityHeatmapSvgTheme(searchParams.get("theme"));
   const [t, profile] = await Promise.all([

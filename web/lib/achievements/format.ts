@@ -1,3 +1,4 @@
+import { createFormatterCache } from "@/lib/bounded-map";
 import {
   formatDuration,
   formatPercentage,
@@ -5,10 +6,8 @@ import {
 } from "@/lib/usage/format";
 import type { AchievementProgressUnit } from "./types";
 
-const currencyFormatterCache = new Map<
-  string,
-  Map<string, Intl.NumberFormat>
->();
+const currencyFormatterCache =
+  createFormatterCache<Map<string, Intl.NumberFormat>>();
 
 function getCurrencyFormatter(locale: string, maximumFractionDigits: number) {
   let byDigits = currencyFormatterCache.get(locale);

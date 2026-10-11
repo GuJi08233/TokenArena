@@ -8,6 +8,7 @@ import {
   INGEST_MAX_TOKEN_COUNT,
   ingestRequestSchema,
   isValidTimezone,
+  normalizeTimezone,
   truncateUtf8,
   usageDeleteQuerySchema,
   usageKeyCreateSchema,
@@ -396,6 +397,29 @@ describe("isValidTimezone", () => {
 
   it("returns false for an invalid timezone string", () => {
     expect(isValidTimezone("Invalid/Timezone")).toBe(false);
+  });
+});
+
+describe("normalizeTimezone", () => {
+  it("stores one spelling for every casing of a listed zone", () => {
+    expect(normalizeTimezone("asia/shanghai")).toBe("Asia/Shanghai");
+    expect(normalizeTimezone("ASIA/SHANGHAI")).toBe("Asia/Shanghai");
+    expect(normalizeTimezone("utc")).toBe("UTC");
+  });
+
+  it("keeps an alias the settings form offers as entered", () => {
+    expect(normalizeTimezone("Asia/Kolkata")).toBe("Asia/Kolkata");
+  });
+
+  it("normalizes the timezone of a preference update", () => {
+    const result = usagePreferenceUpdateSchema.safeParse({
+      timezone: " aSiA/sHaNgHaI ",
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.timezone).toBe("Asia/Shanghai");
+    }
   });
 });
 
