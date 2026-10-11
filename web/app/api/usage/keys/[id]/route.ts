@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { parseJsonBody } from "@/lib/json-body";
 import { getOptionalSession } from "@/lib/session";
 import { deleteUsageApiKey, updateUsageApiKey } from "@/lib/usage/api-keys";
 import { usageKeyUpdateSchema } from "@/lib/usage/contracts";
@@ -20,9 +21,14 @@ export async function PATCH(
     return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
   }
 
+  const body = await parseJsonBody(request, usageKeyUpdateSchema);
+
+  if (!body.success) {
+    return body.response;
+  }
+
   const { id } = await context.params;
-  const body = usageKeyUpdateSchema.parse(await request.json());
-  const key = await updateUsageApiKey(userId, id, body);
+  const key = await updateUsageApiKey(userId, id, body.data);
 
   if (!key) {
     return NextResponse.json({ error: "NOT_FOUND" }, { status: 404 });

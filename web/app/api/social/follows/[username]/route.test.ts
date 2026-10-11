@@ -145,6 +145,16 @@ describe("follow route", () => {
     expect(mocks.after).not.toHaveBeenCalled();
   });
 
+  it("answers 400 for an unknown follow tag instead of throwing", async () => {
+    const response = await PATCH(
+      request("PATCH", { tag: "nemesis" }),
+      context("bob"),
+    );
+
+    expect(response.status).toBe(400);
+    expect(mocks.prisma.follow.updateMany).not.toHaveBeenCalled();
+  });
+
   it("updates a follow tag without touching achievements", async () => {
     mocks.prisma.follow.updateMany.mockResolvedValue({ count: 1 });
 

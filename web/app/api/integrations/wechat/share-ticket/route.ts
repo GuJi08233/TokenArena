@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { normalizeLocale } from "@/lib/i18n";
+import { parseJsonBody } from "@/lib/json-body";
 import { prisma } from "@/lib/prisma";
 import { getOptionalSession } from "@/lib/session";
 import {
@@ -22,9 +23,17 @@ export async function POST(request: Request) {
     );
   }
 
-  const body = wechatShareTicketRequestSchema.parse(
-    await request.json().catch(() => ({})),
+  // An empty or malformed body still means "use the defaults".
+  const parsedBody = await parseJsonBody(
+    request,
+    wechatShareTicketRequestSchema,
   );
+
+  if (!parsedBody.success) {
+    return parsedBody.response;
+  }
+
+  const body = parsedBody.data;
 
   const user = await prisma.user.findUnique({
     where: {

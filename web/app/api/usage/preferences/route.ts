@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { parseJsonBody } from "@/lib/json-body";
 import { getOptionalSession } from "@/lib/session";
 import { usagePreferenceUpdateSchema } from "@/lib/usage/contracts";
 import {
@@ -39,8 +40,13 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
   }
 
-  const body = usagePreferenceUpdateSchema.parse(await request.json());
-  const preference = await updateUsagePreference(userId, body);
+  const body = await parseJsonBody(request, usagePreferenceUpdateSchema);
+
+  if (!body.success) {
+    return body.response;
+  }
+
+  const preference = await updateUsagePreference(userId, body.data);
 
   return NextResponse.json({
     locale: preference.locale,

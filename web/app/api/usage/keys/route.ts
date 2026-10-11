@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { parseJsonBody } from "@/lib/json-body";
 import { getOptionalSession } from "@/lib/session";
 import { createUsageApiKey, listUsageApiKeys } from "@/lib/usage/api-keys";
 import { usageKeyCreateSchema } from "@/lib/usage/contracts";
@@ -29,8 +30,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
   }
 
-  const body = usageKeyCreateSchema.parse(await request.json());
-  const result = await createUsageApiKey(userId, body.name);
+  const body = await parseJsonBody(request, usageKeyCreateSchema);
+
+  if (!body.success) {
+    return body.response;
+  }
+
+  const result = await createUsageApiKey(userId, body.data.name);
 
   return NextResponse.json({
     key: result.apiKey,

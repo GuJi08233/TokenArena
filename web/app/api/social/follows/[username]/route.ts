@@ -1,6 +1,7 @@
 import { after, NextResponse } from "next/server";
 import { synchronizeSocialAchievementsIfDue } from "@/lib/achievements/queries";
 import { normalizeUsername } from "@/lib/auth-username";
+import { parseJsonBody } from "@/lib/json-body";
 import { prisma } from "@/lib/prisma";
 import { getOptionalSession } from "@/lib/session";
 import { followTagUpdateSchema } from "@/lib/social/contracts";
@@ -118,7 +119,12 @@ export async function PATCH(
     return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
   }
 
-  const body = followTagUpdateSchema.parse(await request.json());
+  const body = await parseJsonBody(request, followTagUpdateSchema);
+
+  if (!body.success) {
+    return body.response;
+  }
+
   const { username } = await context.params;
   const targetUser = await getTargetUser(username);
 
@@ -136,7 +142,7 @@ export async function PATCH(
       followingId: targetUser.id,
     },
     data: {
-      tag: body.tag,
+      tag: body.data.tag,
     },
   });
 
@@ -146,6 +152,6 @@ export async function PATCH(
 
   return NextResponse.json({
     success: true,
-    tag: body.tag,
+    tag: body.data.tag,
   });
 }
