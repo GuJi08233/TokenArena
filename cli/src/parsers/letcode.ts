@@ -34,6 +34,7 @@ interface LetcodeEvent {
   provider_output_tokens?: number | string;
   provider_cached_tokens?: number | string;
   provider_reasoning_tokens?: number | string;
+  provider_total_tokens?: number | string;
 }
 
 function getLetcodeSessionsDirs(
@@ -53,6 +54,52 @@ function getLetcodeSessionsDirs(
 function toNonNegativeNumber(value: unknown): number {
   const numberValue = Number(value);
   return Number.isFinite(numberValue) && numberValue >= 0 ? numberValue : 0;
+}
+
+/**
+ * Split one request's provider counts into the non-overlapping fields the
+ * upload sums.
+ *
+ * LetCode reports OpenAI-style counts: `provider_input_tokens` includes the
+ * cached prompt and `provider_output_tokens` the reasoning, as
+ * `provider_total_tokens` = input + output shows. Adding cached and reasoning
+ * on top counted them twice, the bug 221c670 fixed for ZCode. The reported
+ * total decides which subsets are included; without one, a subset no larger
+ * than its parent is taken to be inside it.
+ */
+function splitProviderUsage(row: LetcodeEvent) {
+  const input = toNonNegativeNumber(row.provider_input_tokens);
+  const output = toNonNegativeNumber(row.provider_output_tokens);
+  const cached = toNonNegativeNumber(row.provider_cached_tokens);
+  const reasoning = toNonNegativeNumber(row.provider_reasoning_tokens);
+
+  let cachedInInput = cached <= input;
+  let reasoningInOutput = reasoning <= output;
+
+  if (row.provider_total_tokens !== undefined) {
+    const total = toNonNegativeNumber(row.provider_total_tokens);
+
+    if (total === input + output) {
+      cachedInInput = true;
+      reasoningInOutput = true;
+    } else if (total === input + output + reasoning) {
+      cachedInInput = true;
+      reasoningInOutput = false;
+    } else if (total === input + output + cached) {
+      cachedInInput = false;
+      reasoningInOutput = true;
+    } else if (total === input + output + cached + reasoning) {
+      cachedInInput = false;
+      reasoningInOutput = false;
+    }
+  }
+
+  return {
+    inputTokens: cachedInInput ? Math.max(0, input - cached) : input,
+    outputTokens: reasoningInOutput ? Math.max(0, output - reasoning) : output,
+    cachedTokens: cached,
+    reasoningTokens: reasoning,
+  };
 }
 
 function parseTimestamp(value: unknown): Date | null {
@@ -158,12 +205,8 @@ export class LetcodeParser implements IParser {
             continue;
           }
 
-          const inputTokens = toNonNegativeNumber(row.provider_input_tokens);
-          const outputTokens = toNonNegativeNumber(row.provider_output_tokens);
-          const cachedTokens = toNonNegativeNumber(row.provider_cached_tokens);
-          const reasoningTokens = toNonNegativeNumber(
-            row.provider_reasoning_tokens,
-          );
+          const { inputTokens, outputTokens, cachedTokens, reasoningTokens } =
+            splitProviderUsage(row);
 
           if (
             inputTokens + outputTokens + cachedTokens + reasoningTokens ===

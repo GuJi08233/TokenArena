@@ -90,11 +90,14 @@ describe("LetcodeParser", () => {
       source: "letcode",
       model: "gpt-5.6-terra",
       project: "unknown",
-      inputTokens: 10638 + 10766,
+      // The second request's input already includes its 10,240 cached
+      // tokens: its provider total is input + output.
+      inputTokens: 10638 + (10766 - 10240),
       outputTokens: 79 + 65,
       reasoningTokens: 0,
       cachedTokens: 0 + 10240,
-      totalTokens: 10638 + 10766 + 79 + 65 + 10240,
+      // The two provider totals, 10,717 + 10,831.
+      totalTokens: 10717 + 10831,
     });
 
     expect(result.sessions).toHaveLength(1);
@@ -103,12 +106,65 @@ describe("LetcodeParser", () => {
       project: "unknown",
       messageCount: 2,
       userMessageCount: 1,
-      inputTokens: 10638 + 10766,
+      inputTokens: 10638 + (10766 - 10240),
       outputTokens: 79 + 65,
       reasoningTokens: 0,
       cachedTokens: 10240,
-      totalTokens: 10638 + 10766 + 79 + 65 + 10240,
+      totalTokens: 10717 + 10831,
       primaryModel: "gpt-5.6-terra",
+    });
+  });
+
+  it("reads which subsets the provider total already includes", async () => {
+    const sessionsDir = makeTempDir("tokenarena-letcode-");
+    const sessionId = "split-1";
+    const telemetry = (timestampMs: number, usage: Record<string, number>) =>
+      JSON.stringify({
+        kind: "llm_request_telemetry",
+        phase: "completed",
+        usage_completeness: "complete",
+        session_id: sessionId,
+        timestamp_ms: timestampMs,
+        model: "gpt-5.6-terra",
+        ...usage,
+      });
+    writeFileSync(
+      join(sessionsDir, `${sessionId}.jsonl`),
+      [
+        // Reasoning inside the output: total = input + output.
+        telemetry(1_784_394_980_000, {
+          provider_input_tokens: 1000,
+          provider_output_tokens: 300,
+          provider_reasoning_tokens: 200,
+          provider_total_tokens: 1300,
+        }),
+        // Cached outside the input: total = input + output + cached.
+        telemetry(1_784_394_981_000, {
+          provider_input_tokens: 50,
+          provider_output_tokens: 100,
+          provider_cached_tokens: 5000,
+          provider_total_tokens: 5150,
+        }),
+        // Reasoning outside the output: total = input + output + reasoning.
+        telemetry(1_784_394_982_000, {
+          provider_input_tokens: 1000,
+          provider_output_tokens: 100,
+          provider_reasoning_tokens: 50,
+          provider_total_tokens: 1150,
+        }),
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const result = await new LetcodeParser(sessionsDir).parse();
+
+    expect(result.buckets).toHaveLength(1);
+    expect(result.buckets[0]).toMatchObject({
+      inputTokens: 1000 + 50 + 1000,
+      outputTokens: 100 + 100 + 100,
+      reasoningTokens: 200 + 50,
+      cachedTokens: 5000,
+      totalTokens: 1300 + 5150 + 1150,
     });
   });
 
