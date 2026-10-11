@@ -112,7 +112,7 @@ describe("CursorParser", () => {
     expect(result.sessions).toEqual([]);
   });
 
-  it("returns empty result when fetchCsv signals skip", async () => {
+  it("reports an incomplete scan when the export cannot be fetched", async () => {
     const dataDir = makeTempDir("tokenarena-cursor-");
     const dbPath = join(dataDir, "state.vscdb");
     writeFileSync(dbPath, "", "utf-8");
@@ -130,6 +130,17 @@ describe("CursorParser", () => {
     const result = await parser.parse();
     expect(result.buckets).toEqual([]);
     expect(result.sessions).toEqual([]);
+    // Not an empty success: that let a rebuild drop Cursor history remotely.
+    expect(result.incomplete).toBe(true);
+  });
+
+  it("reports an incomplete scan for a response that is not the export", async () => {
+    const result = await makeParser(
+      "<!doctype html><html><body>Sign in</body></html>",
+    ).parse();
+
+    expect(result.buckets).toEqual([]);
+    expect(result.incomplete).toBe(true);
   });
 
   it("bubbles up auth failure errors", async () => {
@@ -158,6 +169,7 @@ describe("CursorParser", () => {
     const result = await parser.parse();
     expect(result.buckets).toEqual([]);
     expect(result.sessions).toEqual([]);
+    expect(result.incomplete).not.toBe(true);
   });
 
   it("isInstalled returns true when db exists", () => {

@@ -6,6 +6,7 @@ import { aggregateToBuckets } from "../domain/aggregator";
 import type { ParseResult, TokenUsageEntry } from "../domain/types";
 import { trimTrailingSeparators } from "../infrastructure/fs/utils";
 import { getSqliteCliCandidates } from "../infrastructure/sqlite";
+import { logger } from "../utils/logger";
 import { registerParser } from "./registry";
 import type { IParser, ToolDefinition } from "./types";
 
@@ -292,19 +293,26 @@ export class CursorParser implements IParser {
     }
     if (!token) return { buckets: [], sessions: [] };
 
+    // Cursor usage lives only in its export. When that export cannot be read,
+    // the scan says nothing about the usage; reported as an empty success, a
+    // `--rebuild` or snapshot reset dropped all Cursor history remotely.
+    const unavailable = (reason: string): ParseResult => {
+      logger.warn(`Cursor usage export unavailable (${reason}).`);
+      return { buckets: [], sessions: [], incomplete: true };
+    };
+
     let csv: string;
     try {
       csv = await this.fetchCsv(token);
     } catch (err) {
-      if ((err as { skip?: boolean }).skip)
-        return { buckets: [], sessions: [] };
+      if ((err as { skip?: boolean }).skip) {
+        return unavailable((err as Error).message);
+      }
       throw err;
     }
 
     const rows = parseCsv(csv);
-    if (rows.length < 2) return { buckets: [], sessions: [] };
-
-    const header = rows[0].map((h) => h.trim());
+    const header = (rows[0] ?? []).map((h) => h.trim());
     const idx = (name: string) => header.indexOf(name);
     const dateIdx = idx("Date");
     const modelIdx = idx("Model");
@@ -313,7 +321,13 @@ export class CursorParser implements IParser {
     const cacheReadIdx = idx("Cache Read");
     const outputIdx = idx("Output Tokens");
 
-    if (dateIdx < 0 || modelIdx < 0) return { buckets: [], sessions: [] };
+    // Anything but the export's CSV, such as a sign-in page served with 200.
+    if (dateIdx < 0 || modelIdx < 0) {
+      return unavailable("unexpected response");
+    }
+
+    // A header with no rows is an account without usage.
+    if (rows.length < 2) return { buckets: [], sessions: [] };
 
     const entries: TokenUsageEntry[] = [];
     for (let r = 1; r < rows.length; r++) {
