@@ -1,4 +1,5 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { writePrivateFile } from "../fs/private-files";
 import { ensureAppDirs, getSyncStatePath } from "./paths";
 
 export type SyncSource = "daemon" | "default" | "init" | "manual";
@@ -47,11 +48,7 @@ export function loadSyncState(): SyncState {
 
 export function saveSyncState(next: SyncState): void {
   ensureAppDirs();
-  writeFileSync(
-    getSyncStatePath(),
-    `${JSON.stringify(next, null, 2)}\n`,
-    "utf-8",
-  );
+  writePrivateFile(getSyncStatePath(), `${JSON.stringify(next, null, 2)}\n`);
 }
 
 export function markSyncStarted(source: SyncSource): void {

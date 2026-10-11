@@ -35,4 +35,4 @@ Follow the Conventional Commit style used in history: `feat: ...`, `feat(cli): .
 
 ## Security & Configuration Tips
 
-Never commit API keys, `.env*`, or user config. The CLI stores local config in `~/.tokenarena/`; set `TOKEN_ARENA_DEV=1` for a separate dev config. Read `web/AGENTS.md` before making significant Next.js changes.
+Never commit API keys, `.env*`, or user config. The CLI stores its config, API key included, owner-only in `~/.config/tokenarena/` (`$XDG_CONFIG_HOME/tokenarena/` when set); set `TOKEN_ARENA_DEV=1` for a separate dev config. Read `web/AGENTS.md` before making significant Next.js changes.

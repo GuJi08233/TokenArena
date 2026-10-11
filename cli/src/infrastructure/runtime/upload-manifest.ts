@@ -1,8 +1,9 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import type {
   UploadManifest,
   UploadManifestScope,
 } from "../../domain/upload-manifest";
+import { writePrivateFile } from "../fs/private-files";
 import { ensureAppDirs, getUploadManifestPath } from "./paths";
 
 function isRecordOfStrings(value: unknown): value is Record<string, string> {
@@ -69,9 +70,8 @@ export function loadUploadManifest(): UploadManifest | null {
 
 export function saveUploadManifest(manifest: UploadManifest): void {
   ensureAppDirs();
-  writeFileSync(
+  writePrivateFile(
     getUploadManifestPath(),
     `${JSON.stringify(manifest, null, 2)}\n`,
-    "utf-8",
   );
 }

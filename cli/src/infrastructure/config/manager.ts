@@ -1,12 +1,11 @@
 import { randomUUID } from "node:crypto";
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  unlinkSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, readFileSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
+import {
+  ensurePrivateDir,
+  restrictToOwner,
+  writePrivateFile,
+} from "../fs/private-files";
 import { getConfigHome } from "../xdg";
 
 export interface Config {
@@ -40,6 +39,9 @@ export function getConfigDir(): string {
 
 export function loadConfig(): Config | null {
   if (!existsSync(CONFIG_FILE)) return null;
+  // Versions before this wrote the key world-readable; fix that on first use.
+  restrictToOwner(CONFIG_DIR);
+  restrictToOwner(CONFIG_FILE);
   try {
     const raw = readFileSync(CONFIG_FILE, "utf-8");
     const config = JSON.parse(raw) as Config;
@@ -54,8 +56,8 @@ export function loadConfig(): Config | null {
 }
 
 export function saveConfig(config: Config): void {
-  mkdirSync(CONFIG_DIR, { recursive: true });
-  writeFileSync(CONFIG_FILE, `${JSON.stringify(config, null, 2)}\n`, "utf-8");
+  ensurePrivateDir(CONFIG_DIR);
+  writePrivateFile(CONFIG_FILE, `${JSON.stringify(config, null, 2)}\n`);
 }
 
 export function deleteConfig(): void {

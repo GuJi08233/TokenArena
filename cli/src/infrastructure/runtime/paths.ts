@@ -1,5 +1,5 @@
-import { mkdirSync } from "node:fs";
 import { join } from "node:path";
+import { ensurePrivateDir } from "../fs/private-files";
 import { getRuntimeDir, getStateHome } from "../xdg";
 
 const APP_NAME = "tokenarena";
@@ -30,6 +30,6 @@ export function getUploadManifestPath(): string {
 }
 
 export function ensureAppDirs(): void {
-  mkdirSync(getRuntimeDirPath(), { recursive: true });
-  mkdirSync(getStateDir(), { recursive: true });
+  ensurePrivateDir(getRuntimeDirPath());
+  ensurePrivateDir(getStateDir());
 }

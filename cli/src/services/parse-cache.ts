@@ -1,8 +1,12 @@
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { hostname } from "node:os";
 import { join } from "node:path";
 import type { ParseResult } from "../domain/types";
+import {
+  ensurePrivateDir,
+  writePrivateFile,
+} from "../infrastructure/fs/private-files";
 import { getCliVersion } from "../infrastructure/runtime/cli-version";
 import { getStateDir } from "../infrastructure/runtime/paths";
 
@@ -138,8 +142,8 @@ export function saveCachedParseResult(
   };
 
   try {
-    mkdirSync(getParseCacheDir(), { recursive: true });
-    writeFileSync(getParseCachePath(toolId), JSON.stringify(envelope), "utf-8");
+    ensurePrivateDir(getParseCacheDir());
+    writePrivateFile(getParseCachePath(toolId), JSON.stringify(envelope));
   } catch {
     // A cache that cannot be written just means the next sync rescans.
   }

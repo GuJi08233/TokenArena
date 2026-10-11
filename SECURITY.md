@@ -52,5 +52,5 @@ This project uses the following automated security tools:
 
 - Dependencies must pass `pnpm check`, `pnpm build`, and `pnpm test:cli` / `pnpm test:web` before merging.
 - The Husky pre-commit hook enforces linting and formatting checks.
-- API keys and secrets are never committed to the repository. The CLI stores local config in `~/.tokenarena/`.
+- API keys and secrets are never committed to the repository. The CLI stores its config, API key included, readable by its owner only in `~/.config/tokenarena/` (`$XDG_CONFIG_HOME/tokenarena/` when set).
 - All new environment variables must be documented in `.env.example`, `docker-compose.yml`, and `README.md`.

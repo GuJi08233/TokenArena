@@ -58,7 +58,7 @@ export function tryAcquireSyncLock(source: SyncSource): SyncLock | null {
   const lockPath = getSyncLockPath();
 
   try {
-    const fd = openSync(lockPath, "wx");
+    const fd = openSync(lockPath, "wx", 0o600);
     const metadata: LockMetadata = {
       createdAt: new Date().toISOString(),
       pid: process.pid,
@@ -82,7 +82,7 @@ export function tryAcquireSyncLock(source: SyncSource): SyncLock | null {
   removeStaleLock(lockPath);
 
   try {
-    const fd = openSync(lockPath, "wx");
+    const fd = openSync(lockPath, "wx", 0o600);
     const metadata: LockMetadata = {
       createdAt: new Date().toISOString(),
       pid: process.pid,

@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useTempDirs } from "../../testing/temp-dir";
@@ -99,6 +99,43 @@ describe("config/manager", () => {
       expect(loaded?.apiKey).toBe("ta_test123");
       expect(loaded?.apiUrl).toBe("https://example.com");
     });
+
+    it.skipIf(process.platform === "win32")(
+      "keeps the API key readable by its owner only",
+      async () => {
+        const tmp = makeTempDir("ta-cfg-");
+        process.env.XDG_CONFIG_HOME = tmp;
+        delete process.env.TOKEN_ARENA_DEV;
+        const { getConfigDir, getConfigPath, saveConfig } =
+          await importManager();
+
+        saveConfig({ apiKey: "ta_secret", apiUrl: "https://example.com" });
+
+        expect(statSync(getConfigDir()).mode & 0o777).toBe(0o700);
+        expect(statSync(getConfigPath()).mode & 0o777).toBe(0o600);
+      },
+    );
+
+    it.skipIf(process.platform === "win32")(
+      "tightens a config an older version wrote world-readable",
+      async () => {
+        const tmp = makeTempDir("ta-cfg-");
+        process.env.XDG_CONFIG_HOME = tmp;
+        delete process.env.TOKEN_ARENA_DEV;
+        const { getConfigDir, getConfigPath, loadConfig } =
+          await importManager();
+        mkdirSync(getConfigDir(), { recursive: true, mode: 0o755 });
+        writeFileSync(
+          getConfigPath(),
+          JSON.stringify({ apiKey: "ta_secret", apiUrl: "https://x.test" }),
+          { mode: 0o644 },
+        );
+
+        expect(loadConfig()?.apiKey).toBe("ta_secret");
+        expect(statSync(getConfigDir()).mode & 0o777).toBe(0o700);
+        expect(statSync(getConfigPath()).mode & 0o777).toBe(0o600);
+      },
+    );
 
     it("loadConfig defaults apiUrl when missing", async () => {
       const tmp = makeTempDir("ta-cfg-");
