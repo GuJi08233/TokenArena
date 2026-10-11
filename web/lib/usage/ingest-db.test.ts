@@ -345,4 +345,21 @@ describe.skipIf(!VERIFY_URL)("ingest against a real database", () => {
       snapshot.generatedAt.getTime(),
     );
   });
+
+  it("holds reported session times to the session's own span", async () => {
+    // Ten minutes between first and last message, but a client claiming days.
+    await ingest({
+      sessions: [
+        session({
+          sessionHash: "session-claiming-days",
+          durationSeconds: 2_000_000,
+          activeSeconds: 1_900_000,
+        }),
+      ],
+    });
+
+    const stored = await readSession("session-claiming-days");
+    expect(stored.durationSeconds).toBe(600);
+    expect(stored.activeSeconds).toBe(600);
+  });
 });

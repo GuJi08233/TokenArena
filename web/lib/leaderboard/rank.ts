@@ -22,7 +22,11 @@ async function fetchGlobalRankByTotalTokens(
   const rows = await prisma.$queryRaw<[{ rank: bigint | null }]>(
     Prisma.sql`
       WITH sums AS (
-        SELECT l."userId", SUM(l."totalTokens")::bigint AS total
+        SELECT
+          l."userId",
+          -- Clamped so one account's reported totals cannot overflow the cast
+          -- and fail the ranking for every user.
+          LEAST(SUM(l."totalTokens"), 9223372036854775807)::bigint AS total
         FROM leaderboard_user_day l
         INNER JOIN "UsagePreference" up ON up."userId" = l."userId"
         WHERE up."publicProfileEnabled" = true

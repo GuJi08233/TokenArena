@@ -471,7 +471,7 @@ export async function getActivityHeatmap365(input: {
       "date",
       SUM("activeSeconds")::double precision AS "activeSeconds",
       SUM("sessions")::double precision AS "sessions",
-      SUM("totalTokens")::bigint AS "totalTokens"
+      LEAST(SUM("totalTokens"), 9223372036854775807)::bigint AS "totalTokens"
     FROM day_events
     GROUP BY "date"
     ORDER BY "date"

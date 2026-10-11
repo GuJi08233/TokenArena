@@ -1,5 +1,9 @@
 import { prisma } from "@/lib/prisma";
-import { tokenCountToBigInt, tokenCountToNumber } from "@/lib/token-counts";
+import {
+  countToPgInteger,
+  tokenCountToBigInt,
+  tokenCountToNumber,
+} from "@/lib/token-counts";
 import { getShanghaiDateKey, startOfShanghaiDay } from "./date";
 import {
   resolveAffectedSnapshotPeriods,
@@ -277,10 +281,10 @@ export async function recomputeLeaderboardUserDays(
           cachedTokens: tokenCountToBigInt(row.cachedTokens),
           cacheCreationTokens: tokenCountToBigInt(row.cacheCreationTokens),
           totalTokens: tokenCountToBigInt(row.totalTokens),
-          activeSeconds: row.activeSeconds,
-          sessions: row.sessions,
-          messages: row.messages,
-          userMessages: row.userMessages,
+          activeSeconds: countToPgInteger(row.activeSeconds),
+          sessions: countToPgInteger(row.sessions),
+          messages: countToPgInteger(row.messages),
+          userMessages: countToPgInteger(row.userMessages),
         },
         create: {
           userId: input.userId,
@@ -291,10 +295,10 @@ export async function recomputeLeaderboardUserDays(
           cachedTokens: tokenCountToBigInt(row.cachedTokens),
           cacheCreationTokens: tokenCountToBigInt(row.cacheCreationTokens),
           totalTokens: tokenCountToBigInt(row.totalTokens),
-          activeSeconds: row.activeSeconds,
-          sessions: row.sessions,
-          messages: row.messages,
-          userMessages: row.userMessages,
+          activeSeconds: countToPgInteger(row.activeSeconds),
+          sessions: countToPgInteger(row.sessions),
+          messages: countToPgInteger(row.messages),
+          userMessages: countToPgInteger(row.userMessages),
         },
       });
     }),

@@ -7,7 +7,11 @@ import {
 } from "@/lib/pricing/resolve";
 import { prisma } from "@/lib/prisma";
 import type { FollowTagFilter } from "@/lib/social/follow-tags";
-import { tokenCountToBigInt, tokenCountToNumber } from "@/lib/token-counts";
+import {
+  countToPgInteger,
+  tokenCountToBigInt,
+  tokenCountToNumber,
+} from "@/lib/token-counts";
 import { Prisma } from "../../generated/prisma/client";
 import { resolveLeaderboardWindow, sameLeaderboardWindow } from "./date";
 import { LEADERBOARD_SNAPSHOT_TTL_MS } from "./snapshot";
@@ -86,8 +90,9 @@ type RelationFlags = {
   followsYou: boolean;
 };
 
+/** Window sums land in `integer` snapshot columns; saturate rather than fail. */
 function coerceInt(value: number | null | undefined) {
-  return value ?? 0;
+  return countToPgInteger(value);
 }
 
 function buildWindowWhere(window: LeaderboardWindow) {
@@ -761,8 +766,8 @@ async function rebuildGlobalSnapshot(
           cacheCreationTokens: tokenCountToBigInt(row.cacheCreationTokens),
           totalTokens: tokenCountToBigInt(row.totalTokens),
           estimatedCostUsd: row.estimatedCostUsd,
-          activeSeconds: row.activeSeconds,
-          sessions: row.sessions,
+          activeSeconds: countToPgInteger(row.activeSeconds),
+          sessions: countToPgInteger(row.sessions),
         })),
       });
     }
@@ -931,12 +936,12 @@ async function fetchGlobalTokenRankSummary(input: {
     WITH sums AS (
       SELECT
         l."userId",
-        SUM(l."inputTokens")::bigint AS "inputTokens",
-        SUM(l."outputTokens")::bigint AS "outputTokens",
-        SUM(l."reasoningTokens")::bigint AS "reasoningTokens",
-        SUM(l."cachedTokens")::bigint AS "cachedTokens",
-        SUM(l."cacheCreationTokens")::bigint AS "cacheCreationTokens",
-        SUM(l."totalTokens")::bigint AS "totalTokens",
+        LEAST(SUM(l."inputTokens"), 9223372036854775807)::bigint AS "inputTokens",
+        LEAST(SUM(l."outputTokens"), 9223372036854775807)::bigint AS "outputTokens",
+        LEAST(SUM(l."reasoningTokens"), 9223372036854775807)::bigint AS "reasoningTokens",
+        LEAST(SUM(l."cachedTokens"), 9223372036854775807)::bigint AS "cachedTokens",
+        LEAST(SUM(l."cacheCreationTokens"), 9223372036854775807)::bigint AS "cacheCreationTokens",
+        LEAST(SUM(l."totalTokens"), 9223372036854775807)::bigint AS "totalTokens",
         SUM(l."activeSeconds")::bigint AS "activeSeconds",
         SUM(l."sessions")::bigint AS "sessions"
       FROM leaderboard_user_day l

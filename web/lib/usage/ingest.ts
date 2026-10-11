@@ -211,6 +211,29 @@ function normalizeSessionUsage(
   };
 }
 
+/**
+ * Hold a session's reported times to what its own timestamps allow.
+ *
+ * The CLI derives `durationSeconds` from the first and last message and caps
+ * `activeSeconds` at it. Applying the same rule here keeps a hand-written
+ * upload from claiming more time than the session spans.
+ */
+function normalizeSessionTiming(session: IngestPayload["sessions"][number]) {
+  const spanSeconds = Math.max(
+    0,
+    Math.ceil(
+      (Date.parse(session.lastMessageAt) - Date.parse(session.firstMessageAt)) /
+        1000,
+    ),
+  );
+  const durationSeconds = Math.min(session.durationSeconds, spanSeconds);
+
+  return {
+    durationSeconds,
+    activeSeconds: Math.min(session.activeSeconds, durationSeconds),
+  };
+}
+
 async function upsertDevice(db: UsageWriteClient, input: UpsertDeviceInput) {
   return db.device.upsert({
     where: {
@@ -351,6 +374,7 @@ async function upsertSessionGroup(
   const apiKeyId = input.apiKeyId ?? null;
   const rows = sessions.map(({ session, usage }) => {
     const write = usage ?? EMPTY_SESSION_USAGE;
+    const timing = normalizeSessionTiming(session);
 
     return Prisma.sql`(
       ${randomUUID()}::text,
@@ -360,8 +384,8 @@ async function upsertSessionGroup(
       ${session.sessionHash}::text,
       ${toUtcTimestampLiteral(session.firstMessageAt)}::timestamp(3),
       ${toUtcTimestampLiteral(session.lastMessageAt)}::timestamp(3),
-      ${session.durationSeconds}::integer,
-      ${session.activeSeconds}::integer,
+      ${timing.durationSeconds}::integer,
+      ${timing.activeSeconds}::integer,
       ${session.messageCount}::integer,
       ${session.userMessageCount}::integer,
       ${write.inputTokens}::bigint,

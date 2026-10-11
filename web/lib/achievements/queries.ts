@@ -11,7 +11,11 @@ import {
 } from "@/lib/pricing/resolve";
 import { prisma } from "@/lib/prisma";
 import { toUtcTimestampLiteral } from "@/lib/sql-timestamp";
-import { tokenCountToBigInt, tokenCountToNumber } from "@/lib/token-counts";
+import {
+  countToPgInteger,
+  tokenCountToBigInt,
+  tokenCountToNumber,
+} from "@/lib/token-counts";
 import { getTransactionTimeoutMs } from "@/lib/transaction-timeout";
 import { resolveDashboardRange } from "@/lib/usage/date-range";
 import { formatDateInput } from "@/lib/usage/format";
@@ -710,9 +714,9 @@ async function writeAchievementState(input: {
         level: pageData.summary.level,
         totalTokens: tokenCountToBigInt(input.metrics.totalTokens),
         totalEstimatedCostUsd: input.metrics.totalEstimatedCostUsd,
-        totalActiveSeconds: input.metrics.totalActiveSeconds,
-        totalSessions: input.metrics.totalSessions,
-        totalActiveDays: pageData.summary.totalActiveDays,
+        totalActiveSeconds: countToPgInteger(input.metrics.totalActiveSeconds),
+        totalSessions: countToPgInteger(input.metrics.totalSessions),
+        totalActiveDays: countToPgInteger(pageData.summary.totalActiveDays),
         computedAt: now,
       };
 

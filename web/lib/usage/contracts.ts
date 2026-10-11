@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { supportedLocales } from "@/lib/i18n";
 import { themeModes } from "@/lib/theme";
+import { PG_INTEGER_MAX } from "@/lib/token-counts";
 import { normalizeUsageSource } from "./sources";
 import {
   dashboardPresets,
@@ -21,6 +22,93 @@ const themeModeSchema = z.enum(themeModes);
 export const INGEST_MAX_BUCKETS = 100;
 export const INGEST_MAX_SESSIONS = 500;
 export const INGEST_MAX_PAYLOAD_BYTES = 8 * 1024 * 1024;
+
+/**
+ * Ceiling for one reported token count.
+ *
+ * A bucket is one model's usage on one device in half an hour, so a trillion
+ * tokens is far beyond any real value, yet small enough that leaderboard sums
+ * stay meaningful. Counts are client-reported: without a bound, a few uploads
+ * pushed sums past what the shared rank queries could hold.
+ */
+export const INGEST_MAX_TOKEN_COUNT = 1_000_000_000_000;
+
+/** How far ahead of the server clock a reported timestamp may be. */
+export const INGEST_FUTURE_TOLERANCE_MS = 24 * 60 * 60 * 1000;
+
+// Byte budgets for uploaded strings. The keys share one unique index whose
+// entries Postgres caps at about 2.7 kB, so they must stay well below it.
+const INGEST_SOURCE_MAX_BYTES = 64;
+const INGEST_ID_MAX_BYTES = 128;
+const INGEST_MODEL_MAX_BYTES = 256;
+const INGEST_PROJECT_MAX_BYTES = 1024;
+const INGEST_HOSTNAME_MAX_BYTES = 255;
+
+const utf8 = new TextEncoder();
+
+/** Cut `value` to at most `maxBytes` of UTF-8 without splitting a character. */
+export function truncateUtf8(value: string, maxBytes: number) {
+  // A UTF-16 code unit never encodes to more than three bytes.
+  if (value.length * 3 <= maxBytes) {
+    return value;
+  }
+
+  let bytes = 0;
+  let end = 0;
+
+  for (const char of value) {
+    const codePoint = char.codePointAt(0) ?? 0;
+    const size =
+      codePoint < 0x80
+        ? 1
+        : codePoint < 0x800
+          ? 2
+          : codePoint < 0x10000
+            ? 3
+            : 4;
+
+    if (bytes + size > maxBytes) {
+      break;
+    }
+
+    bytes += size;
+    end += char.length;
+  }
+
+  return value.slice(0, end);
+}
+
+/** An identifier that must arrive intact: reject rather than shorten it. */
+function boundedId(maxBytes: number) {
+  return z.string().refine((value) => utf8.encode(value).length <= maxBytes, {
+    message: `Must be at most ${maxBytes} bytes.`,
+  });
+}
+
+/**
+ * A name or label: shorten an oversized one deterministically, so the same
+ * upload keeps mapping to the same row instead of failing the whole batch.
+ */
+function truncatedText(maxBytes: number) {
+  return z.string().transform((value) => truncateUtf8(value, maxBytes));
+}
+
+const tokenCountSchema = z
+  .number()
+  .int()
+  .nonnegative()
+  .max(INGEST_MAX_TOKEN_COUNT);
+
+/** Seconds and message counts are stored in `integer` columns. */
+const integerCountSchema = z.number().int().nonnegative().max(PG_INTEGER_MAX);
+
+const reportedAtSchema = z
+  .string()
+  .datetime()
+  .refine(
+    (value) => Date.parse(value) <= Date.now() + INGEST_FUTURE_TOLERANCE_MS,
+    { message: "Timestamp is in the future." },
+  );
 
 export function isValidTimezone(timezone: string): boolean {
   try {
@@ -65,47 +153,47 @@ export const usageDeleteQuerySchema = z.object({
 });
 
 const ingestBucketSchema = z.object({
-  source: z.string(),
-  model: z.string(),
-  projectKey: z.string(),
-  projectLabel: z.string(),
-  bucketStart: z.string().datetime(),
-  inputTokens: z.number().int().nonnegative(),
-  outputTokens: z.number().int().nonnegative(),
-  reasoningTokens: z.number().int().nonnegative(),
-  cachedTokens: z.number().int().nonnegative(),
-  cacheCreationTokens: z.number().int().nonnegative().default(0),
-  totalTokens: z.number().int().nonnegative(),
+  source: boundedId(INGEST_SOURCE_MAX_BYTES),
+  model: truncatedText(INGEST_MODEL_MAX_BYTES),
+  projectKey: truncatedText(INGEST_PROJECT_MAX_BYTES),
+  projectLabel: truncatedText(INGEST_PROJECT_MAX_BYTES),
+  bucketStart: reportedAtSchema,
+  inputTokens: tokenCountSchema,
+  outputTokens: tokenCountSchema,
+  reasoningTokens: tokenCountSchema,
+  cachedTokens: tokenCountSchema,
+  cacheCreationTokens: tokenCountSchema.default(0),
+  totalTokens: tokenCountSchema,
 });
 
 const ingestSessionSchema = z.object({
-  source: z.string(),
-  projectKey: z.string(),
-  projectLabel: z.string(),
-  sessionHash: z.string(),
-  firstMessageAt: z.string().datetime(),
-  lastMessageAt: z.string().datetime(),
-  durationSeconds: z.number().int().nonnegative(),
-  activeSeconds: z.number().int().nonnegative(),
-  messageCount: z.number().int().nonnegative(),
-  userMessageCount: z.number().int().nonnegative(),
-  inputTokens: z.number().int().nonnegative().optional(),
-  outputTokens: z.number().int().nonnegative().optional(),
-  reasoningTokens: z.number().int().nonnegative().optional(),
-  cachedTokens: z.number().int().nonnegative().optional(),
-  cacheCreationTokens: z.number().int().nonnegative().optional(),
-  totalTokens: z.number().int().nonnegative().optional(),
-  primaryModel: z.string().optional(),
+  source: boundedId(INGEST_SOURCE_MAX_BYTES),
+  projectKey: truncatedText(INGEST_PROJECT_MAX_BYTES),
+  projectLabel: truncatedText(INGEST_PROJECT_MAX_BYTES),
+  sessionHash: boundedId(INGEST_ID_MAX_BYTES),
+  firstMessageAt: reportedAtSchema,
+  lastMessageAt: reportedAtSchema,
+  durationSeconds: integerCountSchema,
+  activeSeconds: integerCountSchema,
+  messageCount: integerCountSchema,
+  userMessageCount: integerCountSchema,
+  inputTokens: tokenCountSchema.optional(),
+  outputTokens: tokenCountSchema.optional(),
+  reasoningTokens: tokenCountSchema.optional(),
+  cachedTokens: tokenCountSchema.optional(),
+  cacheCreationTokens: tokenCountSchema.optional(),
+  totalTokens: tokenCountSchema.optional(),
+  primaryModel: truncatedText(INGEST_MODEL_MAX_BYTES).optional(),
   modelUsages: z
     .array(
       z.object({
-        model: z.string(),
-        inputTokens: z.number().int().nonnegative(),
-        outputTokens: z.number().int().nonnegative(),
-        reasoningTokens: z.number().int().nonnegative(),
-        cachedTokens: z.number().int().nonnegative(),
-        cacheCreationTokens: z.number().int().nonnegative().default(0),
-        totalTokens: z.number().int().nonnegative(),
+        model: truncatedText(INGEST_MODEL_MAX_BYTES),
+        inputTokens: tokenCountSchema,
+        outputTokens: tokenCountSchema,
+        reasoningTokens: tokenCountSchema,
+        cachedTokens: tokenCountSchema,
+        cacheCreationTokens: tokenCountSchema.default(0),
+        totalTokens: tokenCountSchema,
       }),
     )
     .optional(),
@@ -114,8 +202,11 @@ const ingestSessionSchema = z.object({
 export const ingestRequestSchema = z.object({
   schemaVersion: z.literal(schemaVersion),
   device: z.object({
-    deviceId: z.string().min(8),
-    hostname: z.string().min(1),
+    deviceId: boundedId(INGEST_ID_MAX_BYTES).min(8),
+    hostname: z
+      .string()
+      .min(1)
+      .transform((value) => truncateUtf8(value, INGEST_HOSTNAME_MAX_BYTES)),
   }),
   buckets: z
     .array(ingestBucketSchema)

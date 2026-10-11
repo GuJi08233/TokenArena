@@ -4,7 +4,11 @@ import type { AchievementCode } from "@/lib/achievements/types";
 import { ADVISORY_LOCK_NAMESPACE, lockAdvisoryKeys } from "@/lib/advisory-lock";
 import { prisma } from "@/lib/prisma";
 import { toUtcTimestampLiteral } from "@/lib/sql-timestamp";
-import { tokenCountToBigInt, tokenCountToNumber } from "@/lib/token-counts";
+import {
+  countToPgInteger,
+  tokenCountToBigInt,
+  tokenCountToNumber,
+} from "@/lib/token-counts";
 import { getTransactionTimeoutMs } from "@/lib/transaction-timeout";
 import { Prisma } from "../../generated/prisma/client";
 import { resolveFinalizableLeaderboardWindows } from "./date";
@@ -158,8 +162,8 @@ async function rankLeaderboardWindow(
         cachedTokens: tokenCountToNumber(row._sum.cachedTokens),
         cacheCreationTokens: tokenCountToNumber(row._sum.cacheCreationTokens),
         totalTokens,
-        activeSeconds: row._sum.activeSeconds ?? 0,
-        sessions: row._sum.sessions ?? 0,
+        activeSeconds: countToPgInteger(row._sum.activeSeconds),
+        sessions: countToPgInteger(row._sum.sessions),
       });
     }
     return acc;
