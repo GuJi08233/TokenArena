@@ -12,12 +12,20 @@ if [ ! -f .env ]; then
 
     # Generate a secure secret
     SECRET=$(openssl rand -base64 32)
+    # Hex keeps the password safe inside DATABASE_URL without escaping.
+    DB_PASSWORD=$(openssl rand -hex 24)
     if [[ "$OSTYPE" == "darwin"* ]]; then
         sed -i '' "s|your-secret-key-here|$SECRET|g" .env
+        sed -i '' -e "s|^POSTGRES_PASSWORD=postgres$|POSTGRES_PASSWORD=$DB_PASSWORD|" \
+            -e "s|postgresql://postgres:postgres@|postgresql://postgres:$DB_PASSWORD@|" .env
     else
         sed -i "s|your-secret-key-here|$SECRET|g" .env
+        sed -i -e "s|^POSTGRES_PASSWORD=postgres$|POSTGRES_PASSWORD=$DB_PASSWORD|" \
+            -e "s|postgresql://postgres:postgres@|postgresql://postgres:$DB_PASSWORD@|" .env
     fi
     echo "✅ Generated BETTER_AUTH_SECRET"
+    echo "✅ Generated POSTGRES_PASSWORD (also written into DATABASE_URL)"
+    echo "   Reusing an existing database volume? Set both back to its password."
     echo ""
     echo "⚠️  Please edit .env to configure:"
     echo "   - BETTER_AUTH_URL: Your public URL (default: http://localhost:3000)"
@@ -33,7 +41,7 @@ if grep -q "postgresql://postgres:postgres@localhost:5432/tokens_burned" .env; t
     else
         sed -i "s|postgresql://postgres:postgres@localhost:5432/tokens_burned|postgresql://postgres:postgres@db:5432/tokens_burned|g" .env
     fi
-    echo "鉁?Updated DATABASE_URL to use the docker-compose db service"
+    echo "✅ Updated DATABASE_URL to use the docker-compose db service"
     echo ""
 fi
 

@@ -77,7 +77,7 @@ cd tokenarena
 # or: .\start.cmd
 ```
 
-启动脚本会自动创建配置文件、生成安全密钥并启动所有服务。
+启动脚本会自动创建配置文件、生成安全密钥和数据库密码并启动所有服务。Compose 只把 PostgreSQL 端口发布在本机回环地址 `127.0.0.1:5432` 上，供宿主机上的 `pnpm migrate` 等工具使用，不对外网开放。
 
 **Docker 常用命令**
 
@@ -166,7 +166,7 @@ git add --renormalize .
 | `AUTH_MODE` | 认证模式（`self-hosted` / `production`） | `self-hosted` |
 | `DATABASE_URL` | PostgreSQL 连接字符串 | `postgresql://postgres:postgres@db:5432/token_arena` |
 | `POSTGRES_USER` | PostgreSQL 用户名 | `postgres` |
-| `POSTGRES_PASSWORD` | PostgreSQL 密码 | `postgres` |
+| `POSTGRES_PASSWORD` | PostgreSQL 密码；`start.sh` / `start.ps1` 首次创建 `.env` 时会随机生成并同步写入 `DATABASE_URL` | `postgres` |
 | `POSTGRES_DB` | PostgreSQL 数据库名 | `token_arena` |
 | `GITLAB_BASE_URL` | GitLab 实例地址，支持 `gitlab.com` 或自建实例 | `https://gitlab.example.com` |
 | `GITLAB_CLIENT_ID` | GitLab OAuth Application Client ID | `glapp-xxxxx` |

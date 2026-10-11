@@ -15,6 +15,22 @@ function New-TokenArenaSecret {
   return [Convert]::ToBase64String($secretBytes)
 }
 
+function New-TokenArenaDatabasePassword {
+  $passwordBytes = New-Object byte[] 24
+  $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+
+  try {
+    $rng.GetBytes($passwordBytes)
+  } finally {
+    if ($null -ne $rng) {
+      $rng.Dispose()
+    }
+  }
+
+  # Hex keeps the password safe inside DATABASE_URL without escaping.
+  return ($passwordBytes | ForEach-Object { $_.ToString("x2") }) -join ""
+}
+
 Write-Host "tokenarena Quick Start"
 Write-Host ""
 
@@ -50,6 +66,17 @@ if ($content.Contains("your-secret-key-here")) {
   [System.IO.File]::WriteAllText($envPath, $content)
 
   Write-Host "Generated BETTER_AUTH_SECRET"
+  Write-Host ""
+}
+
+if ($createdEnvFile -and $content.Contains("POSTGRES_PASSWORD=postgres")) {
+  $dbPassword = New-TokenArenaDatabasePassword
+  $content = $content.Replace("POSTGRES_PASSWORD=postgres", "POSTGRES_PASSWORD=$dbPassword")
+  $content = $content.Replace("postgresql://postgres:postgres@", "postgresql://postgres:$dbPassword@")
+  [System.IO.File]::WriteAllText($envPath, $content)
+
+  Write-Host "Generated POSTGRES_PASSWORD (also written into DATABASE_URL)"
+  Write-Host "Reusing an existing database volume? Set both back to its password."
   Write-Host ""
 }
 
