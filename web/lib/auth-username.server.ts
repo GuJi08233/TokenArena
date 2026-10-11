@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
+  isValidUsername,
   normalizeUsername,
   USERNAME_MAX_LENGTH,
   USERNAME_MIN_LENGTH,
@@ -70,6 +71,21 @@ function createUsernameCandidateBase(value: string) {
       .replace(/[^a-z0-9_.]+/g, ".")
       .replace(/[.]{2,}/g, "."),
   );
+}
+
+/**
+ * A provider's username rewritten to satisfy local username rules, or `null`
+ * when nothing usable remains. Providers allow characters ours do not:
+ * Linux.do accepts `-`, for one.
+ */
+export function toUsernameCandidate(value: string) {
+  const candidate = trimSeparators(
+    createUsernameCandidateBase(value).slice(0, USERNAME_MAX_LENGTH),
+  );
+
+  return candidate.length >= USERNAME_MIN_LENGTH && isValidUsername(candidate)
+    ? candidate
+    : null;
 }
 
 export async function generateUniqueUsername(

@@ -398,3 +398,73 @@ describe("GitLab OAuth account linking", () => {
     expect(await sessionUserId(callback)).toBe(owner);
   });
 });
+
+describe("Linux.do OAuth sign-up", () => {
+  let auth: Auth;
+  let linuxdoProfile: Record<string, unknown> = {};
+
+  async function fakeLinuxdoFetch(input: RequestInfo | URL) {
+    const url = input instanceof Request ? input.url : String(input);
+
+    switch (url) {
+      case "https://connect.linux.do/oauth2/token":
+        return Response.json({ access_token: "ld_test", token_type: "bearer" });
+      case "https://connect.linux.do/api/user":
+        return Response.json(linuxdoProfile);
+      default:
+        throw new Error(`Unexpected request to ${url}`);
+    }
+  }
+
+  async function signInWithLinuxdo() {
+    const signIn = await auth.handler(
+      new Request(`${BASE_URL}/api/auth/sign-in/oauth2`, {
+        method: "POST",
+        headers: { "content-type": "application/json", origin: BASE_URL },
+        body: JSON.stringify({
+          providerId: "linuxdo",
+          callbackURL: "/zh/usage",
+          errorCallbackURL: "/zh/login",
+        }),
+      }),
+    );
+    const { url } = (await signIn.json()) as { url: string };
+    const state = new URL(url).searchParams.get("state");
+
+    return auth.handler(
+      new Request(
+        `${BASE_URL}/api/auth/oauth2/callback/linuxdo?code=test-code&state=${state}`,
+        { headers: { cookie: toCookieHeader(signIn) } },
+      ),
+    );
+  }
+
+  beforeAll(async () => {
+    vi.stubGlobal("fetch", fakeLinuxdoFetch);
+    vi.stubEnv("LINUXDO_CLIENT_ID", "linuxdo-client-id");
+    vi.stubEnv("LINUXDO_CLIENT_SECRET", "linuxdo-client-secret");
+    auth = await loadAuth("production");
+  }, 60_000);
+
+  it("signs up a user whose Linux.do username has a dash", async () => {
+    // Validation of the raw `username` used to reject this before the create
+    // hook ran, and the callback bounced back to the login page.
+    linuxdoProfile = {
+      id: 42,
+      username: "foo-bar",
+      name: "",
+      email: "foo@example.com",
+    };
+
+    const callback = await signInWithLinuxdo();
+
+    expect(callback.headers.get("location")).toBe("/zh/usage");
+    expect(mocks.db.user).toEqual([
+      expect.objectContaining({
+        name: "foo-bar",
+        username: "foo.bar",
+        usernameNeedsSetup: false,
+      }),
+    ]);
+  });
+});

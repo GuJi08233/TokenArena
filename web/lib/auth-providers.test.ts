@@ -4,6 +4,7 @@ import {
   getEnabledLoginProviders,
   getEnabledOAuth2ProviderConfigs,
   isSocialProviderEnabled,
+  mapLinuxdoProfile,
 } from "./auth-providers";
 
 const tokens = { accessToken: "access-token" } as OAuth2Tokens;
@@ -211,5 +212,39 @@ describe("Watcha user info", () => {
     );
 
     await expect(getUserInfo(watchaEnv)).resolves.toBeNull();
+  });
+});
+
+describe("Linux.do profile mapping", () => {
+  it("rewrites a username our rules reject instead of failing sign-up", () => {
+    expect(mapLinuxdoProfile({ username: "Foo-Bar", name: "Foo" })).toEqual({
+      name: "Foo",
+      username: "foo.bar",
+    });
+  });
+
+  it("drops a username nothing usable remains of", () => {
+    expect(mapLinuxdoProfile({ username: "-x-", name: "X" })).toEqual({
+      name: "X",
+      username: undefined,
+    });
+  });
+
+  it("falls back to the username when there is no display name", () => {
+    expect(mapLinuxdoProfile({ username: "neo", name: "" })).toEqual({
+      name: "neo",
+      username: "neo",
+    });
+  });
+
+  it("is wired into the Linux.do provider config", () => {
+    const [config] = getEnabledOAuth2ProviderConfigs(
+      env({
+        LINUXDO_CLIENT_ID: "linuxdo-id",
+        LINUXDO_CLIENT_SECRET: "linuxdo-secret",
+      }),
+    );
+
+    expect(config?.mapProfileToUser).toBe(mapLinuxdoProfile);
   });
 });

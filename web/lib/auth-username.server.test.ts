@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   generateUniqueUsername,
   resolveCreatedUsername,
+  toUsernameCandidate,
 } from "./auth-username.server";
 
 describe("generateUniqueUsername", () => {
@@ -104,5 +105,20 @@ describe("resolveCreatedUsername", () => {
       usernameNeedsSetup: true,
       usernameAutoAdjusted: false,
     });
+  });
+});
+
+describe("toUsernameCandidate", () => {
+  it("rewrites characters local usernames do not allow", () => {
+    expect(toUsernameCandidate("Foo-Bar")).toBe("foo.bar");
+    expect(toUsernameCandidate("neo")).toBe("neo");
+  });
+
+  it("keeps the result within the username length limits", () => {
+    expect(toUsernameCandidate("a".repeat(40))).toBe("a".repeat(30));
+    // Cutting at 30 must not leave a trailing separator behind.
+    expect(toUsernameCandidate(`${"a".repeat(29)}-b`)).toBe("a".repeat(29));
+    expect(toUsernameCandidate("ab")).toBeNull();
+    expect(toUsernameCandidate("-_-")).toBeNull();
   });
 });

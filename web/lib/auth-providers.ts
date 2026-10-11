@@ -1,5 +1,6 @@
 import type { OAuth2Tokens, OAuth2UserInfo } from "better-auth/oauth2";
 import type { GenericOAuthConfig } from "better-auth/plugins/generic-oauth";
+import { toUsernameCandidate } from "./auth-username.server";
 
 type ProviderEnvName =
   | "DISCORD_CLIENT_ID"
@@ -45,6 +46,10 @@ type OAuth2ProviderDefinition = ProviderBase & {
     tokens: OAuth2Tokens,
     env?: NodeJS.ProcessEnv,
   ) => Promise<OAuth2UserInfo | null>;
+  mapProfileToUser?: (profile: Record<string, unknown>) => {
+    name?: string;
+    username?: string;
+  };
 };
 
 export type LoginProvider = Pick<
@@ -78,6 +83,28 @@ async function getWatchaUserInfo(tokens: OAuth2Tokens) {
     // must not be reported as verified.
     email: `${data.data.user_id}@watcha.local`,
     emailVerified: false,
+  };
+}
+
+/**
+ * Shape a Linux.do profile for sign-up.
+ *
+ * Linux.do has no custom user-info mapping, so better-auth receives the raw
+ * profile, `username` included, and validates that field against local
+ * username rules before the create hook can replace it. Linux.do allows
+ * characters ours do not, so a name like `foo-bar` failed sign-up outright.
+ * The username is rewritten to a valid candidate, or left out so the hook
+ * generates one. A profile without a display name falls back to the
+ * username, because better-auth refuses a sign-up without a name.
+ */
+export function mapLinuxdoProfile(profile: Record<string, unknown>) {
+  const username =
+    typeof profile.username === "string" ? profile.username.trim() : "";
+  const name = typeof profile.name === "string" ? profile.name.trim() : "";
+
+  return {
+    name: name || username || undefined,
+    username: toUsernameCandidate(username) ?? undefined,
   };
 }
 
@@ -181,6 +208,7 @@ const oauth2ProviderDefinitions: readonly OAuth2ProviderDefinition[] = [
     tokenUrl: "https://connect.linux.do/oauth2/token",
     userInfoUrl: "https://connect.linux.do/api/user",
     scopes: ["read"],
+    mapProfileToUser: mapLinuxdoProfile,
   },
   {
     id: "watcha",
@@ -327,6 +355,7 @@ export function getEnabledOAuth2ProviderConfigs(
         redirectURI: provider.redirectURI,
         pkce: provider.pkce,
         getUserInfo,
+        mapProfileToUser: provider.mapProfileToUser,
       } satisfies GenericOAuthConfig,
     ];
   });
