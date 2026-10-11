@@ -83,6 +83,36 @@ interface UiMessage {
   say?: string;
   ts?: number;
   text?: string;
+  apiProtocol?: string;
+}
+
+/**
+ * The uncached part of one request's input.
+ *
+ * Roo writes `tokensIn: costResult.totalInputTokens`, which already holds the
+ * cache writes and reads for both API protocols: the Anthropic path adds them
+ * and OpenAI reports them inside the input. Adding them again roughly doubled
+ * Roo usage. Messages that predate that change carry no `apiProtocol` and hold
+ * the provider's raw input instead, as Cline's still do: Anthropic's excludes
+ * both caches, OpenAI's includes the cache reads. Only Anthropic reports cache
+ * writes, and its raw input is tiny next to a cache read, which tells the two
+ * apart.
+ */
+export function uncachedInputTokens(input: {
+  tokensIn: number;
+  cacheWrites: number;
+  cacheReads: number;
+  apiProtocol?: string;
+}) {
+  if (input.apiProtocol === "anthropic" || input.apiProtocol === "openai") {
+    return Math.max(0, input.tokensIn - input.cacheWrites - input.cacheReads);
+  }
+
+  if (input.cacheWrites > 0 || input.tokensIn < input.cacheReads) {
+    return input.tokensIn;
+  }
+
+  return input.tokensIn - input.cacheReads;
 }
 
 function readHistoryItems(extDir: string): HistoryItem[] {
@@ -168,10 +198,16 @@ class RooCodeParser implements IParser {
             }
             if (!info) continue;
 
-            const inputTokens = Math.max(0, Number(info.tokensIn) || 0);
+            const tokensIn = Math.max(0, Number(info.tokensIn) || 0);
             const outputTokens = Math.max(0, Number(info.tokensOut) || 0);
             const cacheWrites = Math.max(0, Number(info.cacheWrites) || 0);
             const cacheReads = Math.max(0, Number(info.cacheReads) || 0);
+            const inputTokens = uncachedInputTokens({
+              tokensIn,
+              cacheWrites,
+              cacheReads,
+              apiProtocol: msg.apiProtocol,
+            });
             if (inputTokens + outputTokens + cacheWrites + cacheReads === 0)
               continue;
 

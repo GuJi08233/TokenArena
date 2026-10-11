@@ -295,6 +295,49 @@ describe("RooCodeParser", () => {
     expect(totalCached).toBe(25);
   });
 
+  it("does not add the caches to a total that already holds them", async () => {
+    setupExtDir();
+    const taskId = "task-total";
+    const tasksDir = join(extDir, "tasks");
+    addFile(
+      join(tasksDir, "_index.json"),
+      JSON.stringify({
+        entries: [{ id: taskId, workspace: "/home/user/proj" }],
+      }),
+    );
+    addFile(
+      join(tasksDir, taskId, "ui_messages.json"),
+      JSON.stringify([
+        {
+          type: "say",
+          say: "api_req_started",
+          ts: 1712880000000,
+          apiProtocol: "anthropic",
+          text: JSON.stringify({
+            tokensIn: 42_000,
+            tokensOut: 500,
+            cacheWrites: 10_000,
+            cacheReads: 30_000,
+            model: "claude-sonnet-4",
+          }),
+        },
+      ]),
+    );
+
+    const result = await (await getParser()).parse();
+
+    // 42,500 tokens, not 82,500.
+    expect(result.buckets).toEqual([
+      expect.objectContaining({
+        inputTokens: 2_000,
+        cacheCreationTokens: 10_000,
+        cachedTokens: 30_000,
+        outputTokens: 500,
+        totalTokens: 42_500,
+      }),
+    ]);
+  });
+
   it("extracts user feedback events", async () => {
     setupExtDir();
 
@@ -360,5 +403,56 @@ describe("RooCodeParser", () => {
 
     // Verify there are user events (from "ask" and "user_feedback")
     expect(session.userMessageCount).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe("uncachedInputTokens", () => {
+  let uncachedInputTokens: typeof import("./roo-code").uncachedInputTokens;
+
+  beforeEach(async () => {
+    ({ uncachedInputTokens } = await import("./roo-code"));
+  });
+
+  it("removes both caches from the totals current Roo writes", () => {
+    // 2,000 new + 10,000 written + 30,000 read, as calculateApiCostAnthropic
+    // totals them; OpenAI-protocol totals hold the reads already.
+    expect(
+      uncachedInputTokens({
+        tokensIn: 42_000,
+        cacheWrites: 10_000,
+        cacheReads: 30_000,
+        apiProtocol: "anthropic",
+      }),
+    ).toBe(2_000);
+    expect(
+      uncachedInputTokens({
+        tokensIn: 30_000,
+        cacheWrites: 0,
+        cacheReads: 20_000,
+        apiProtocol: "openai",
+      }),
+    ).toBe(10_000);
+  });
+
+  it("reads legacy messages by what the provider reported", () => {
+    // Anthropic: raw input excludes the caches.
+    expect(
+      uncachedInputTokens({
+        tokensIn: 3,
+        cacheWrites: 10_000,
+        cacheReads: 20_000,
+      }),
+    ).toBe(3);
+    expect(
+      uncachedInputTokens({ tokensIn: 4, cacheWrites: 0, cacheReads: 20_000 }),
+    ).toBe(4);
+    // OpenAI: raw input includes the cache reads.
+    expect(
+      uncachedInputTokens({
+        tokensIn: 30_000,
+        cacheWrites: 0,
+        cacheReads: 20_000,
+      }),
+    ).toBe(10_000);
   });
 });
