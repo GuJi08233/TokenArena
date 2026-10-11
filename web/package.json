@@ -1,6 +1,6 @@
 {
   "name": "token-arena-web",
-  "version": "0.19.2",
+  "version": "0.20.0",
   "private": true,
   "scripts": {
     "predev": "prisma generate",
