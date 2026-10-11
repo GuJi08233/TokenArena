@@ -1,8 +1,10 @@
 import { APIError, betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
+import { createAuthMiddleware } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
 import { genericOAuth } from "better-auth/plugins/generic-oauth";
 import { isProduction, isSelfHosted } from "./auth-config";
+import { assertUserInputWithinBounds } from "./auth-input-guard";
 import {
   getEnabledOAuth2ProviderConfigs,
   isSocialProviderEnabled,
@@ -56,22 +58,31 @@ export const auth = betterAuth({
           },
         },
       },
+      // Both flags are owned by the database hooks below. Without
+      // `input: false`, update-user let a client set them directly.
       usernameNeedsSetup: {
         type: "boolean",
         required: false,
         returned: true,
         defaultValue: false,
+        input: false,
       },
       usernameAutoAdjusted: {
         type: "boolean",
         required: false,
         returned: true,
         defaultValue: false,
+        input: false,
       },
     },
     deleteUser: {
       enabled: true,
     },
+  },
+  hooks: {
+    before: createAuthMiddleware(async (ctx) => {
+      assertUserInputWithinBounds(ctx.path, ctx.body);
+    }),
   },
   databaseHooks: {
     user: {

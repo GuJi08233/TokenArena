@@ -213,4 +213,95 @@ describe("email sign-up", () => {
       }),
     ]);
   });
+
+  it("rejects an oversized email before it seeds username generation", async () => {
+    // Without a username, the local part seeds generation. Its separator trim
+    // used to take seconds on a long `_._` run that does not reach the end.
+    const started = performance.now();
+    const response = await auth.handler(
+      new Request(`${BASE_URL}/api/auth/sign-up/email`, {
+        method: "POST",
+        headers: { "content-type": "application/json", origin: BASE_URL },
+        body: JSON.stringify({
+          name: "Mallory",
+          email: `a${"_.".repeat(100_000)}b@example.com`,
+          password: "correct-horse-battery",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(performance.now() - started).toBeLessThan(1_000);
+    expect(mocks.db.user).toHaveLength(0);
+  });
+});
+
+describe("update-user", () => {
+  let auth: Auth;
+
+  async function signUp() {
+    const response = await auth.handler(
+      new Request(`${BASE_URL}/api/auth/sign-up/email`, {
+        method: "POST",
+        headers: { "content-type": "application/json", origin: BASE_URL },
+        body: JSON.stringify({
+          name: "Alice",
+          email: "alice@example.com",
+          password: "correct-horse-battery",
+        }),
+      }),
+    );
+    expect(response.status).toBe(200);
+    return toCookieHeader(response);
+  }
+
+  function updateUser(cookie: string, body: Record<string, unknown>) {
+    return auth.handler(
+      new Request(`${BASE_URL}/api/auth/update-user`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          origin: BASE_URL,
+          cookie,
+        },
+        body: JSON.stringify(body),
+      }),
+    );
+  }
+
+  beforeAll(async () => {
+    auth = await loadAuth("self-hosted");
+  }, 60_000);
+
+  it("refuses to let a client set the username flags", async () => {
+    const cookie = await signUp();
+    expect(mocks.db.user[0]).toMatchObject({ usernameNeedsSetup: true });
+
+    expect(
+      (await updateUser(cookie, { usernameAutoAdjusted: true })).status,
+    ).toBe(400);
+    // A falsy value is dropped rather than written.
+    expect(
+      (await updateUser(cookie, { name: "Alice", usernameNeedsSetup: false }))
+        .status,
+    ).toBe(200);
+    expect(mocks.db.user[0]).toMatchObject({
+      usernameNeedsSetup: true,
+      usernameAutoAdjusted: false,
+    });
+  });
+
+  it("rejects an arbitrary profile image and an oversized name", async () => {
+    const cookie = await signUp();
+
+    expect(
+      (await updateUser(cookie, { image: "https://tracker.example/p.gif" }))
+        .status,
+    ).toBe(400);
+    expect((await updateUser(cookie, { name: "x".repeat(51) })).status).toBe(
+      400,
+    );
+    expect(mocks.db.user[0]).toMatchObject({ name: "Alice" });
+    expect(mocks.db.user[0]?.image ?? null).toBeNull();
+  });
 });

@@ -29,6 +29,29 @@ describe("generateUniqueUsername", () => {
     expect(findUserByUsername).toHaveBeenNthCalledWith(1, "alice");
     expect(findUserByUsername).toHaveBeenNthCalledWith(2, "alice.abcdef");
   });
+
+  it("strips separators from both ends of the seed", async () => {
+    const username = await generateUniqueUsername("__.Mia-Chen._", {
+      findUserByUsername: vi.fn().mockResolvedValue(null),
+    });
+
+    expect(username).toBe("mia.chen");
+  });
+
+  it("stays fast on a long run of separators that does not reach the end", async () => {
+    // `/[._]+$/` backtracked quadratically on this shape: about 2.5 s at
+    // 80,000 characters, and an email local part is not length-limited.
+    const seed = `a${"_.".repeat(200_000)}b`;
+    const started = performance.now();
+
+    const username = await generateUniqueUsername(seed, {
+      findUserByUsername: vi.fn().mockResolvedValue(null),
+    });
+
+    expect(performance.now() - started).toBeLessThan(100);
+    // Only "a" survives the separator trim, too short to be a username.
+    expect(username).toBe("user");
+  });
 });
 
 describe("resolveCreatedUsername", () => {

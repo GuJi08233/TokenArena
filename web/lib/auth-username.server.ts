@@ -36,13 +36,40 @@ function createRandomSuffix() {
   return randomUUID().slice(0, 6);
 }
 
+/**
+ * How much of a seed is considered. A username holds at most
+ * `USERNAME_MAX_LENGTH` characters, so a longer seed only costs time: the seed
+ * comes from the email local part, which sign-up does not bound.
+ */
+const USERNAME_SEED_MAX_LENGTH = 64;
+
+function isSeparator(char: string) {
+  return char === "." || char === "_";
+}
+
+/**
+ * Drop leading and trailing separators in one pass. `/[._]+$/` backtracks
+ * quadratically on a long run of separators that does not reach the end.
+ */
+function trimSeparators(value: string) {
+  let start = 0;
+  let end = value.length;
+
+  while (start < end && isSeparator(value[start])) start++;
+  while (end > start && isSeparator(value[end - 1])) end--;
+
+  return value.slice(start, end);
+}
+
 function createUsernameCandidateBase(value: string) {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9_.]+/g, ".")
-    .replace(/[.]{2,}/g, ".")
-    .replace(/^[._]+|[._]+$/g, "");
+  return trimSeparators(
+    value
+      .trim()
+      .slice(0, USERNAME_SEED_MAX_LENGTH)
+      .toLowerCase()
+      .replace(/[^a-z0-9_.]+/g, ".")
+      .replace(/[.]{2,}/g, "."),
+  );
 }
 
 export async function generateUniqueUsername(
