@@ -12,6 +12,7 @@ import {
   findJsonlFiles,
   parseJsonl,
   readFileSafe,
+  trimTrailingSeparators,
 } from "../infrastructure/fs/utils";
 import { registerParser } from "./registry";
 import type { IParser, ToolDefinition } from "./types";
@@ -60,13 +61,13 @@ function toSafeNumber(value: unknown): number {
 }
 
 function getPathLeaf(value: string): string {
-  const normalized = value.replace(/\\/g, "/").replace(/\/+$/, "");
+  const normalized = trimTrailingSeparators(value.replace(/\\/g, "/"));
   const leaf = normalized.split("/").filter(Boolean).pop();
   return leaf || "unknown";
 }
 
 function normalizeForPrefix(value: string): string {
-  return value.replace(/\\/g, "/").replace(/\/+$/, "");
+  return trimTrailingSeparators(value.replace(/\\/g, "/"));
 }
 
 function getUsageNumber(

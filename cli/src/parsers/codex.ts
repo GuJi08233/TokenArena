@@ -8,7 +8,11 @@ import type {
   SessionEvent,
   TokenUsageEntry,
 } from "../domain/types";
-import { findJsonlFiles, readFileSafe } from "../infrastructure/fs/utils";
+import {
+  findJsonlFiles,
+  readFileSafe,
+  trimTrailingSeparators,
+} from "../infrastructure/fs/utils";
 import { logger } from "../utils/logger";
 import { registerParser } from "./registry";
 import type { IParser, ToolDefinition } from "./types";
@@ -148,15 +152,42 @@ function filenameThreadId(path: string): string | null {
   );
 }
 
+/**
+ * The last two path segments of a Git remote, minus a `.git` suffix, as the
+ * old `/([^/]+\/[^/]+?)(?:\.git)?$/` match produced them: project names key
+ * uploaded buckets, so a remote without credentials keeps its name. That
+ * pattern backtracked quadratically on a long remote without a slash.
+ */
+function repositorySlug(repositoryUrl: string) {
+  // Credentials in the authority, as in `https://user:token@host/repo.git`,
+  // became part of the name of a repository at the host root, and raw project
+  // mode uploads that name.
+  const remote = repositoryUrl.replace(
+    /^([a-z][a-z0-9+.-]*:\/\/)[^/@]*@/i,
+    "$1",
+  );
+  const lastSlash = remote.lastIndexOf("/");
+  if (lastSlash <= 0 || lastSlash === remote.length - 1) return null;
+
+  const owner = remote.slice(
+    remote.lastIndexOf("/", lastSlash - 1) + 1,
+    lastSlash,
+  );
+  if (!owner) return null;
+
+  const name = remote.slice(lastSlash + 1);
+  return `${owner}/${name.length > 4 && name.endsWith(".git") ? name.slice(0, -4) : name}`;
+}
+
 export function resolveCodexProject(payload?: CodexEvent["payload"]): string {
   const repositoryUrl = payload?.git?.repository_url;
   if (typeof repositoryUrl === "string" && repositoryUrl) {
-    const match = repositoryUrl.match(/([^/]+\/[^/]+?)(?:\.git)?$/);
-    if (match) return match[1];
+    const slug = repositorySlug(repositoryUrl);
+    if (slug) return slug;
   }
   const normalized =
     typeof payload?.cwd === "string"
-      ? payload.cwd.replace(/\\/g, "/").replace(/\/+$/, "")
+      ? trimTrailingSeparators(payload.cwd.replace(/\\/g, "/"))
       : "";
   return normalized?.split("/").filter(Boolean).pop() || "unknown";
 }

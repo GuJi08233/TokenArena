@@ -8,6 +8,7 @@ import type {
   SessionEvent,
   TokenUsageEntry,
 } from "../domain/types";
+import { trimTrailingSeparators } from "../infrastructure/fs/utils";
 import { registerParser } from "./registry";
 import type { IParser, ToolDefinition } from "./types";
 
@@ -171,7 +172,7 @@ function projectFromDirectories(directories: string[] | null): string {
   if (!directories || directories.length === 0) return "unknown";
   const first = directories[0];
   if (!first) return "unknown";
-  return basename(String(first).replace(/[\\/]+$/, "")) || "unknown";
+  return basename(trimTrailingSeparators(String(first), "\\/")) || "unknown";
 }
 
 function tokenCount(value: unknown): number {

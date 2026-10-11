@@ -8,7 +8,10 @@ import type {
   SessionEvent,
   TokenUsageEntry,
 } from "../domain/types";
-import { readFileSafe } from "../infrastructure/fs/utils";
+import {
+  readFileSafe,
+  trimTrailingSeparators,
+} from "../infrastructure/fs/utils";
 import { registerParser } from "./registry";
 import type { IParser, ToolDefinition } from "./types";
 
@@ -51,7 +54,7 @@ function toSafeNumber(value: unknown): number {
 export function projectFromEncodedCwd(encoded: string): string {
   try {
     const decoded = decodeURIComponent(encoded);
-    const leaf = basename(decoded.replace(/[\\/]+$/, ""));
+    const leaf = basename(trimTrailingSeparators(decoded, "\\/"));
     return leaf || "unknown";
   } catch {
     const leaf = basename(encoded);

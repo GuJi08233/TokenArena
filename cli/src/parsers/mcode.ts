@@ -8,6 +8,7 @@ import type {
   SessionEvent,
   TokenUsageEntry,
 } from "../domain/types";
+import { trimTrailingSeparators } from "../infrastructure/fs/utils";
 import { readSqliteRows, type SqliteQueryRows } from "../infrastructure/sqlite";
 import { registerParser } from "./registry";
 import type { IParser, ToolDefinition } from "./types";
@@ -83,9 +84,8 @@ export class McodeParser implements IParser {
       );
       for (const row of sessions) {
         const project = row.directory
-          ?.replace(/[\\/]+$/, "")
-          .split(/[\\/]/)
-          .pop();
+          ? trimTrailingSeparators(row.directory, "\\/").split(/[\\/]/).pop()
+          : undefined;
         if (project) projects.set(row.sessionId, project);
       }
     } catch (error) {

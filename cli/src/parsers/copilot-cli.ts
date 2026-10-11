@@ -8,6 +8,7 @@ import type {
   SessionEvent,
   TokenUsageEntry,
 } from "../domain/types";
+import { trimTrailingSeparators } from "../infrastructure/fs/utils";
 import { registerParser } from "./registry";
 import type { IParser, ToolDefinition } from "./types";
 
@@ -93,7 +94,7 @@ function getProjectFromContext(
 ): string {
   const projectPath = context?.gitRoot || context?.cwd;
   if (!projectPath) return "unknown";
-  return basename(projectPath.replace(/[\\/]+$/, "")) || "unknown";
+  return basename(trimTrailingSeparators(projectPath, "\\/")) || "unknown";
 }
 
 class CopilotCliParser implements IParser {

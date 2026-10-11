@@ -7,6 +7,7 @@ import {
   findJsonlFiles,
   parseJsonl,
   readFileSafe,
+  trimTrailingSeparators,
 } from "./utils";
 
 describe("fs/utils", () => {
@@ -81,5 +82,23 @@ describe("fs/utils", () => {
 
       expect(findJsonlFiles(tmp)).toHaveLength(2);
     });
+  });
+});
+
+describe("trimTrailingSeparators", () => {
+  it("drops trailing separators only", () => {
+    expect(trimTrailingSeparators("/a/b///")).toBe("/a/b");
+    expect(trimTrailingSeparators("C:\\a\\b\\/", "\\/")).toBe("C:\\a\\b");
+    expect(trimTrailingSeparators("///")).toBe("");
+    expect(trimTrailingSeparators("a/b")).toBe("a/b");
+  });
+
+  it("stays linear on a long run of separators that does not end the string", () => {
+    // `/\/+$/` took about half a second on 40,000 slashes and grew quadratically.
+    const value = `${"/".repeat(200_000)}x`;
+    const started = performance.now();
+
+    expect(trimTrailingSeparators(value)).toBe(value);
+    expect(performance.now() - started).toBeLessThan(100);
   });
 });

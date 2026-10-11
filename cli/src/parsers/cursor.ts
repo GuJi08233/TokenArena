@@ -4,6 +4,7 @@ import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { aggregateToBuckets } from "../domain/aggregator";
 import type { ParseResult, TokenUsageEntry } from "../domain/types";
+import { trimTrailingSeparators } from "../infrastructure/fs/utils";
 import { getSqliteCliCandidates } from "../infrastructure/sqlite";
 import { registerParser } from "./registry";
 import type { IParser, ToolDefinition } from "./types";
@@ -130,9 +131,9 @@ function decodeJwtSub(token: string): string | null {
 }
 
 async function fetchUsageCsv(token: string): Promise<string> {
-  const baseUrl = (
-    process.env.CURSOR_WEB_BASE_URL?.trim() || "https://cursor.com"
-  ).replace(/\/+$/, "");
+  const baseUrl = trimTrailingSeparators(
+    process.env.CURSOR_WEB_BASE_URL?.trim() || "https://cursor.com",
+  );
   const url = `${baseUrl}/api/dashboard/export-usage-events-csv?strategy=tokens`;
   const sub = decodeJwtSub(token);
   const cookieValues = sub ? [token, `${sub}::${token}`] : [token];

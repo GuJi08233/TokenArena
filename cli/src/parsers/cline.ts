@@ -8,6 +8,7 @@ import type {
   SessionEvent,
   TokenUsageEntry,
 } from "../domain/types";
+import { trimTrailingSeparators } from "../infrastructure/fs/utils";
 import { registerParser } from "./registry";
 import type { IParser, ToolDefinition } from "./types";
 
@@ -69,7 +70,7 @@ function readJsonSafe(path: string): unknown {
 
 function projectFromPath(absPath: unknown): string {
   if (!absPath || typeof absPath !== "string") return "unknown";
-  const trimmed = absPath.replace(/[\\/]+$/, "");
+  const trimmed = trimTrailingSeparators(absPath, "\\/");
   const name = basename(trimmed);
   return name || "unknown";
 }

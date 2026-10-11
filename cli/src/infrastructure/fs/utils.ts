@@ -92,3 +92,15 @@ export function extractProjectFromPath(
 export function extractSessionId(filePath: string): string {
   return basename(filePath, ".jsonl");
 }
+
+/**
+ * Drop trailing separators in linear time.
+ *
+ * `/\/+$/` backtracks quadratically on a long run of separators that does not
+ * reach the end of the string, the pattern CodeQL flagged in 1b0568b.
+ */
+export function trimTrailingSeparators(value: string, separators = "/") {
+  let end = value.length;
+  while (end > 0 && separators.includes(value[end - 1])) end--;
+  return value.slice(0, end);
+}

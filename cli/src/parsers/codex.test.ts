@@ -16,6 +16,50 @@ describe("resolveCodexProject", () => {
     ).toBe("tokens-burned");
   });
 
+  it("keeps credentials in a remote out of the project name", () => {
+    expect(
+      resolveCodexProject({
+        cwd: "/srv/repo",
+        git: {
+          repository_url: "https://alice:s3cr3tPAT@git.example.com/repo.git",
+        },
+      }),
+    ).toBe("git.example.com/repo");
+    expect(
+      resolveCodexProject({
+        git: { repository_url: "https://ci-token@github.com/owner/repo.git" },
+      }),
+    ).toBe("owner/repo");
+  });
+
+  it("names every credential-free remote exactly as the old pattern did", () => {
+    // Project names key uploaded buckets: a changed name would upload the
+    // same usage again under a new key.
+    const oldName = (url: string) =>
+      url.match(/([^/]+\/[^/]+?)(?:\.git)?$/)?.[1] ?? "fallback";
+    for (const url of [
+      "https://github.com/poco-ai/tokens-burned.git",
+      "https://github.com/poco-ai/tokens-burned",
+      "git@github.com:poco-ai/tokens-burned.git",
+      "ssh://git@github.com/poco-ai/tokens-burned.git",
+      "https://gitlab.example.com/group/sub/project.git",
+      "https://git.example.com/repo.git",
+      "https://github.com/owner/repo/",
+      "https://github.com//repo",
+      "https://github.com/owner/.git",
+      "file:///srv/git/project.git",
+      "no-slash-at-all",
+    ]) {
+      expect(
+        resolveCodexProject({
+          cwd: "/x/fallback",
+          git: { repository_url: url },
+        }),
+        url,
+      ).toBe(oldName(url));
+    }
+  });
+
   it("prefers the repository slug when available", () => {
     expect(
       resolveCodexProject({

@@ -14,6 +14,7 @@ import {
   findJsonFiles,
   parseJsonl,
   readFileSafe,
+  trimTrailingSeparators,
 } from "../infrastructure/fs/utils";
 import { registerParser } from "./registry";
 import type { IParser, ToolDefinition } from "./types";
@@ -119,7 +120,7 @@ function getPathLeaf(value: string | null): string {
     return "unknown";
   }
 
-  const normalized = value.replace(/\\/g, "/").replace(/\/+$/, "");
+  const normalized = trimTrailingSeparators(value.replace(/\\/g, "/"));
   const leaf = normalized.split("/").filter(Boolean).pop();
   return leaf || "unknown";
 }

@@ -12,6 +12,7 @@ import {
   extractSessionId,
   findJsonlFiles,
   readFileSafe,
+  trimTrailingSeparators,
 } from "../infrastructure/fs/utils";
 import { registerParser } from "./registry";
 import type { IParser, ToolDefinition } from "./types";
@@ -75,7 +76,7 @@ function toSafeNumber(value: unknown): number {
 
 /** Normalize path separators so prefix matching works on Windows and Unix. */
 function normalizeForPrefix(value: string): string {
-  return value.replace(/\\/g, "/").replace(/\/+$/, "");
+  return trimTrailingSeparators(value.replace(/\\/g, "/"));
 }
 
 export function extractQoderProject(
@@ -137,7 +138,7 @@ function projectFromEncodedSlug(slug: string): string {
 
 function projectFromCwd(cwd: string | undefined): string {
   if (!cwd) return "unknown";
-  const leaf = basename(cwd.replace(/[\\/]+$/, ""));
+  const leaf = basename(trimTrailingSeparators(cwd, "\\/"));
   return leaf || "unknown";
 }
 
