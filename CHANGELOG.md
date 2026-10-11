@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.20.1](https://github.com/GuJi08233/TokenArena/compare/v0.20.0...v0.20.1) (2026-10-11)
+
+
+### Bug Fixes
+
+* **cli:** count only real prompts in Claude Code and Qoder sessions ([3a6f377](https://github.com/GuJi08233/TokenArena/commit/3a6f377d0653f051636030166ac1680b5972fffd))
+* **cli:** keep remote credentials out of Codex project names ([cac6213](https://github.com/GuJi08233/TokenArena/commit/cac62139088c927ec873df487923b1efccba82b6))
+* **cli:** keep the API key and sync state readable by their owner only ([db8f1aa](https://github.com/GuJi08233/TokenArena/commit/db8f1aa0b2bbd7bb24b3502b516af8e7157778d6))
+* **cli:** protect the API key on the wire and in output ([95923f4](https://github.com/GuJi08233/TokenArena/commit/95923f4240dea0ff6e27475f8d30c8340d72569b))
+* **cli:** read Qwen Code chats from the current projects layout ([4c0e3a2](https://github.com/GuJi08233/TokenArena/commit/4c0e3a267826a73448b32529fc4668d022747d7b))
+* **cli:** report an unreadable Cursor export as incomplete, not empty ([faaaf5f](https://github.com/GuJi08233/TokenArena/commit/faaaf5fc088acb7cc73f99e2f17bff147d85cd0c))
+* **cli:** stop counting LetCode cache and reasoning tokens twice ([a04d0e2](https://github.com/GuJi08233/TokenArena/commit/a04d0e2385107a7ab001aa25a44152945f3ab7d2))
+* **cli:** stop counting Roo Code cache tokens twice ([1b93258](https://github.com/GuJi08233/TokenArena/commit/1b9325847ce493413b98c334d83512531019fb5f))
+* **cli:** stop one unverifiable Codex fork from blocking all Codex uploads ([797ddc0](https://github.com/GuJi08233/TokenArena/commit/797ddc06174a9a7f7e67fe686702742ce4eeb5b8))
+* **cli:** stop Windows from running programs out of the current directory ([f4aa90b](https://github.com/GuJi08233/TokenArena/commit/f4aa90b9a7483cbb52191c8dda05d1a93e449700))
+* **docker:** keep Postgres off public interfaces and give it a real password ([22d77b1](https://github.com/GuJi08233/TokenArena/commit/22d77b1ff3bc4bc489bc58e836f2bdc83d22beb8))
+* **web:** answer malformed JSON with 400 and bound request bodies ([6e84ceb](https://github.com/GuJi08233/TokenArena/commit/6e84ceb7aa9dcd9cd8254802ec33150ae8222bbe))
+* **web:** keep sign-up and profile updates from taking unbounded input ([3a70b2a](https://github.com/GuJi08233/TokenArena/commit/3a70b2a5544a17ff778671a2ad55f44fddcdee25))
+* **web:** let Linux.do users whose username has a dash sign up ([d8fb3e9](https://github.com/GuJi08233/TokenArena/commit/d8fb3e98db9bb0f9d934f9e9dbc8ec94baa91e88))
+* **web:** reject dashboard and profile dates outside 2000–2099 ([0770339](https://github.com/GuJi08233/TokenArena/commit/0770339c5d3956a4c762f0014c880faf12728e91))
+* **web:** send baseline security headers on every page ([fef93b7](https://github.com/GuJi08233/TokenArena/commit/fef93b7e01e9d908bc4d8ecf5b5f0619fb669576))
+* **web:** stop badges and follows from revealing private profiles ([7f55048](https://github.com/GuJi08233/TokenArena/commit/7f55048aa5a71b4e51e1db4560057659c05026a9))
+* **web:** stop concurrent uploads from dropping a day's leaderboard usage ([5923976](https://github.com/GuJi08233/TokenArena/commit/5923976e2bb988552912bf92b5a52822f2b57ce2))
+* **web:** stop follow toggling from farming awards and replaying histories ([90e0e3a](https://github.com/GuJi08233/TokenArena/commit/90e0e3a6afc5c3ed5e8da5867ed7af9fb3d605f8))
+* **web:** stop leaderboard rebuilds from piling up ([c7e48cc](https://github.com/GuJi08233/TokenArena/commit/c7e48cc97a0bec5baf1f6927e7bf032f07832bbd))
+* **web:** stop one account's usage from failing shared leaderboards ([f6ba9f0](https://github.com/GuJi08233/TokenArena/commit/f6ba9f07ef288811d7b8f87d26018b4ed937fcbd))
+* **web:** stop profile SVG requests from growing server memory ([0212c27](https://github.com/GuJi08233/TokenArena/commit/0212c273b9dfdb1791b3f933004189a634ad621a))
+* **web:** stop unconfirmed GitLab emails from taking over accounts ([579e3c9](https://github.com/GuJi08233/TokenArena/commit/579e3c90e26151a08a41e1f5d2dae0bd0235a956))
+
 ## [0.20.0](https://github.com/GuJi08233/TokenArena/compare/v0.19.2...v0.20.0) (2026-10-10)
 
 
