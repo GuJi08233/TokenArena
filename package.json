@@ -39,7 +39,8 @@
       "hono": "^4.13.13",
       "mysql2": "^3.23.1",
       "source-map-js": "^1.2.2",
-      "valibot": "^1.4.2"
+      "valibot": "^1.4.2",
+      "vite": "^7.3.7"
     }
   },
   "devDependencies": {
