@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # Stage 1: Install dependencies
-FROM node:22-alpine AS deps
+FROM node:22.23.4-alpine AS deps
 WORKDIR /app
 
 # Install pnpm (pinned to match dev environment)
@@ -17,7 +17,7 @@ RUN printf 'onlyBuiltDependencies[]=@parcel/watcher\nonlyBuiltDependencies[]=@pr
     && pnpm install --filter ./web --frozen-lockfile
 
 # Stage 2: Build the application
-FROM node:22-alpine AS builder
+FROM node:22.23.4-alpine AS builder
 WORKDIR /app
 
 RUN npm install -g pnpm@10.32.1
@@ -42,7 +42,7 @@ WORKDIR /app/web
 RUN pnpm build
 
 # Stage 3: Database migration runner (lightweight, only Prisma CLI)
-FROM node:22-alpine AS migrate
+FROM node:22.23.4-alpine AS migrate
 WORKDIR /app
 
 RUN npm install -g pnpm@10.32.1
@@ -59,7 +59,7 @@ WORKDIR /app/web
 CMD ["npx", "prisma", "migrate", "deploy"]
 
 # Stage 4: Production runner
-FROM node:22-alpine AS runner
+FROM node:22.23.4-alpine AS runner
 WORKDIR /app
 
 ARG NEXT_PUBLIC_APP_VERSION=dev
