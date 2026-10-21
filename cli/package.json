@@ -4,6 +4,9 @@
   "type": "module",
   "description": "Collect and sync local AI coding CLI usage data",
   "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/GuJi08233/TokenArena.git"
