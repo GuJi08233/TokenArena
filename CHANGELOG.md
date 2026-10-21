@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.20.4](https://github.com/GuJi08233/TokenArena/compare/v0.20.3...v0.20.4) (2026-10-21)
+
+
+### Bug Fixes
+
+* **ci:** test the CLI on Node 22 and 24 instead of 20 and 22 ([b55b6d7](https://github.com/GuJi08233/TokenArena/commit/b55b6d7f48f538d16fdf0484510a05f0fc433e57))
+* **cli:** stop the CLI from installing on end-of-life Node versions ([b55b6d7](https://github.com/GuJi08233/TokenArena/commit/b55b6d7f48f538d16fdf0484510a05f0fc433e57))
+* **deps:** raise sharp to 0.35.5 and source-map-js to 1.2.2 ([b55b6d7](https://github.com/GuJi08233/TokenArena/commit/b55b6d7f48f538d16fdf0484510a05f0fc433e57))
+* **web:** pin the Docker image to node:22.23.4-alpine ([b55b6d7](https://github.com/GuJi08233/TokenArena/commit/b55b6d7f48f538d16fdf0484510a05f0fc433e57))
+* **web:** upgrade Next.js to 16.4.2 for the image optimization SSRF ([b55b6d7](https://github.com/GuJi08233/TokenArena/commit/b55b6d7f48f538d16fdf0484510a05f0fc433e57))
+* **web:** upgrade vite to 7.3.7 for the dev server advisories ([#66](https://github.com/GuJi08233/TokenArena/issues/66)) ([b55b6d7](https://github.com/GuJi08233/TokenArena/commit/b55b6d7f48f538d16fdf0484510a05f0fc433e57))
+
 ## [0.20.3](https://github.com/GuJi08233/TokenArena/compare/v0.20.2...v0.20.3) (2026-10-21)
 
 
