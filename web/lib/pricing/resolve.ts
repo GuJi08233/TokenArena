@@ -4,79 +4,13 @@ import {
   type PricingCatalogModel,
   type PricingCost,
 } from "./catalog";
+import { OFFICIAL_PRICING_PROVIDER_RULES } from "./providers";
 
 const MODEL_PATH_SEPARATOR = "/";
 const MODEL_VARIANT_SEPARATOR = ":";
-
-type PricingProviderRule = {
-  providerId: string;
-  matches: (candidate: string) => boolean;
-};
-
-const OFFICIAL_PRICING_PROVIDER_RULES: PricingProviderRule[] = [
-  {
-    providerId: "anthropic",
-    matches: (candidate) => candidate.startsWith("claude-"),
-  },
-  {
-    providerId: "openai",
-    matches: (candidate) =>
-      candidate.startsWith("gpt-") ||
-      candidate.startsWith("gpt-oss-") ||
-      candidate.startsWith("o1") ||
-      candidate.startsWith("o3") ||
-      candidate.startsWith("o4") ||
-      candidate.startsWith("text-embedding-") ||
-      candidate.startsWith("text-moderation-") ||
-      candidate.startsWith("omni-moderation-"),
-  },
-  {
-    providerId: "google",
-    matches: (candidate) => candidate.startsWith("gemini-"),
-  },
-  {
-    providerId: "deepseek",
-    matches: (candidate) => candidate.startsWith("deepseek-"),
-  },
-  {
-    providerId: "moonshotai",
-    matches: (candidate) => candidate.startsWith("kimi-"),
-  },
-  {
-    providerId: "zai",
-    matches: (candidate) => candidate.startsWith("glm-"),
-  },
-  {
-    providerId: "alibaba",
-    matches: (candidate) =>
-      candidate.startsWith("qwen") ||
-      candidate.startsWith("qwq-") ||
-      candidate.startsWith("qvq-"),
-  },
-  {
-    providerId: "minimax",
-    matches: (candidate) => candidate.startsWith("minimax-"),
-  },
-  {
-    providerId: "xai",
-    matches: (candidate) => candidate.startsWith("grok-"),
-  },
-  {
-    providerId: "mistral",
-    matches: (candidate) =>
-      candidate.startsWith("mistral-") ||
-      candidate.startsWith("ministral-") ||
-      candidate.startsWith("magistral-") ||
-      candidate.startsWith("codestral-") ||
-      candidate.startsWith("pixtral-") ||
-      candidate.startsWith("devstral-"),
-  },
-  {
-    providerId: "cohere",
-    matches: (candidate) =>
-      candidate.startsWith("command-") || candidate.startsWith("embed-"),
-  },
-];
+const CLAUDE_MODEL_PREFIX = "claude-";
+const CLAUDE_THINKING_SUFFIX = "-thinking";
+const VERSION_DOT_PATTERN = /(\d)\.(?=\d)/g;
 
 export type PricingModelMatch = {
   providerId: string;
@@ -132,7 +66,33 @@ export function buildModelLookupCandidates(rawModel: string) {
     }
   }
 
+  for (const candidate of Array.from(seen)) {
+    for (const alias of buildClaudeAliases(candidate)) {
+      seen.add(alias);
+    }
+  }
+
   return Array.from(seen);
+}
+
+/**
+ * Official Claude ids spell versions with dashes, but routers such as
+ * OpenRouter report `claude-opus-4.6`, and some proxies append `-thinking` to
+ * the same model at the same price. The aliases come after the exact names so
+ * a real catalog id always wins. Other providers are left alone: their ids use
+ * dots themselves, and their thinking variants can be priced separately.
+ */
+function buildClaudeAliases(candidate: string) {
+  if (!candidate.startsWith(CLAUDE_MODEL_PREFIX)) {
+    return [];
+  }
+
+  const dashed = candidate.replace(VERSION_DOT_PATTERN, "$1-");
+  const base = dashed.endsWith(CLAUDE_THINKING_SUFFIX)
+    ? dashed.slice(0, -CLAUDE_THINKING_SUFFIX.length)
+    : dashed;
+
+  return [dashed, base];
 }
 
 export function resolveOfficialPricingProviderId(rawModel: string) {

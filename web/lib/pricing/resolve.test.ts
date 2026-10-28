@@ -11,6 +11,31 @@ import {
 
 const catalog: PricingCatalog = new Map([
   [
+    "anthropic",
+    {
+      id: "anthropic",
+      name: "Anthropic",
+      modelsByLower: new Map([
+        [
+          "claude-opus-4-6",
+          {
+            id: "claude-opus-4-6",
+            name: "Claude Opus 4.6",
+            cost: { input: 5, output: 25 },
+          },
+        ],
+        [
+          "claude-sonnet-4.5-preview",
+          {
+            id: "claude-sonnet-4.5-preview",
+            name: "Claude Sonnet 4.5 Preview",
+            cost: { input: 3, output: 15 },
+          },
+        ],
+      ]),
+    },
+  ],
+  [
     "minimax",
     {
       id: "minimax",
@@ -239,5 +264,37 @@ describe("resolveOfficialPricingProviderId edge cases", () => {
     expect(
       resolveOfficialPricingProviderId("totally-unknown-model"),
     ).toBeNull();
+  });
+});
+
+describe("Claude name aliases", () => {
+  it.each([
+    "claude-opus-4.6",
+    "anthropic/claude-opus-4.6",
+    "claude-opus-4-6-thinking",
+    "anthropic/claude-opus-4.6-thinking",
+  ])("prices %s as the official dashed id", (rawModel) => {
+    expect(resolveOfficialPricingMatch(catalog, rawModel)?.modelId).toBe(
+      "claude-opus-4-6",
+    );
+  });
+
+  it("tries the exact name before any alias", () => {
+    expect(buildModelLookupCandidates("anthropic/claude-opus-4.6")).toEqual([
+      "anthropic/claude-opus-4.6",
+      "claude-opus-4.6",
+      "claude-opus-4-6",
+    ]);
+    expect(
+      resolveOfficialPricingMatch(catalog, "claude-sonnet-4.5-preview")
+        ?.modelId,
+    ).toBe("claude-sonnet-4.5-preview");
+  });
+
+  it("leaves other providers' dotted and thinking names untouched", () => {
+    expect(buildModelLookupCandidates("kimi-k2.5-thinking")).toEqual([
+      "kimi-k2.5-thinking",
+    ]);
+    expect(resolveOfficialPricingMatch(catalog, "kimi-k2-5")).toBeNull();
   });
 });
