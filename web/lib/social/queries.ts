@@ -283,6 +283,24 @@ async function getRelationFlags(
   };
 }
 
+// sorted 为升序；返回不大于 value 的元素个数，相同消耗的日子因此同档。
+function countAtMost(sorted: number[], value: number) {
+  let low = 0;
+  let high = sorted.length;
+
+  while (low < high) {
+    const mid = (low + high) >>> 1;
+
+    if (sorted[mid] <= value) {
+      low = mid + 1;
+    } else {
+      high = mid;
+    }
+  }
+
+  return low;
+}
+
 type DailyHeatmapAggregate = {
   date: string;
   activeSeconds: number;
@@ -320,17 +338,23 @@ function buildHeatmapFromDailyAggregates(
   }
 
   const values = Array.from(seeded.values());
-  const maxValue = Math.max(...values.map((day) => day.activeSeconds), 0);
+  // 按 token 消耗的分位数分档：单日 token 常差几个数量级，按最大值线性
+  // 缩放会让一天的峰值把其余日子都压成最浅一档。
+  const activeTokens = values
+    .map((day) => day.totalTokens)
+    .filter((tokens) => tokens > 0)
+    .sort((a, b) => a - b);
 
   for (const day of values) {
-    if (day.activeSeconds <= 0 || maxValue <= 0) {
+    if (day.totalTokens <= 0) {
       day.level = 0;
       continue;
     }
 
+    const rank = countAtMost(activeTokens, day.totalTokens);
     day.level = Math.min(
       4,
-      Math.max(1, Math.ceil((day.activeSeconds / maxValue) * 4)),
+      Math.max(1, Math.ceil((rank / activeTokens.length) * 4)),
     ) as ProfileHeatmapDay["level"];
   }
 
