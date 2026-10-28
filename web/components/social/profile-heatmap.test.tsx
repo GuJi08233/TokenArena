@@ -75,4 +75,26 @@ describe("ProfileHeatmap", () => {
     expect(markup).toContain("dark:bg-emerald-300");
     expect(markup).toContain("ring-border/35");
   });
+
+  it("states each legend level's token threshold", () => {
+    const markup = renderToStaticMarkup(
+      <ProfileHeatmap
+        locale="en-US"
+        days={[
+          {
+            date: "2026-03-28",
+            activeSeconds: 7200,
+            sessions: 5,
+            totalTokens: 1_700_000_000,
+            level: 4,
+          },
+        ]}
+        lessLabel="Less"
+        moreLabel="More"
+      />,
+    );
+
+    expect(markup).toContain('title="&lt; 100K tokens"');
+    expect(markup).toContain('title="≥ 537.6M tokens"');
+  });
 });

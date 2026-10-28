@@ -87,7 +87,7 @@ function expectUsagePreserved(profile: PublicProfilePageData | null) {
     activeSeconds: 600,
     sessions: 3,
     totalTokens: 1_000_000,
-    level: 4,
+    level: 2,
   });
 }
 

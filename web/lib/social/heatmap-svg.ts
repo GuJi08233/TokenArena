@@ -1,4 +1,9 @@
 import { createFormatterCache } from "@/lib/bounded-map";
+import {
+  getHeatmapLevelLabel,
+  getHeatmapLevelThresholds,
+  type HeatmapLevel,
+} from "@/lib/social/heatmap-levels";
 import type { ProfileHeatmapDay } from "@/lib/social/queries";
 import { formatDuration } from "@/lib/usage/format";
 
@@ -122,7 +127,7 @@ function buildMonthLabels(weeks: HeatmapCell[][], locale: string) {
   });
 }
 
-function getCellFill(level: ProfileHeatmapDay["level"], theme: ThemePalette) {
+function getCellFill(level: HeatmapLevel, theme: ThemePalette) {
   return theme.levels[level] ?? theme.levels[0];
 }
 
@@ -169,14 +174,17 @@ export function renderActivityHeatmapSvg(input: RenderActivityHeatmapSvgInput) {
     })
     .join("");
 
+  const thresholds = getHeatmapLevelThresholds(
+    input.days.map((day) => day.totalTokens),
+  );
   const legendX = width - GRID_LEFT - (5 * CELL_SIZE + 4 * CELL_GAP) - 50;
   const legendY = height - 10;
   const legend = `
     <text x="${legendX}" y="${legendY}" fill="${theme.mutedText}" font-size="11" font-family="ui-sans-serif, system-ui, sans-serif">${escapeXml(input.lessLabel)}</text>
-    ${[0, 1, 2, 3, 4]
+    ${([0, 1, 2, 3, 4] as const)
       .map((level, index) => {
         const x = legendX + 26 + index * (CELL_SIZE + CELL_GAP);
-        return `<rect x="${x}" y="${legendY - 9}" width="${CELL_SIZE}" height="${CELL_SIZE}" rx="2" fill="${getCellFill(level as ProfileHeatmapDay["level"], theme)}" />`;
+        return `<rect x="${x}" y="${legendY - 9}" width="${CELL_SIZE}" height="${CELL_SIZE}" rx="2" fill="${getCellFill(level, theme)}"><title>${escapeXml(getHeatmapLevelLabel(level, thresholds))}</title></rect>`;
       })
       .join("")}
     <text x="${legendX + 26 + 5 * (CELL_SIZE + CELL_GAP) + 4}" y="${legendY}" fill="${theme.mutedText}" font-size="11" font-family="ui-sans-serif, system-ui, sans-serif">${escapeXml(input.moreLabel)}</text>
