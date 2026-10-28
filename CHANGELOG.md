@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.0](https://github.com/GuJi08233/TokenArena/compare/v0.21.1...v0.22.0) (2026-10-28)
+
+
+### Features
+
+* **web:** shade the activity heatmap by daily token usage ([#72](https://github.com/GuJi08233/TokenArena/issues/72)) ([79dcad1](https://github.com/GuJi08233/TokenArena/commit/79dcad1a81d33410c144705ce04bcae12ac4131b))
+
 ## [0.21.1](https://github.com/GuJi08233/TokenArena/compare/v0.21.0...v0.21.1) (2026-10-28)
 
 
