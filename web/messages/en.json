@@ -59,7 +59,8 @@
         "passwordRequired": "Password is required.",
         "passwordTooLong": "Password is too long.",
         "passwordTooShort": "Password must be at least 8 characters."
-      }
+      },
+      "browseLeaderboard": "Browse the leaderboard first"
     },
     "register": {
       "title": "Create your account",
@@ -1082,6 +1083,90 @@
         "title": "World #1 — Printed",
         "description": "Reach #1 on the global all-time total-tokens leaderboard."
       }
+    }
+  },
+  "landing": {
+    "metaTitle": "Token Arena — AI coding token usage tracking and leaderboards",
+    "metaDescription": "Collect token usage from Claude Code, Codex, Cursor and other local AI coding tools, analyze it on a web dashboard, and climb the leaderboard with other developers. Open source and self-hostable.",
+    "hero": {
+      "eyebrow": "Open-source AI coding usage tracker",
+      "title": "See how many tokens you spend on AI coding every day",
+      "description": "Token Arena collects usage from {count} local AI coding tools such as Claude Code, Codex and Cursor, breaks down tokens and estimated cost by tool, model and project, and ranks you against other developers.",
+      "primaryCta": "Get started",
+      "secondaryCta": "View leaderboard"
+    },
+    "stats": {
+      "label": "Site totals",
+      "developers": "Ranked developers",
+      "totalTokens": "Total tokens",
+      "weekTokens": "Tokens this week",
+      "activeHours": "Active hours",
+      "note": "Public profiles only, refreshed every 10 minutes"
+    },
+    "leaderboard": {
+      "title": "Who is on the board",
+      "description": "Ranked by total tokens. Only public profiles are included.",
+      "weekTitle": "Top 10 this week",
+      "allTimeTitle": "All-time top 10",
+      "viewAll": "View full leaderboard",
+      "empty": "No public usage yet. Be the first one on the board."
+    },
+    "features": {
+      "title": "What you get after signing in",
+      "dashboard": {
+        "title": "Usage dashboard",
+        "description": "Token trends over 1, 7 or 30 days or any custom range, split by device, tool, model and project, with input, output, reasoning and cache at a glance."
+      },
+      "leaderboard": {
+        "title": "Leaderboards and following",
+        "description": "Daily, weekly, monthly and all-time boards ranked by tokens or estimated cost. Follow people you are curious about and compare on a board of your own."
+      },
+      "achievements": {
+        "title": "Achievements and levels",
+        "description": "Keep coding to unlock achievements and raise your arena level. Finished leaderboard periods award placement badges."
+      },
+      "profile": {
+        "title": "Public profile and badges",
+        "description": "Your public profile shows an activity heatmap and your top tools and models. The heatmap and usage badges embed straight into a GitHub README."
+      }
+    },
+    "steps": {
+      "title": "Get started in three steps",
+      "description": "The CLI reads usage locally and uploads only the numbers.",
+      "step1Title": "Sign in and create an API key",
+      "step1Description": "After signing in, generate an API key in Settings for the CLI.",
+      "step2Title": "Install the CLI",
+      "step2Description": "Requires Node.js 22 or later. Run the same command again to upgrade.",
+      "step3Title": "Initialize and sync",
+      "step3Description": "Paste your API key when prompted. Then run tokenarena sync to sync on demand, or tokenarena daemon to sync on a schedule (every 30 minutes by default)."
+    },
+    "tools": {
+      "title": "{count} supported tools",
+      "description": "The CLI detects which tools are installed on your machine, so there is nothing to configure per tool."
+    },
+    "privacy": {
+      "title": "Your data, your call",
+      "uploads": {
+        "title": "Only the numbers leave your machine",
+        "description": "Uploads contain token counts, session durations, tool and model names and the device name. No prompts, code or conversation content."
+      },
+      "projects": {
+        "title": "Project names are anonymous by default",
+        "description": "Project names are uploaded as hashes by default. You can switch to raw names or not upload them at all."
+      },
+      "profile": {
+        "title": "Turn off your public profile anytime",
+        "description": "Turn off your public profile in Settings and you disappear from the leaderboards and People, and your profile page stops opening for others."
+      },
+      "openSource": {
+        "title": "Open source and self-hostable",
+        "description": "The web app and the CLI are fully open source, and you can run your own instance with Docker."
+      }
+    },
+    "finalCta": {
+      "title": "See where you rank",
+      "description": "Setup takes a few minutes; after that your usage syncs on its own.",
+      "button": "Get started"
     }
   }
 }

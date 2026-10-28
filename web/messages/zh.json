@@ -59,7 +59,8 @@
         "passwordRequired": "请输入密码。",
         "passwordTooLong": "密码过长。",
         "passwordTooShort": "密码至少需要 8 个字符。"
-      }
+      },
+      "browseLeaderboard": "先逛逛排行榜"
     },
     "register": {
       "title": "创建你的账号",
@@ -1082,6 +1083,90 @@
         "title": "全服榜一，坐稳了",
         "description": "登上全站总榜总 token 排名第 1。"
       }
+    }
+  },
+  "landing": {
+    "metaTitle": "Token Arena — AI 编程 token 用量追踪与排行榜",
+    "metaDescription": "自动采集 Claude Code、Codex、Cursor 等本地 AI 编程工具的 token 用量，在网页仪表盘里分析用量，并和其他开发者一起上榜。开源，可自部署。",
+    "hero": {
+      "eyebrow": "开源的 AI 编程用量追踪平台",
+      "title": "看清你每天在 AI 编程上用了多少 token",
+      "description": "Token Arena 自动采集 Claude Code、Codex、Cursor 等 {count} 种本地 AI 编程工具的用量，按工具、模型和项目拆解 token 与预估费用，还能和其他开发者一起上榜。",
+      "primaryCta": "开始使用",
+      "secondaryCta": "查看排行榜"
+    },
+    "stats": {
+      "label": "全站数据",
+      "developers": "上榜开发者",
+      "totalTokens": "累计 Tokens",
+      "weekTokens": "本周 Tokens",
+      "activeHours": "累计活跃小时",
+      "note": "仅统计公开主页的用户，每 10 分钟更新"
+    },
+    "leaderboard": {
+      "title": "谁在榜上",
+      "description": "按总 Tokens 排名，只包含公开主页的用户。",
+      "weekTitle": "本周 Top 10",
+      "allTimeTitle": "总榜 Top 10",
+      "viewAll": "查看完整排行榜",
+      "empty": "还没有公开的使用数据，来做第一个上榜的人吧。"
+    },
+    "features": {
+      "title": "登录后你能看到什么",
+      "dashboard": {
+        "title": "用量仪表盘",
+        "description": "按 1 天、7 天、30 天或自定义区间查看 token 趋势，按设备、工具、模型、项目拆分，输入、输出、推理、缓存一目了然。"
+      },
+      "leaderboard": {
+        "title": "排行榜与关注",
+        "description": "日榜、周榜、月榜和总榜，可按 token 或预估费用排名；关注感兴趣的人，看看你们之间的关注榜。"
+      },
+      "achievements": {
+        "title": "成就与等级",
+        "description": "持续使用会解锁成就、提升竞技场等级，周期榜单结算后还会颁发名次徽章。"
+      },
+      "profile": {
+        "title": "公开主页与徽章",
+        "description": "公开主页展示你的活跃热力图、常用工具和模型，热力图和用量徽章可以直接嵌进 GitHub README。"
+      }
+    },
+    "steps": {
+      "title": "三步开始",
+      "description": "命令行工具在本地读取用量，只上传统计数字。",
+      "step1Title": "登录并创建 API Key",
+      "step1Description": "登录后在设置页生成一个 API Key，给命令行工具用。",
+      "step2Title": "安装命令行工具",
+      "step2Description": "需要 Node.js 22 或更高版本。重复运行这条命令即可升级。",
+      "step3Title": "初始化并同步",
+      "step3Description": "按提示粘贴 API Key。之后运行 tokenarena sync 手动同步，或运行 tokenarena daemon 定时自动同步（默认每 30 分钟）。"
+    },
+    "tools": {
+      "title": "已支持 {count} 种工具",
+      "description": "命令行工具会自动发现本机装了哪些工具，无需逐个配置。"
+    },
+    "privacy": {
+      "title": "你的数据，你说了算",
+      "uploads": {
+        "title": "只上传统计数字",
+        "description": "上传的是 token 数、会话时长、工具和模型名称以及设备名，不包含 prompt、代码或对话内容。"
+      },
+      "projects": {
+        "title": "项目名默认匿名",
+        "description": "项目名默认以哈希形式上传，也可以选择上传原名或完全不上传。"
+      },
+      "profile": {
+        "title": "随时关闭公开主页",
+        "description": "在设置里关闭公开主页后，你就不会出现在排行榜和广场里，别人也打不开你的主页。"
+      },
+      "openSource": {
+        "title": "开源，可自部署",
+        "description": "前后端和命令行工具的代码全部开源，也可以用 Docker 部署在自己的服务器上。"
+      }
+    },
+    "finalCta": {
+      "title": "来看看你排第几",
+      "description": "几分钟就能接入，之后的用量会自动同步。",
+      "button": "开始使用"
     }
   }
 }

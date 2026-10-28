@@ -22,5 +22,5 @@ export default async function HomePage() {
     redirect(`/${preference.locale ?? fallbackLocale}/usage`);
   }
 
-  redirect(`/${fallbackLocale}/login`);
+  redirect(`/${fallbackLocale}`);
 }

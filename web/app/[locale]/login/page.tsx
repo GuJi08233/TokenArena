@@ -64,24 +64,34 @@ export default async function LoginPage({
         description={description}
         titleVariant="hero"
         cardFooter={
-          providers.length > 0 ? (
-            <p className="text-center text-sm text-white/80">
-              {t("agreementPrefix")}{" "}
+          <div className="space-y-3">
+            {providers.length > 0 ? (
+              <p className="text-center text-sm text-white/80">
+                {t("agreementPrefix")}{" "}
+                <Link
+                  href="/legal/terms"
+                  className="underline underline-offset-4"
+                >
+                  {t("termsLink")}
+                </Link>{" "}
+                {t("and")}{" "}
+                <Link
+                  href="/legal/privacy"
+                  className="underline underline-offset-4"
+                >
+                  {t("privacyLink")}
+                </Link>
+              </p>
+            ) : null}
+            <p className="text-center text-sm">
               <Link
-                href="/legal/terms"
-                className="underline underline-offset-4"
+                href="/leaderboard"
+                className="inline-flex rounded-full bg-black/60 px-3 py-1 text-white/85 underline-offset-4 backdrop-blur-sm transition-colors hover:text-white hover:underline"
               >
-                {t("termsLink")}
-              </Link>{" "}
-              {t("and")}{" "}
-              <Link
-                href="/legal/privacy"
-                className="underline underline-offset-4"
-              >
-                {t("privacyLink")}
+                {t("browseLeaderboard")} →
               </Link>
             </p>
-          ) : null
+          </div>
         }
         footerActions={
           <>

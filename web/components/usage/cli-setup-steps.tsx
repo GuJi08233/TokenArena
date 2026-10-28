@@ -1,7 +1,6 @@
-import { headers } from "next/headers";
 import { getTranslations } from "next-intl/server";
 import type { ReactNode } from "react";
-
+import { getRequestOrigin } from "@/lib/request-origin";
 import {
   getApiUrl,
   getDetailedInitGuide,
@@ -10,16 +9,6 @@ import {
 
 import { UsageEmptyCopyableCommand } from "./usage-empty-copyable-command";
 
-/** Get the current origin from request headers (server-side). */
-async function getRequestOrigin(): Promise<string | undefined> {
-  const headersList = await headers();
-  const host = headersList.get("host");
-  if (!host) return undefined;
-
-  const protocol = headersList.get("x-forwarded-proto") || "https";
-  return `${protocol}://${host}`;
-}
-
 type CliSetupStepsProps = {
   /** Placed after step 1 copy (e.g. create API key CTA). */
   step1Action: ReactNode;
@@ -27,8 +16,10 @@ type CliSetupStepsProps = {
 
 /** Key → install/update → init steps, shared by the empty state and the persistent setup section. */
 export async function CliSetupSteps({ step1Action }: CliSetupStepsProps) {
-  const t = await getTranslations("usage.emptyState");
-  const origin = await getRequestOrigin();
+  const [t, origin] = await Promise.all([
+    getTranslations("usage.emptyState"),
+    getRequestOrigin(),
+  ]);
   const apiUrl = getApiUrl(origin);
   const initGuide = getDetailedInitGuide(apiUrl);
 
