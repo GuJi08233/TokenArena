@@ -1,9 +1,12 @@
 import { unstable_cache } from "next/cache";
 import { cache } from "react";
 
+import { OFFICIAL_PRICING_PROVIDER_IDS } from "./providers";
+
 const PRICING_CATALOG_URL = "https://models.dev/api.json";
 const PRICING_CATALOG_REVALIDATE_SECONDS = 60 * 60 * 12;
 const PRICING_CATALOG_CACHE_KEY = "pricing-catalog";
+const PRICING_CATALOG_FETCH_TIMEOUT_MS = 15_000;
 
 export type PricingCost = {
   input?: number;
@@ -64,6 +67,7 @@ export function normalizeModelLookupKey(value: string) {
 
 export function createPricingCatalogSnapshot(
   payload: RawCatalogPayload,
+  providerIds?: ReadonlySet<string>,
 ): SerializedPricingCatalog {
   const snapshot: SerializedPricingCatalog = [];
 
@@ -73,7 +77,7 @@ export function createPricingCatalogSnapshot(
     }
 
     const providerId = providerValue.id ?? providerKey;
-    if (!providerId) {
+    if (!providerId || (providerIds && !providerIds.has(providerId))) {
       continue;
     }
 
@@ -153,26 +157,42 @@ export function hydratePricingCatalogSnapshot(
   return catalog;
 }
 
+/**
+ * Fetch and compact the upstream catalog, throwing on any failure.
+ *
+ * It must throw rather than resolve to nothing: `unstable_cache` stores
+ * whatever the callback resolves to, so a `null` would pin the outage for the
+ * whole revalidate window, and a failed background refresh would overwrite a
+ * good snapshot. A thrown refresh keeps the stale snapshot in service instead.
+ */
+export async function fetchPricingCatalogSnapshot(): Promise<SerializedPricingCatalog> {
+  // Skip Next.js fetch caching for the large upstream payload and cache a
+  // compact serialized snapshot instead, which stays comfortably under the
+  // per-entry data cache limit.
+  const response = await fetch(PRICING_CATALOG_URL, {
+    cache: "no-store",
+    signal: AbortSignal.timeout(PRICING_CATALOG_FETCH_TIMEOUT_MS),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Pricing catalog request failed: ${response.status}`);
+  }
+
+  const payload = (await response.json()) as RawCatalogPayload;
+  const snapshot = createPricingCatalogSnapshot(
+    payload,
+    OFFICIAL_PRICING_PROVIDER_IDS,
+  );
+
+  if (snapshot.length === 0) {
+    throw new Error("Pricing catalog has none of the priced providers");
+  }
+
+  return snapshot;
+}
+
 const getCachedPricingCatalogSnapshot = unstable_cache(
-  async (): Promise<SerializedPricingCatalog | null> => {
-    try {
-      // Skip Next.js fetch caching for the large upstream payload and cache a
-      // compact serialized snapshot instead, which stays comfortably under the
-      // per-entry data cache limit.
-      const response = await fetch(PRICING_CATALOG_URL, {
-        cache: "no-store",
-      });
-
-      if (!response.ok) {
-        return null;
-      }
-
-      const payload = (await response.json()) as RawCatalogPayload;
-      return createPricingCatalogSnapshot(payload);
-    } catch {
-      return null;
-    }
-  },
+  fetchPricingCatalogSnapshot,
   [PRICING_CATALOG_CACHE_KEY],
   {
     revalidate: PRICING_CATALOG_REVALIDATE_SECONDS,
@@ -181,11 +201,13 @@ const getCachedPricingCatalogSnapshot = unstable_cache(
 
 export const getPricingCatalog = cache(
   async (): Promise<PricingCatalog | null> => {
-    const snapshot = await getCachedPricingCatalogSnapshot();
-    if (!snapshot) {
+    try {
+      return hydratePricingCatalogSnapshot(
+        await getCachedPricingCatalogSnapshot(),
+      );
+    } catch (error) {
+      console.error("Failed to load the pricing catalog", { error });
       return null;
     }
-
-    return hydratePricingCatalogSnapshot(snapshot);
   },
 );
