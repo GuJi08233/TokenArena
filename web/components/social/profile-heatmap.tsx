@@ -2,6 +2,10 @@
 
 import { useEffect, useRef } from "react";
 import { createFormatterCache } from "@/lib/bounded-map";
+import {
+  getHeatmapLevelLabel,
+  getHeatmapLevelThresholds,
+} from "@/lib/social/heatmap-levels";
 import type { ProfileHeatmapDay } from "@/lib/social/queries";
 import { formatDuration, formatTokenCount } from "@/lib/usage/format";
 import { cn } from "@/lib/utils";
@@ -116,6 +120,9 @@ export function ProfileHeatmap({
   const scrollerRef = useRef<HTMLDivElement>(null);
   const weeks = buildWeeks(days);
   const monthLabels = buildMonthLabels(weeks, locale);
+  const thresholds = getHeatmapLevelThresholds(
+    days.map((day) => day.totalTokens),
+  );
   const weeksGridTemplate = `repeat(${weeks.length}, minmax(var(--heatmap-cell-min), 1fr))`;
   const weekdayKeys = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
   const cellClassName = cn(
@@ -225,6 +232,7 @@ export function ProfileHeatmap({
           {([0, 1, 2, 3, 4] as const).map((level) => (
             <span
               key={level}
+              title={getHeatmapLevelLabel(level, thresholds)}
               className={cn(
                 cellClassName,
                 styles.legendSwatch,

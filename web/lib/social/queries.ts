@@ -32,6 +32,11 @@ import { getUsageSourceLabel, normalizeUsageSource } from "@/lib/usage/sources";
 import type { DashboardRange } from "@/lib/usage/types";
 import { Prisma } from "../../generated/prisma/client";
 import type { FollowTag } from "./follow-tags";
+import {
+  getHeatmapLevel,
+  getHeatmapLevelThresholds,
+  type HeatmapLevel,
+} from "./heatmap-levels";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -115,7 +120,7 @@ export type ProfileHeatmapDay = {
   activeSeconds: number;
   sessions: number;
   totalTokens: number;
-  level: 0 | 1 | 2 | 3 | 4;
+  level: HeatmapLevel;
 };
 
 export type PublicProfileActivityShareData = {
@@ -283,24 +288,6 @@ async function getRelationFlags(
   };
 }
 
-// sorted 为升序；返回不大于 value 的元素个数，相同消耗的日子因此同档。
-function countAtMost(sorted: number[], value: number) {
-  let low = 0;
-  let high = sorted.length;
-
-  while (low < high) {
-    const mid = (low + high) >>> 1;
-
-    if (sorted[mid] <= value) {
-      low = mid + 1;
-    } else {
-      high = mid;
-    }
-  }
-
-  return low;
-}
-
 type DailyHeatmapAggregate = {
   date: string;
   activeSeconds: number;
@@ -338,24 +325,12 @@ function buildHeatmapFromDailyAggregates(
   }
 
   const values = Array.from(seeded.values());
-  // 按 token 消耗的分位数分档：单日 token 常差几个数量级，按最大值线性
-  // 缩放会让一天的峰值把其余日子都压成最浅一档。
-  const activeTokens = values
-    .map((day) => day.totalTokens)
-    .filter((tokens) => tokens > 0)
-    .sort((a, b) => a - b);
+  const thresholds = getHeatmapLevelThresholds(
+    values.map((day) => day.totalTokens),
+  );
 
   for (const day of values) {
-    if (day.totalTokens <= 0) {
-      day.level = 0;
-      continue;
-    }
-
-    const rank = countAtMost(activeTokens, day.totalTokens);
-    day.level = Math.min(
-      4,
-      Math.max(1, Math.ceil((rank / activeTokens.length) * 4)),
-    ) as ProfileHeatmapDay["level"];
+    day.level = getHeatmapLevel(day.totalTokens, thresholds);
   }
 
   return values;

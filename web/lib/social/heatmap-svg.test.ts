@@ -40,6 +40,9 @@ describe("heatmap svg renderer", () => {
     expect(svg).toContain("More");
     expect(svg).toContain("#10b981");
     expect(svg).toContain("#6ee7b7");
+    // 图例标出每档门槛；这些天都很少，所以是绝对下限。
+    expect(svg).toContain("<title>&lt; 100K tokens</title>");
+    expect(svg).toContain("<title>≥ 50M tokens</title>");
   });
 
   it("builds a stable share url", () => {
