@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.21.1](https://github.com/GuJi08233/TokenArena/compare/v0.21.0...v0.21.1) (2026-10-28)
+
+
+### Bug Fixes
+
+* **web:** keep the pricing catalog through upstream failures ([#70](https://github.com/GuJi08233/TokenArena/issues/70)) ([0d8c8ae](https://github.com/GuJi08233/TokenArena/commit/0d8c8ae3c24379349295e5f443bb13428c7244d3))
+* **web:** price Claude models reported with dotted versions or a -thinking suffix ([0d8c8ae](https://github.com/GuJi08233/TokenArena/commit/0d8c8ae3c24379349295e5f443bb13428c7244d3))
+
+
+### Performance Improvements
+
+* **web:** cache only the providers the pricing rules read ([0d8c8ae](https://github.com/GuJi08233/TokenArena/commit/0d8c8ae3c24379349295e5f443bb13428c7244d3))
+
 ## [0.21.0](https://github.com/GuJi08233/TokenArena/compare/v0.20.4...v0.21.0) (2026-10-28)
 
 
