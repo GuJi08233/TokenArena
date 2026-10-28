@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.0](https://github.com/GuJi08233/TokenArena/compare/v0.20.4...v0.21.0) (2026-10-28)
+
+
+### Features
+
+* **web:** add a public landing page for signed-out visitors ([#68](https://github.com/GuJi08233/TokenArena/issues/68)) ([a614ca7](https://github.com/GuJi08233/TokenArena/commit/a614ca78264fa2910b14315a884ed07faccc1c93))
+
 ## [0.20.4](https://github.com/GuJi08233/TokenArena/compare/v0.20.3...v0.20.4) (2026-10-21)
 
 
