@@ -121,6 +121,77 @@ describe("getActivityHeatmap365", () => {
     expect(mocks.leaderboardDays).toHaveBeenCalledOnce();
   });
 
+  it("shades days by token quantile, ignoring active time", async () => {
+    mocks.queryRaw.mockResolvedValue([
+      // 活跃时长与 token 数故意反向，确保颜色只看 token。
+      {
+        date: "2026-03-03",
+        activeSeconds: 9_000,
+        sessions: 1,
+        totalTokens: 100,
+      },
+      { date: "2026-03-04", activeSeconds: 10, sessions: 1, totalTokens: 200 },
+      { date: "2026-03-05", activeSeconds: 10, sessions: 1, totalTokens: 300 },
+      // 单日峰值不应把其余日子压成最浅一档。
+      {
+        date: "2026-03-06",
+        activeSeconds: 1,
+        sessions: 1,
+        totalTokens: 5_000_000,
+      },
+      { date: "2026-03-07", activeSeconds: 600, sessions: 1, totalTokens: 0 },
+    ]);
+
+    const days = await getActivityHeatmap365({
+      userId: "user-1",
+      timezone: "UTC",
+    });
+    const levelOf = (date: string) =>
+      days.find((day) => day.date === date)?.level;
+
+    expect(levelOf("2026-03-03")).toBe(1);
+    expect(levelOf("2026-03-04")).toBe(2);
+    expect(levelOf("2026-03-05")).toBe(3);
+    expect(levelOf("2026-03-06")).toBe(4);
+    expect(levelOf("2026-03-07")).toBe(0);
+    expect(levelOf("2026-03-02")).toBe(0);
+  });
+
+  it("gives days with equal token counts the same level", async () => {
+    mocks.queryRaw.mockResolvedValue([
+      { date: "2026-03-06", activeSeconds: 1, sessions: 1, totalTokens: 50 },
+      { date: "2026-03-07", activeSeconds: 1, sessions: 1, totalTokens: 50 },
+      { date: "2026-03-08", activeSeconds: 1, sessions: 1, totalTokens: 50 },
+      { date: "2026-03-09", activeSeconds: 1, sessions: 1, totalTokens: 900 },
+    ]);
+
+    const days = await getActivityHeatmap365({
+      userId: "user-1",
+      timezone: "UTC",
+    });
+    const levelOf = (date: string) =>
+      days.find((day) => day.date === date)?.level;
+
+    expect(levelOf("2026-03-06")).toBe(3);
+    expect(levelOf("2026-03-07")).toBe(3);
+    expect(levelOf("2026-03-08")).toBe(3);
+    expect(levelOf("2026-03-09")).toBe(4);
+  });
+
+  it("shows a single active day at the deepest level", async () => {
+    mocks.queryRaw.mockResolvedValue([
+      { date: "2026-03-09", activeSeconds: 0, sessions: 1, totalTokens: 7 },
+    ]);
+
+    const days = await getActivityHeatmap365({
+      userId: "user-1",
+      timezone: "UTC",
+    });
+
+    expect(days.find((day) => day.date === "2026-03-09")?.level).toBe(4);
+    expect(days.filter((day) => day.level > 0)).toHaveLength(1);
+  });
+
   it("uses UTC midnight for the default profile timezone", async () => {
     const days = await getActivityHeatmap365({
       userId: "user-1",
