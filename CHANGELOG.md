@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.23.0](https://github.com/GuJi08233/TokenArena/compare/v0.22.0...v0.23.0) (2026-10-28)
+
+
+### Features
+
+* **web:** show each heatmap level's token threshold in the legend ([aafb236](https://github.com/GuJi08233/TokenArena/commit/aafb236808495d7b4e4d4f40caf0e35dd6cc6764))
+
+
+### Bug Fixes
+
+* **web:** shade the activity heatmap on a log scale with hard minimums ([#74](https://github.com/GuJi08233/TokenArena/issues/74)) ([aafb236](https://github.com/GuJi08233/TokenArena/commit/aafb236808495d7b4e4d4f40caf0e35dd6cc6764))
+
 ## [0.22.0](https://github.com/GuJi08233/TokenArena/compare/v0.21.1...v0.22.0) (2026-10-28)
 
 
