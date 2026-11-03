@@ -36,4 +36,5 @@ export const SUPPORTED_TOOLS = [
   { id: "mirasim", name: "Mirasim" },
   { id: "snow", name: "Snow CLI" },
   { id: "snow-app", name: "Snow App" },
+  { id: "muse", name: "Muse" },
 ] as const;
