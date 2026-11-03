@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.24.0](https://github.com/GuJi08233/TokenArena/compare/v0.23.0...v0.24.0) (2026-11-03)
+
+
+### Features
+
+* **cli:** add Muse usage parser ([#76](https://github.com/GuJi08233/TokenArena/issues/76)) ([6bb1306](https://github.com/GuJi08233/TokenArena/commit/6bb130695930a23cf12c0f77ad9d7890dba764ba))
+
 ## [0.23.0](https://github.com/GuJi08233/TokenArena/compare/v0.22.0...v0.23.0) (2026-10-28)
 
 
