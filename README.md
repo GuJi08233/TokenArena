@@ -193,6 +193,10 @@ MiniMax Code（`mcode`）与 MiMoCode 是不同工具。CLI 默认读取 `~/.min
 可在运行 CLI 的宿主机设置 `MINIMAX_DATA_DIR`，未设置时回退到 `MAVIS_DATA_DIR`，以覆盖数据根目录。
 这两个变量不需要配置到 Web 服务容器中。
 
+Muse（`muse`）是托管服务，本机没有可扫描的日志：用量由 Muse 侧导出为
+`~/.local/share/muse/token-usage.jsonl`，CLI 读取该文件采集；可在运行 CLI 的
+宿主机设置 `MUSE_USAGE_DIR` 覆盖导出目录。该变量同样不需要配置到 Web 服务容器中。
+
 本次缓存写入字段需要先部署 Web 数据库迁移，再升级 CLI。普通同步会重新上传变化的计数。
 若需修正旧版会话身份、去重规则留下的历史记录，在确认本机历史日志完整后显式运行
 `tokenarena sync --rebuild`；它会用本机现有日志替换当前设备的云端历史，其它设备不受影响。

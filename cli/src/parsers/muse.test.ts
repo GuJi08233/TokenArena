@@ -1,4 +1,4 @@
-import { writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { useTempDirs } from "../testing/temp-dir";
@@ -40,7 +40,7 @@ function writeExport(dir: string, lines: unknown[]): string {
 describe("getMuseExportPath", () => {
   it("honours the MUSE_USAGE_DIR override", () => {
     expect(getMuseExportPath({ MUSE_USAGE_DIR: "/tmp/muse-x" })).toBe(
-      "/tmp/muse-x/token-usage.jsonl",
+      join("/tmp/muse-x", "token-usage.jsonl"),
     );
   });
 
@@ -74,98 +74,99 @@ describe("parseMuseRecord", () => {
     });
   });
 
-  it("rejects missing ids, bad timestamps and negative counts", () => {
-    expect(parseMuseRecord(null)).toBeNull();
-    expect(parseMuseRecord({ ts: BASE_TS })).toBeNull();
+  it("rejects records whose ids are missing or empty", () => {
+    const base = { ts: BASE_TS, inputTokens: 1, outputTokens: 1 };
+    expect(parseMuseRecord({ ...base })).toBeNull();
     expect(
-      parseMuseRecord({
-        ts: 0,
-        messageId: "m",
-        sessionId: "s",
-        agentId: "a",
-        inputTokens: 1,
-        outputTokens: 1,
-      }),
+      parseMuseRecord({ ...base, messageId: "", sessionId: "s", agentId: "a" }),
     ).toBeNull();
     expect(
-      parseMuseRecord({
-        ts: BASE_TS,
-        messageId: "m",
-        sessionId: "s",
-        agentId: "a",
-        inputTokens: -1,
-        outputTokens: 1,
-      }),
+      parseMuseRecord({ ...base, messageId: "m", sessionId: "s" }),
     ).toBeNull();
+  });
+
+  it("rejects non-number and negative token counts", () => {
+    const base = {
+      ts: BASE_TS,
+      messageId: "m",
+      sessionId: "s",
+      agentId: "a",
+      outputTokens: 1,
+    };
+    expect(parseMuseRecord({ ...base, inputTokens: null })).toBeNull();
+    expect(parseMuseRecord({ ...base, inputTokens: true })).toBeNull();
+    expect(parseMuseRecord({ ...base, inputTokens: "100" })).toBeNull();
+    expect(parseMuseRecord({ ...base, inputTokens: -1 })).toBeNull();
+    expect(parseMuseRecord({ ...base, inputTokens: 1.5 })).toBeNull();
+  });
+
+  it("rejects timestamps outside the accepted range", () => {
+    const base = {
+      messageId: "m",
+      sessionId: "s",
+      agentId: "a",
+      inputTokens: 1,
+      outputTokens: 1,
+    };
+    // Millisecond and microsecond units, pre-2020, far future, non-number.
+    expect(parseMuseRecord({ ...base, ts: BASE_TS * 1000 })).toBeNull();
+    expect(parseMuseRecord({ ...base, ts: BASE_TS * 1_000_000 })).toBeNull();
+    expect(parseMuseRecord({ ...base, ts: 1_500_000_000 })).toBeNull();
+    expect(parseMuseRecord({ ...base, ts: true })).toBeNull();
+    expect(parseMuseRecord({ ...base, ts: "now" })).toBeNull();
   });
 });
 
 describe("museRecordsToEntries", () => {
-  it("splits growth into fresh input and carried-over cache", () => {
+  it("stores the reported full prompt as input, with no fabricated cache", () => {
     const entries = museRecordsToEntries([
-      record({ messageId: "m1", ts: BASE_TS, inputTokens: 100 }),
-      record({ messageId: "m2", ts: BASE_TS + 60, inputTokens: 150 }),
-      record({ messageId: "m3", ts: BASE_TS + 120, inputTokens: 140 }),
-      record({ messageId: "m4", ts: BASE_TS + 180, inputTokens: 200 }),
+      record({
+        messageId: "m1",
+        ts: BASE_TS,
+        inputTokens: 100,
+        outputTokens: 10,
+      }),
+      record({
+        messageId: "m2",
+        ts: BASE_TS + 60,
+        inputTokens: 150,
+        outputTokens: 12,
+      }),
     ]);
-    expect(entries.map((e) => e.inputTokens)).toEqual([100, 50, 140, 60]);
-    expect(entries.map((e) => e.cachedTokens)).toEqual([0, 100, 0, 140]);
-    // Conservation: fresh + cached always reproduces the reported input.
-    expect(
-      entries.reduce((sum, e) => sum + e.inputTokens + e.cachedTokens, 0),
-    ).toBe(100 + 150 + 140 + 200);
+    expect(entries.map((e) => e.inputTokens)).toEqual([100, 150]);
+    expect(entries.map((e) => e.outputTokens)).toEqual([10, 12]);
+    expect(entries.every((e) => e.cachedTokens === 0)).toBe(true);
     expect(entries.every((e) => e.reasoningTokens === 0)).toBe(true);
     expect(entries.every((e) => e.cacheCreationTokens === 0)).toBe(true);
   });
 
-  it("tracks sequences per agent independently", () => {
+  it("dedupes by session and message, keeping the first record", () => {
     const entries = museRecordsToEntries([
-      record({ messageId: "m1", agentId: "a1", ts: BASE_TS, inputTokens: 100 }),
-      record({ messageId: "m2", agentId: "a2", ts: BASE_TS, inputTokens: 40 }),
-      record({
-        messageId: "m3",
-        agentId: "a1",
-        ts: BASE_TS + 60,
-        inputTokens: 130,
-      }),
-      record({
-        messageId: "m4",
-        agentId: "a2",
-        ts: BASE_TS + 60,
-        inputTokens: 45,
-      }),
-    ]);
-    const byId = new Map(
-      entries.map((e) => [
-        `${e.timestamp.getTime()}-${e.inputTokens}`,
-        e.cachedTokens,
-      ]),
-    );
-    expect(byId.size).toBe(4);
-    const a2Second = entries.find(
-      (e) =>
-        e.timestamp.getTime() === (BASE_TS + 60) * 1000 &&
-        e.cachedTokens === 40,
-    );
-    expect(a2Second?.inputTokens).toBe(5);
-  });
-
-  it("keeps the first of duplicate message ids and sorts by time", () => {
-    const entries = museRecordsToEntries([
-      record({ messageId: "m2", ts: BASE_TS + 60, inputTokens: 150 }),
-      record({ messageId: "m1", ts: BASE_TS, inputTokens: 100 }),
-      record({ messageId: "m2", ts: BASE_TS + 60, inputTokens: 999 }),
+      record({ messageId: "m1", sessionId: "s1", inputTokens: 100 }),
+      record({ messageId: "m1", sessionId: "s1", inputTokens: 999 }),
+      record({ messageId: "m1", sessionId: "s2", inputTokens: 40 }),
     ]);
     expect(entries).toHaveLength(2);
-    expect(entries.map((e) => e.inputTokens)).toEqual([100, 50]);
+    expect(entries.map((e) => e.inputTokens)).toEqual([100, 40]);
   });
 
-  it("falls back to the default model and stamps source and project", () => {
+  it("normalizes internal model ids and falls back to the default model", () => {
+    const [leaked, kept, missing] = museRecordsToEntries([
+      record({ messageId: "m1", model: "ipnext/avocado-5.17-v1" }),
+      record({ messageId: "m2", model: "muse-spark-2" }),
+      record({ messageId: "m3" }),
+    ]);
+    expect(leaked?.model).toBe("muse-spark");
+    expect(kept?.model).toBe("muse-spark-2");
+    expect(missing?.model).toBe("muse-spark");
+  });
+
+  it("stamps source, project and session on every entry", () => {
     const [entry] = museRecordsToEntries([record({})]);
-    expect(entry?.model).toBe("muse-spark");
     expect(entry?.source).toBe("muse");
     expect(entry?.project).toBe("Muse");
     expect(entry?.sessionId).toBe("s1");
+    expect(entry?.timestamp.getTime()).toBe(BASE_TS * 1000);
   });
 });
 
@@ -179,6 +180,19 @@ describe("MuseParser", () => {
     await expect(parser.parse()).resolves.toEqual({
       buckets: [],
       sessions: [],
+    });
+  });
+
+  it("reports incomplete when the export path exists but cannot be read", async () => {
+    const dir = makeTempDir();
+    const filePath = join(dir, "token-usage.jsonl");
+    mkdirSync(filePath); // A directory: exists, but readFileSync fails.
+    const parser = new MuseParser({ filePath });
+    expect(parser.isInstalled()).toBe(true);
+    await expect(parser.parse()).resolves.toEqual({
+      buckets: [],
+      sessions: [],
+      incomplete: true,
     });
   });
 
@@ -207,8 +221,8 @@ describe("MuseParser", () => {
     expect(result.buckets).toHaveLength(1);
     const bucket = result.buckets[0];
     expect(bucket?.source).toBe("muse");
-    expect(bucket?.inputTokens).toBe(160); // 100 fresh + 60 growth
-    expect(bucket?.cachedTokens).toBe(100);
+    expect(bucket?.inputTokens).toBe(260);
+    expect(bucket?.cachedTokens).toBe(0);
     expect(bucket?.outputTokens).toBe(30);
     expect(bucket?.totalTokens).toBe(290);
 
@@ -226,10 +240,22 @@ describe("MuseParser", () => {
       record({ messageId: "m1" }),
       "{not json",
       { ts: "nope" },
+      // A millisecond timestamp is malformed, not a far-future bucket.
+      record({ messageId: "m2", ts: BASE_TS * 1000 }),
+      // A null count is malformed, not zero.
+      {
+        ts: BASE_TS,
+        messageId: "m3",
+        sessionId: "s1",
+        agentId: "a1",
+        inputTokens: null,
+        outputTokens: 5,
+      },
     ]);
     const result = await new MuseParser({ filePath }).parse();
     expect(result.partial).toBe(true);
     expect(result.buckets).toHaveLength(1);
+    expect(result.buckets[0]?.inputTokens).toBe(100);
     expect(result.sessions).toHaveLength(1);
   });
 });

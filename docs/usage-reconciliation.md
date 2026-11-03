@@ -189,19 +189,21 @@ Web 只读统计将 `snow` 与 `snow-app` 汇总为 **Snow**，工具筛选同�
   导出目录可用 `MUSE_USAGE_DIR` 覆盖，缺省 `~/.local/share/muse/`，
   文件名 `token-usage.jsonl`。文件不存在视为未安装；存在但不可读时
   返回 `incomplete`，不以空快照覆盖云端。见 [muse.ts](../cli/src/parsers/muse.ts)。
-- **记录粒度**：每行一次模型调用：时间、消息 id、根会话 id、agent id、
-  模型、输入、输出。模型名在导出时由运行时内部 id（如
-  `ipnext/avocado-*`）归一化为对外名称 `muse-spark`，内部修订号不进账。
+- **记录粒度**：格式版本 v1，每行一次模型调用：时间、消息 id、
+  根会话 id、agent id、模型、输入、输出。导出必须是**累计全量快照**
+  （不是滚动窗口），解析器按未知字段忽略处理后续版本的新增字段。
+  模型名在导出时由运行时内部 id（如 `ipnext/avocado-*`）归一化为
+  对外名称 `muse-spark`，内部修订号不进账；解析器对该内部前缀再做
+  一次兜底归一化，避免漏出的内部 id 产生新桶键、造成历史重复计数。
   子 agent 的调用按根会话并入会话（与 Claude Code
-  子代理日志的并入口径一致）。同一 messageId 重复出现只计首次。
-- **输入口径（估算）**：Muse 报告的输入是每次调用的**完整 prompt**，
-  不是未命中缓存的新输入，不能直接记入 `inputTokens`。解析器在同一
-  agent 序列内拆分：第 n 次调用相对上一次的增量记 `inputTokens`，
-  被重复携带的存量记 `cachedTokens`；首次调用与输入下降（上下文压缩
-  等）时，全量记 `inputTokens`。每条记录恒有
-  fresh + cached = 原始输入，拆分后总量与 Muse 客户端 `/status` 的
-  Total 可对账；这是估算口径，其缓存读取不等同于供应商账单上的
-  缓存命中量。
+  子代理日志的并入口径一致）。去重键为（根会话 id，messageId），
+  重复出现只计首次。
+- **输入口径**：Muse 报告的输入是每次调用的**完整 prompt**，
+  原样记入 `inputTokens`，与 Muse 客户端 `/status` 的 Total 直接
+  对账。后续调用会重复携带此前上下文，这是传输形态；Muse 没有
+  报告缓存命中量，`cachedTokens` 按统一规则记 0（未提供该维度），
+  不用重复携带量估算缓存读取——那会把推断写成供应商侧事实，
+  并污染缓存占比类统计与成就。
 - **缺失维度**：Muse 不提供 reasoning 与缓存写入字段，按统一规则
   记 0（表示未提供，不臆造）。用量记录不携带消息角色，会话的
   `userMessageCount` 与 `userPromptHours` 恒为 0，会话消息数以生成
