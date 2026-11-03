@@ -150,6 +150,14 @@ describe("museRecordsToEntries", () => {
     expect(entries.map((e) => e.inputTokens)).toEqual([100, 40]);
   });
 
+  it("does not conflate ids that only differ across the session/message boundary", () => {
+    const entries = museRecordsToEntries([
+      record({ sessionId: "ab", messageId: "c", inputTokens: 1 }),
+      record({ sessionId: "a", messageId: "bc", inputTokens: 2 }),
+    ]);
+    expect(entries.map((e) => e.inputTokens)).toEqual([1, 2]);
+  });
+
   it("normalizes internal model ids and falls back to the default model", () => {
     const [leaked, kept, missing] = museRecordsToEntries([
       record({ messageId: "m1", model: "ipnext/avocado-5.17-v1" }),
