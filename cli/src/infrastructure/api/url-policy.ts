@@ -43,7 +43,7 @@ function isLocalHost(hostname: string): boolean {
  *
  * Every request carries the key as a bearer token. Plain HTTP to a public host
  * sent it readable to anyone on the path, and a typo such as
- * `http://token.guji.uno` did so on every daemon run, because the redirect to
+ * `http://token.yishiguji.com` did so on every daemon run, because the redirect to
  * HTTPS is never followed. HTTP stays allowed for loopback and private network
  * addresses, where self-hosted servers often run without TLS.
  */

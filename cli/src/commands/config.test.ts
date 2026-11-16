@@ -7,7 +7,7 @@ vi.mock("../infrastructure/config/manager", () => ({
   isValidConfigKey: vi.fn((key: string) =>
     ["apiKey", "apiUrl", "syncInterval", "logLevel", "deviceId"].includes(key),
   ),
-  getDefaultApiUrl: vi.fn(() => "https://token.guji.uno"),
+  getDefaultApiUrl: vi.fn(() => "https://token.yishiguji.com"),
 }));
 
 vi.mock("../infrastructure/ui/prompts", () => ({
@@ -220,7 +220,7 @@ describe("config command", () => {
         throw new Error("exit");
       });
       await expect(
-        handleConfig(["set", "apiUrl", "http://token.guji.uno"]),
+        handleConfig(["set", "apiUrl", "http://token.yishiguji.com"]),
       ).rejects.toThrow("exit");
       expect(logger.error).toHaveBeenCalledWith(
         expect.stringContaining("plain HTTP"),

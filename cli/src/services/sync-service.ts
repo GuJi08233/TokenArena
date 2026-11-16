@@ -418,7 +418,7 @@ export async function runSync(
       }
     }
 
-    const apiUrl = config.apiUrl || "https://token.guji.uno";
+    const apiUrl = config.apiUrl || "https://token.yishiguji.com";
     const insecureUrlReason = getInsecureApiUrlReason(apiUrl);
     if (insecureUrlReason) {
       throw new SyncFailure(insecureUrlReason, "error");

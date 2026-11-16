@@ -4,12 +4,12 @@
  * URL resolution priority:
  * 1. Environment variable `NEXT_PUBLIC_APP_ORIGIN` (via getAppOrigin)
  * 2. Dynamic detection from request headers (server-side)
- * 3. Fallback to default: https://token.guji.uno
+ * 3. Fallback to default: https://token.yishiguji.com
  */
 
 import { getAppOrigin } from "@/lib/site-url";
 
-const DEFAULT_API_URL = "https://token.guji.uno";
+const DEFAULT_API_URL = "https://token.yishiguji.com";
 
 /** Normalize URL by removing trailing slash. */
 function normalizeUrl(url: string): string {
@@ -33,7 +33,7 @@ export const USAGE_EMPTY_INSTALL_COMMAND =
 
 /**
  * Generate init command with API URL.
- * Usage: getInitCommand("https://token.guji.uno")
+ * Usage: getInitCommand("https://token.yishiguji.com")
  */
 export function getInitCommand(apiUrl: string): string {
   return `tokenarena init --api-url ${apiUrl}`;

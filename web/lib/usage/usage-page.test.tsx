@@ -160,7 +160,7 @@ vi.mock("@/lib/session", () => ({
 }));
 
 vi.mock("@/lib/site-url", () => ({
-  getAppOrigin: () => "https://token.guji.uno",
+  getAppOrigin: () => "https://token.yishiguji.com",
 }));
 
 vi.mock("@/lib/usage/dashboard.server", () => ({
@@ -314,7 +314,7 @@ describe("UsagePage", () => {
       expect.objectContaining({
         username: "test_user",
         publicProfileEnabled: true,
-        appUrl: "https://token.guji.uno",
+        appUrl: "https://token.yishiguji.com",
       }),
       undefined,
     );
@@ -339,7 +339,7 @@ describe("UsagePage", () => {
     expect(mocks.ProfileHeatmapMarkdownButton).toHaveBeenCalledWith(
       expect.objectContaining({
         markdown:
-          "![TokenArena Activity](https://token.guji.uno/en/u/test_user/activity.svg)",
+          "![TokenArena Activity](https://token.yishiguji.com/en/u/test_user/activity.svg)",
       }),
       undefined,
     );

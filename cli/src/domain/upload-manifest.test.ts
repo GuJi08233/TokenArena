@@ -83,7 +83,7 @@ describe("diffUploadManifest", () => {
   it("uploads only new or changed records within the same scope", () => {
     const scope = buildUploadManifestScope({
       apiKey: "ta_test_1",
-      apiUrl: "https://token.guji.uno/",
+      apiUrl: "https://token.yishiguji.com/",
       deviceId: "device-1",
       settings,
     });
@@ -160,7 +160,7 @@ describe("diffUploadManifest", () => {
   it("tracks records that disappeared from the local snapshot", () => {
     const scope = buildUploadManifestScope({
       apiKey: "ta_test_1",
-      apiUrl: "https://token.guji.uno",
+      apiUrl: "https://token.yishiguji.com",
       deviceId: "device-1",
       settings,
     });
@@ -202,13 +202,13 @@ describe("diffUploadManifest", () => {
   it("treats scope changes as a fresh snapshot and re-uploads current records", () => {
     const previousScope = buildUploadManifestScope({
       apiKey: "ta_test_1",
-      apiUrl: "https://token.guji.uno",
+      apiUrl: "https://token.yishiguji.com",
       deviceId: "device-1",
       settings,
     });
     const nextScope = buildUploadManifestScope({
       apiKey: "ta_test_2",
-      apiUrl: "https://token.guji.uno",
+      apiUrl: "https://token.yishiguji.com",
       deviceId: "device-1",
       settings,
     });
@@ -239,7 +239,7 @@ describe("diffUploadManifest", () => {
   it("treats a legacy manifest as a snapshot protocol change", () => {
     const scope = buildUploadManifestScope({
       apiKey: "ta_test_1",
-      apiUrl: "https://token.guji.uno",
+      apiUrl: "https://token.yishiguji.com",
       deviceId: "device-1",
       settings,
     });

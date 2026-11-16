@@ -125,7 +125,7 @@ describe("ApiClient transport", () => {
 
   it("never sends the key over plain HTTP to a public host", async () => {
     const request = vi.spyOn(http, "request");
-    const client = new ApiClient("http://token.guji.uno", "ta_secret");
+    const client = new ApiClient("http://token.yishiguji.com", "ta_secret");
 
     try {
       // Refused at once rather than after the retry backoff.

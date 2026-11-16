@@ -227,7 +227,7 @@ function printConfigShow(): void {
   logger.info(formatSection("基础配置"));
   logger.info(formatKeyValue("API Key", maskSecret(config.apiKey || "")));
   logger.info(
-    formatKeyValue("API 地址", config.apiUrl || "https://token.guji.uno"),
+    formatKeyValue("API 地址", config.apiUrl || "https://token.yishiguji.com"),
   );
   logger.info(
     formatKeyValue(

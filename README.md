@@ -1,4 +1,4 @@
-[![tokenarena](assets/banner.png)](https://token.guji.uno)
+[![tokenarena](assets/banner.png)](https://token.yishiguji.com)
 
 [![Docker Image](https://img.shields.io/badge/Docker%20Image-tokenarena%3Alatest-blue?logo=docker&logoColor=white)](https://github.com/GuJi08233/TokenArena/pkgs/container/tokenarena) [![pnpm](https://img.shields.io/badge/pnpm-monorepo-blue?logo=pnpm)](https://pnpm.io/) [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square)](https://github.com/GuJi08233/TokenArena/pulls) [![License](https://img.shields.io/github/license/GuJi08233/TokenArena)](LICENSE) [![React Doctor](https://www.react.doctor/share/badge?p=web&s=89&e=0&w=40&f=31)](https://www.react.doctor/share?p=web&s=89&e=0&w=40&f=31)
 
@@ -27,14 +27,14 @@
 
 ## Quick Start
 
-1. **注册账号** — 访问 [Token Arena](https://token.guji.uno) 注册并登录
-2. **创建 API Key** — 在 [Settings](https://token.guji.uno/zh/settings/cli-keys) 中生成 API key
+1. **注册账号** — 访问 [Token Arena](https://token.yishiguji.com) 注册并登录
+2. **创建 API Key** — 在 [Settings](https://token.yishiguji.com/zh/settings/cli-keys) 中生成 API key
 3. **下载**
     ```shell
     npm install -g @yishiguji/tokenarena
     ```
 4. **初始化 CLI** — 运行 `tokenarena init`，输入 API key
-5. **查看分析** — 打开 [Usage](https://token.guji.uno/zh/usage) 页面查看你的 token 用量分析
+5. **查看分析** — 打开 [Usage](https://token.yishiguji.com/zh/usage) 页面查看你的 token 用量分析
 
 > [!TIP]
 >

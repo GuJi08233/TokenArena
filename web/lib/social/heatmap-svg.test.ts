@@ -48,20 +48,20 @@ describe("heatmap svg renderer", () => {
   it("builds a stable share url", () => {
     expect(
       buildActivitySvgUrl({
-        baseUrl: "https://token.guji.uno",
+        baseUrl: "https://token.yishiguji.com",
         locale: "zh",
         username: "poco",
       }),
-    ).toBe("https://token.guji.uno/zh/u/poco/activity.svg");
+    ).toBe("https://token.yishiguji.com/zh/u/poco/activity.svg");
 
     expect(
       buildActivitySvgUrl({
-        baseUrl: "https://token.guji.uno",
+        baseUrl: "https://token.yishiguji.com",
         locale: "zh",
         username: "poco",
         theme: "light",
       }),
-    ).toBe("https://token.guji.uno/zh/u/poco/activity.svg?theme=light");
+    ).toBe("https://token.yishiguji.com/zh/u/poco/activity.svg?theme=light");
   });
 
   it("normalizes theme query params", () => {

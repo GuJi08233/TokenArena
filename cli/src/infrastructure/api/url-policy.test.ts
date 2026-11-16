@@ -3,7 +3,7 @@ import { getInsecureApiUrlReason } from "./url-policy";
 
 describe("getInsecureApiUrlReason", () => {
   it("allows HTTPS anywhere", () => {
-    expect(getInsecureApiUrlReason("https://token.guji.uno")).toBeNull();
+    expect(getInsecureApiUrlReason("https://token.yishiguji.com")).toBeNull();
     expect(getInsecureApiUrlReason("https://203.0.113.7:8443/sub")).toBeNull();
   });
 
@@ -26,8 +26,8 @@ describe("getInsecureApiUrlReason", () => {
   });
 
   it("refuses to send the key over plain HTTP to a public host", () => {
-    expect(getInsecureApiUrlReason("http://token.guji.uno")).toBe(
-      "Refusing to send the API key over plain HTTP to token.guji.uno. Use https://token.guji.uno instead.",
+    expect(getInsecureApiUrlReason("http://token.yishiguji.com")).toBe(
+      "Refusing to send the API key over plain HTTP to token.yishiguji.com. Use https://token.yishiguji.com instead.",
     );
     expect(getInsecureApiUrlReason("http://203.0.113.7/arena")).toContain(
       "https://203.0.113.7/arena",
@@ -36,7 +36,7 @@ describe("getInsecureApiUrlReason", () => {
   });
 
   it("rejects other protocols and malformed URLs", () => {
-    expect(getInsecureApiUrlReason("ftp://token.guji.uno")).toContain(
+    expect(getInsecureApiUrlReason("ftp://token.yishiguji.com")).toContain(
       "Unsupported",
     );
     expect(getInsecureApiUrlReason("not a url")).toContain("Invalid API URL");

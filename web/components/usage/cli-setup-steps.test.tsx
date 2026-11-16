@@ -55,7 +55,7 @@ describe("CliSetupSteps", () => {
     );
 
     expect(markup).toContain(
-      "tokenarena init --api-url https://token.guji.uno",
+      "tokenarena init --api-url https://token.yishiguji.com",
     );
   });
 });

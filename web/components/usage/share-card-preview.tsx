@@ -777,7 +777,7 @@ const RECEIPT_THERMAL_MICROCOPY = {
   datePrefix: "DATE:",
 } as const;
 
-const TOKEN_ARENA_SITE_URL = "https://token.guji.uno";
+const TOKEN_ARENA_SITE_URL = "https://token.yishiguji.com";
 
 function buildProfileAbsoluteUrl(locale: string, username: string): string {
   const path = `/${locale}/u/${encodeURIComponent(username)}`;
