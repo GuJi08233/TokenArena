@@ -1,6 +1,7 @@
 import type { AuthMode } from "@/lib/auth-config";
 import type { LoginProvider } from "@/lib/auth-providers";
 import { CredentialsLoginForm } from "./credentials-login-form";
+import { PasskeyLoginButton } from "./passkey-login-button";
 import { SocialLoginForm } from "./social-login-form";
 
 type LoginFormProps = {
@@ -14,18 +15,19 @@ export function LoginForm({
   showInvalidSessionMessage = false,
   providers,
 }: LoginFormProps) {
-  if (mode === "self-hosted") {
-    return (
-      <CredentialsLoginForm
-        showInvalidSessionMessage={showInvalidSessionMessage}
-      />
-    );
-  }
-
   return (
-    <SocialLoginForm
-      showInvalidSessionMessage={showInvalidSessionMessage}
-      providers={providers}
-    />
+    <div className="space-y-4">
+      {mode === "self-hosted" ? (
+        <CredentialsLoginForm
+          showInvalidSessionMessage={showInvalidSessionMessage}
+        />
+      ) : (
+        <SocialLoginForm
+          showInvalidSessionMessage={showInvalidSessionMessage}
+          providers={providers}
+        />
+      )}
+      <PasskeyLoginButton />
+    </div>
   );
 }

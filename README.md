@@ -1,6 +1,6 @@
 [![tokenarena](assets/banner.png)](https://token.yishiguji.com)
 
-[![Docker Image](https://img.shields.io/badge/Docker%20Image-tokenarena%3Alatest-blue?logo=docker&logoColor=white)](https://github.com/GuJi08233/TokenArena/pkgs/container/tokenarena) [![pnpm](https://img.shields.io/badge/pnpm-monorepo-blue?logo=pnpm)](https://pnpm.io/) [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square)](https://github.com/GuJi08233/TokenArena/pulls) [![License](https://img.shields.io/github/license/GuJi08233/TokenArena)](LICENSE) [![React Doctor](https://www.react.doctor/share/badge?p=web&s=89&e=0&w=40&f=31)](https://www.react.doctor/share?p=web&s=89&e=0&w=40&f=31)
+[![Docker Image](https://img.shields.io/badge/Docker%20Image-tokenarena%3Alatest-blue?logo=docker&logoColor=white)](https://github.com/GuJi08233/TokenArena/pkgs/container/tokenarena) [![pnpm](https://img.shields.io/badge/pnpm-monorepo-blue?logo=pnpm)](https://pnpm.io/) [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square)](https://github.com/GuJi08233/TokenArena/pulls) [![License](https://img.shields.io/github/license/GuJi08233/TokenArena)](LICENSE) [![React Doctor](https://www.react.doctor/share/badge?p=web&s=88&e=0&w=44&f=32)](https://www.react.doctor/share?p=web&s=88&e=0&w=44&f=32)
 
 你有没有好奇过：
 
@@ -183,6 +183,10 @@ git add --renormalize .
 - `WATCHA_CLIENT_ID` / `WATCHA_CLIENT_SECRET`
 
 `GITLAB_BASE_URL` 可指向 `https://gitlab.com` 或你的自建 GitLab；GitLab OAuth 回调地址为 `/api/auth/oauth2/callback/gitlab`。
+
+两种 `AUTH_MODE` 都支持通行密钥。先用现有方式登录，在「设置 → 身份验证」中添加通行密钥，之后即可从登录页直接使用。现有邮箱密码或 OAuth 登录保持可用。
+
+升级时需要先应用数据库迁移（Docker Compose 的 `migrate` 服务或 `pnpm migrate`）。`BETTER_AUTH_URL` 必须匹配用户实际访问的 HTTPS 地址；本地可用 `http://localhost:3000`。通行密钥绑定到站点域名，切换域名后可能需要重新添加。
 
 ## 用量统计口径与升级
 

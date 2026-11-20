@@ -48,7 +48,10 @@ function logHomeSummary(): void {
   if (configured && config) {
     logger.info(formatKeyValue("API Key", maskSecret(config.apiKey)));
     logger.info(
-      formatKeyValue("API 地址", config.apiUrl || "https://token.yishiguji.com"),
+      formatKeyValue(
+        "API 地址",
+        config.apiUrl || "https://token.yishiguji.com",
+      ),
     );
   } else {
     logger.info(formatBullet("建议先运行初始化流程绑定 API Key。", "warning"));

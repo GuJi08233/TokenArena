@@ -1,3 +1,4 @@
+import { passkey } from "@better-auth/passkey";
 import { APIError, betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { createAuthMiddleware } from "better-auth/api";
@@ -31,8 +32,10 @@ function getRequiredEnv(
   return value;
 }
 
+const baseURL = getRequiredEnv("BETTER_AUTH_URL");
+
 export const auth = betterAuth({
-  baseURL: getRequiredEnv("BETTER_AUTH_URL"),
+  baseURL,
   secret: getRequiredEnv("BETTER_AUTH_SECRET"),
   database: prismaAdapter(prisma, {
     provider: "postgresql",
@@ -173,6 +176,25 @@ export const auth = betterAuth({
     nextCookies(),
     genericOAuth({
       config: isProduction ? getEnabledOAuth2ProviderConfigs() : [],
+    }),
+    passkey({
+      rpName: "Token Arena",
+      origin: new URL(baseURL).origin,
+      authenticatorSelection: {
+        residentKey: "required",
+        userVerification: "required",
+      },
+      registration: { requireSession: true },
+      authentication: {
+        afterVerification({ verification }) {
+          if (!verification.authenticationInfo.userVerified) {
+            throw APIError.from("UNAUTHORIZED", {
+              code: "PASSKEY_USER_VERIFICATION_REQUIRED",
+              message: "Verify your identity with your passkey to sign in.",
+            });
+          }
+        },
+      },
     }),
   ],
 });

@@ -1,3 +1,4 @@
+import { createHash, generateKeyPairSync, sign } from "node:crypto";
 import {
   afterAll,
   beforeAll,
@@ -15,7 +16,7 @@ const BASE_URL = "http://localhost:3000";
 
 const mocks = vi.hoisted(() => ({
   db: {} as Record<
-    "user" | "session" | "account" | "verification",
+    "user" | "session" | "account" | "verification" | "passkey",
     MemoryTable
   >,
 }));
@@ -110,6 +111,7 @@ beforeEach(() => {
   mocks.db.session = [];
   mocks.db.account = [];
   mocks.db.verification = [];
+  mocks.db.passkey = [];
 });
 
 afterAll(() => {
@@ -179,6 +181,199 @@ describe("GitHub OAuth sign-in", () => {
 
     expect(callback.status).toBe(302);
     expect(callback.headers.get("location")).toBe("/zh/usage");
+    expect(mocks.db.user).toHaveLength(1);
+  });
+
+  it("only starts passkey enrollment after OAuth sign-in", async () => {
+    const url = `${BASE_URL}/api/auth/passkey/generate-register-options`;
+    const anonymous = await auth.handler(new Request(url));
+    expect(anonymous.status).toBe(401);
+
+    const callback = await signInWithGitHub(auth);
+    const enrollment = await auth.handler(
+      new Request(url, { headers: { cookie: toCookieHeader(callback) } }),
+    );
+
+    expect(enrollment.status).toBe(200);
+    await expect(enrollment.json()).resolves.toMatchObject({
+      challenge: expect.any(String),
+      rp: { id: "localhost" },
+      authenticatorSelection: {
+        residentKey: "required",
+        userVerification: "required",
+      },
+    });
+    expect(mocks.db.passkey).toHaveLength(0);
+  });
+
+  it("only lists and removes passkeys belonging to the signed-in account", async () => {
+    const callback = await signInWithGitHub(auth);
+    const cookie = toCookieHeader(callback);
+    mocks.db.passkey.push(
+      { id: "own-key", userId: mocks.db.user[0].id },
+      { id: "other-key", userId: "another-user" },
+    );
+
+    const list = await auth.handler(
+      new Request(`${BASE_URL}/api/auth/passkey/list-user-passkeys`, {
+        headers: { cookie },
+      }),
+    );
+    expect(list.status).toBe(200);
+    await expect(list.json()).resolves.toEqual([
+      expect.objectContaining({ id: "own-key" }),
+    ]);
+
+    const remove = (id: string) =>
+      auth.handler(
+        new Request(`${BASE_URL}/api/auth/passkey/delete-passkey`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            origin: BASE_URL,
+            cookie,
+          },
+          body: JSON.stringify({ id }),
+        }),
+      );
+
+    expect((await remove("other-key")).status).toBe(401);
+    expect((await remove("own-key")).status).toBe(200);
+    expect(mocks.db.passkey.map((key) => key.id)).toEqual(["other-key"]);
+  });
+
+  it("enrolls a passkey and uses it to sign into the existing OAuth account", async () => {
+    const oauthCookie = toCookieHeader(await signInWithGitHub(auth));
+    const userId = mocks.db.user[0].id;
+    const { privateKey, publicKey } = generateKeyPairSync("ec", {
+      namedCurve: "prime256v1",
+    });
+    const { x, y } = publicKey.export({ format: "jwk" });
+    if (!x || !y) throw new Error("Missing test credential coordinates");
+
+    // CBOR COSE_Key for an ES256 credential: kty=EC2, alg=ES256, crv=P-256.
+    const cose = Buffer.concat([
+      Buffer.from("a5010203262001215820", "hex"),
+      Buffer.from(x, "base64url"),
+      Buffer.from("225820", "hex"),
+      Buffer.from(y, "base64url"),
+    ]);
+    const credentialBytes = Buffer.from("test-passkey");
+    const credentialID = credentialBytes.toString("base64url");
+    const rpIdHash = createHash("sha256").update("localhost").digest();
+    const options = await auth.handler(
+      new Request(`${BASE_URL}/api/auth/passkey/generate-register-options`, {
+        headers: { cookie: oauthCookie },
+      }),
+    );
+    expect(options.status).toBe(200);
+    const { challenge } = (await options.json()) as { challenge: string };
+    const registrationData = Buffer.concat([
+      rpIdHash,
+      Buffer.from([0x45, 0, 0, 0, 0]),
+      Buffer.alloc(16), // AAGUID for an anonymous authenticator
+      Buffer.from([0, credentialBytes.length]),
+      credentialBytes,
+      cose,
+    ]);
+    // CBOR attestation object: { fmt: "none", attStmt: {}, authData }.
+    const attestation = Buffer.concat([
+      Buffer.from(
+        "a363666d74646e6f6e656761747453746d74a0686175746844617461",
+        "hex",
+      ),
+      Buffer.from([0x58, registrationData.length]),
+      registrationData,
+    ]);
+    const registered = await auth.handler(
+      new Request(`${BASE_URL}/api/auth/passkey/verify-registration`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          origin: BASE_URL,
+          cookie: `${oauthCookie}; ${toCookieHeader(options)}`,
+        },
+        body: JSON.stringify({
+          response: {
+            id: credentialID,
+            rawId: credentialID,
+            type: "public-key",
+            response: {
+              attestationObject: attestation.toString("base64url"),
+              clientDataJSON: Buffer.from(
+                JSON.stringify({
+                  type: "webauthn.create",
+                  challenge,
+                  origin: BASE_URL,
+                }),
+              ).toString("base64url"),
+            },
+          },
+        }),
+      }),
+    );
+    expect(registered.status).toBe(200);
+    expect(mocks.db.passkey).toEqual([
+      expect.objectContaining({ userId, credentialID }),
+    ]);
+
+    const authenticate = async (flags: number) => {
+      const options = await auth.handler(
+        new Request(
+          `${BASE_URL}/api/auth/passkey/generate-authenticate-options`,
+        ),
+      );
+      expect(options.status).toBe(200);
+      const { challenge } = (await options.json()) as { challenge: string };
+      const clientData = Buffer.from(
+        JSON.stringify({ type: "webauthn.get", challenge, origin: BASE_URL }),
+      );
+      const authenticatorData = Buffer.concat([
+        rpIdHash,
+        Buffer.from([flags, 0, 0, 0, 1]),
+      ]);
+      const signature = sign(
+        "sha256",
+        Buffer.concat([
+          authenticatorData,
+          createHash("sha256").update(clientData).digest(),
+        ]),
+        privateKey,
+      );
+
+      return auth.handler(
+        new Request(`${BASE_URL}/api/auth/passkey/verify-authentication`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            origin: BASE_URL,
+            cookie: toCookieHeader(options),
+          },
+          body: JSON.stringify({
+            response: {
+              id: credentialID,
+              rawId: credentialID,
+              type: "public-key",
+              response: {
+                authenticatorData: authenticatorData.toString("base64url"),
+                clientDataJSON: clientData.toString("base64url"),
+                signature: signature.toString("base64url"),
+              },
+            },
+          }),
+        }),
+      );
+    };
+
+    // Presence alone must not create a passwordless session; UV adds bit 2.
+    expect((await authenticate(0x01)).status).toBe(401);
+    expect(mocks.db.session).toHaveLength(1);
+    const authenticated = await authenticate(0x05);
+    expect(authenticated.status).toBe(200);
+    await expect(authenticated.json()).resolves.toMatchObject({
+      user: { id: userId },
+    });
+    expect(toCookieHeader(authenticated)).toContain("session_token=");
     expect(mocks.db.user).toHaveLength(1);
   });
 });

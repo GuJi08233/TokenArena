@@ -3,8 +3,10 @@ export type AuthMode = "self-hosted" | "production";
 /**
  * Authentication mode configuration.
  *
- * - `self-hosted`: Email/password authentication only, for self-deployed instances
- * - `production`: OAuth-only authentication (Discord/GitHub/Google/Linux.do/Watcha), for cloud-hosted service
+ * - `self-hosted`: Email/password for account creation and fallback sign-in.
+ * - `production`: Configured OAuth providers for account creation and fallback sign-in.
+ *
+ * Existing users can enroll passkeys in either mode.
  *
  * Defaults to `self-hosted` if not set.
  */

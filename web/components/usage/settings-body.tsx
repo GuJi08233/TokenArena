@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import { AccountIdentityCard } from "./account-identity-card";
 import { ConnectedAccountsCard } from "./connected-accounts-card";
 import { KeyManager, type UsageKeyRecord } from "./key-manager";
+import { PasskeysCard } from "./passkeys-card";
 import {
   SettingsPageHeader,
   type SettingsPageHeaderViewer,
@@ -264,10 +265,13 @@ export function SettingsBody({
             ) : null}
 
             {section === "authentication" ? (
-              <ConnectedAccountsCard
-                accounts={connectedAccounts}
-                availableProviders={availableProviders}
-              />
+              <div className="space-y-4">
+                <ConnectedAccountsCard
+                  accounts={connectedAccounts}
+                  availableProviders={availableProviders}
+                />
+                <PasskeysCard />
+              </div>
             ) : null}
 
             {section === "cliKeys" ? (

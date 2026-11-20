@@ -19,6 +19,7 @@
     "react-doctor": "react-doctor . --project token-arena-web --full --offline --fail-on error"
   },
   "dependencies": {
+    "@better-auth/passkey": "1.6.33",
     "@microsoft/clarity": "^1.0.0",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",

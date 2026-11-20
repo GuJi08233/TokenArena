@@ -31,6 +31,12 @@
     }
   },
   "auth": {
+    "passkey": {
+      "signIn": "Sign in with a passkey",
+      "signingIn": "Waiting for your passkey…",
+      "unsupported": "Passkeys require a supported browser on HTTPS or localhost.",
+      "signInFailed": "Could not sign in with a passkey. Try again or use another sign-in method."
+    },
     "fields": {
       "name": "Name",
       "username": "Username",
@@ -45,7 +51,7 @@
       "submitting": "Signing in...",
       "invalidSession": "Your session is invalid or expired. Please sign in again.",
       "noAccount": "Don't have an account?",
-      "noProviders": "No sign-in providers are configured yet.",
+      "noProviders": "No OAuth sign-in providers are configured yet.",
       "agreementPrefix": "By signing in, you agree to the",
       "termsLink": "Terms of Service",
       "and": "and",
@@ -154,6 +160,24 @@
         "confirm": "Delete account",
         "deleting": "Deleting...",
         "error": "Unable to delete your account right now."
+      },
+      "passkeys": {
+        "title": "Passkeys",
+        "description": "Add a passkey to sign in to this account using your device or security key.",
+        "add": "Add passkey",
+        "adding": "Waiting for your device…",
+        "loading": "Loading passkeys…",
+        "empty": "No passkeys have been added.",
+        "unnamed": "Passkey",
+        "remove": "Remove",
+        "removing": "Removing…",
+        "removeTitle": "Remove passkey?",
+        "removeDescription": "You will no longer be able to sign in to this account with “{name}”.",
+        "cancel": "Cancel",
+        "signInAgain": "Sign in again before adding a passkey.",
+        "addFailed": "Could not add the passkey. Try again.",
+        "listFailed": "Could not load your passkeys.",
+        "removeFailed": "Could not remove the passkey. Try again."
       },
       "connectedAccounts": {
         "title": "Connected providers",

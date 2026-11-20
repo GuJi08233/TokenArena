@@ -31,6 +31,12 @@
     }
   },
   "auth": {
+    "passkey": {
+      "signIn": "使用通行密钥登录",
+      "signingIn": "正在等待通行密钥…",
+      "unsupported": "请在支持通行密钥的浏览器中通过 HTTPS 或 localhost 访问。",
+      "signInFailed": "无法使用通行密钥登录，请重试或使用其他登录方式。"
+    },
     "fields": {
       "name": "名称",
       "username": "用户名",
@@ -45,7 +51,7 @@
       "submitting": "登录中...",
       "invalidSession": "当前会话已失效或过期，请重新登录。",
       "noAccount": "还没有账号？",
-      "noProviders": "当前还没有配置可用的登录方式。",
+      "noProviders": "当前还没有配置 OAuth 登录方式。",
       "agreementPrefix": "登录即表示你同意",
       "termsLink": "《用户协议》",
       "and": "与",
@@ -154,6 +160,24 @@
         "confirm": "删除账户",
         "deleting": "删除中...",
         "error": "暂时无法删除你的账户。"
+      },
+      "passkeys": {
+        "title": "通行密钥",
+        "description": "添加通行密钥后，可使用设备验证或安全密钥直接登录此账户。",
+        "add": "添加通行密钥",
+        "adding": "正在等待设备验证…",
+        "loading": "正在加载通行密钥…",
+        "empty": "尚未添加通行密钥。",
+        "unnamed": "通行密钥",
+        "remove": "移除",
+        "removing": "正在移除…",
+        "removeTitle": "移除通行密钥？",
+        "removeDescription": "移除后，无法再使用「{name}」登录此账户。",
+        "cancel": "取消",
+        "signInAgain": "请重新登录后再添加通行密钥。",
+        "addFailed": "无法添加通行密钥，请重试。",
+        "listFailed": "无法加载通行密钥。",
+        "removeFailed": "无法移除通行密钥，请重试。"
       },
       "connectedAccounts": {
         "title": "已连接的登录方式",
