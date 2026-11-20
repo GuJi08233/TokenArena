@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.25.0](https://github.com/GuJi08233/TokenArena/compare/v0.24.0...v0.25.0) (2026-11-20)
+
+
+### Features
+
+* **web:** add passkey sign-in for existing accounts ([3445f07](https://github.com/GuJi08233/TokenArena/commit/3445f07cdc05bc5b1bd5d93a18e94a50122ef885))
+
+
+### Bug Fixes
+
+* 将内置 API 域名切换为 token.yishiguji.com ([5f3f385](https://github.com/GuJi08233/TokenArena/commit/5f3f3852eb6cd2c2659e64d085743b950bf04e55))
+
 ## [0.24.0](https://github.com/GuJi08233/TokenArena/compare/v0.23.0...v0.24.0) (2026-11-03)
 
 
