@@ -112,8 +112,9 @@ export function createCli(): Command {
   muse
     .command("query")
     .description("Print the canonical SQL that reads Muse usage")
-    .action(async () => {
-      await runMuseQueryCommand();
+    .option("--totals", "Print the totals cross-check query instead")
+    .action(async (opts) => {
+      await runMuseQueryCommand(opts);
     });
   muse
     .command("export")

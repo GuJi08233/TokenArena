@@ -200,7 +200,7 @@ MiniMax Code（`mcode`）与 MiMoCode 是不同工具。CLI 默认读取 `~/.min
 Muse（`muse`）是托管服务，本机没有可扫描的日志：用量记录在 Muse 运行时
 数据库（PostgreSQL 的 `agent` 模式）中，由 CLI 自带的导出命令生成
 `~/.local/share/muse/token-usage.jsonl` 后再读取采集。`tokenarena muse query`
-打印规范查询；将查询结果（经 Muse 宿主的数据库工具或 `psql` 执行）通过
+打印规范的行查询（可直接执行；`--totals` 改为打印对账用的总量查询）；将查询结果（经 Muse 宿主的数据库工具或 `psql` 执行）通过
 stdin 或 `--input <文件>` 喂给 `tokenarena muse export`，CLI 负责去重、
 ID 哈希、模型名规范化与原子写入。若宿主机能直达数据库 socket 且已装
 `psql`，可用 `tokenarena muse export --db` 一步完成（连接参数走 libpq
