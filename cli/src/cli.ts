@@ -3,6 +3,7 @@ import { handleConfig } from "./commands/config";
 import { runDaemon } from "./commands/daemon";
 import { runHome } from "./commands/home";
 import { runInit } from "./commands/init";
+import { runMuseExportCommand, runMuseQueryCommand } from "./commands/muse";
 import { runServiceCommand } from "./commands/service";
 import { runStatus } from "./commands/status";
 import { runSyncCommand } from "./commands/sync";
@@ -101,6 +102,36 @@ export function createCli(): Command {
           (item): item is string => typeof item === "string",
         ),
       );
+    });
+
+  // muse command (with subcommands): build the Muse usage export
+  // from the Muse runtime database.
+  const muse = program
+    .command("muse")
+    .description("Build the Muse usage export from the runtime database");
+  muse
+    .command("query")
+    .description("Print the canonical SQL that reads Muse usage")
+    .action(async () => {
+      await runMuseQueryCommand();
+    });
+  muse
+    .command("export")
+    .description("Transform runtime database rows into the usage export file")
+    .option(
+      "--input <file>",
+      "Read database rows (JSON or JSONL) from a file instead of stdin",
+    )
+    .option(
+      "--output <file>",
+      "Write the export to this file instead of the default export path",
+    )
+    .option(
+      "--db",
+      "Run the query directly with psql (libpq environment variables)",
+    )
+    .action(async (opts) => {
+      await runMuseExportCommand(opts);
     });
 
   // uninstall command
