@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.26.0](https://github.com/GuJi08233/TokenArena/compare/v0.25.0...v0.26.0) (2026-11-24)
+
+
+### Features
+
+* **cli:** build the Muse usage export from the runtime database ([#79](https://github.com/GuJi08233/TokenArena/issues/79)) ([b01c85c](https://github.com/GuJi08233/TokenArena/commit/b01c85c354971cdd0c3010b48c8a3fd3f5148ab5))
+
 ## [0.25.0](https://github.com/GuJi08233/TokenArena/compare/v0.24.0...v0.25.0) (2026-11-20)
 
 
