@@ -217,7 +217,9 @@ function expandInputValue(value: unknown, into: unknown[]): void {
     if (failure) throw new Error(`muse export: ${failure}`);
     const rows = envelopeRows(record);
     if (rows) {
-      into.push(...rows);
+      // A loop, not a spread push: one envelope can carry a whole page
+      // of rows, and spreading a very large array overflows the stack.
+      for (const row of rows) into.push(row);
       return;
     }
   }

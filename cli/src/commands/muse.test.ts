@@ -194,6 +194,7 @@ describe("runMuseExportCommand", () => {
     const deps: MuseCommandDeps = {
       ...defaultMuseCommandDeps,
       readStdin: async () => ROWS_JSONL,
+      stdinIsTTY: () => false,
       log: () => {},
     };
     await runMuseExportCommand({ output: target }, deps);
