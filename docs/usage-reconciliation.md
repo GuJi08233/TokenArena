@@ -184,7 +184,10 @@ Web 只读统计将 `snow` 与 `snow-app` 汇总为 **Snow**，工具筛选同�
 ## Muse（托管型导出来源）
 
 - **来源形态**：Muse 是托管的 agent 服务，用户本机没有可扫描的用量日志。
-  用量由 Muse 侧按条导出为 JSONL（仅计数，id 已哈希，不含对话内容），
+  用量由 CLI 自带的导出命令生成 JSONL（仅计数，id 已哈希，不含对话内容）：
+  `tokenarena muse query` 给出规范查询，在 Muse 宿主侧（数据库工具或
+  `psql`）执行后把结果喂给 `tokenarena muse export`（宿主机能直达数据库
+  时可用 `--db` 一步完成），由 CLI 负责去重、哈希、规范化与原子写入。
   CLI 的 `muse` 解析器读该文件，与其它工具走同一聚合与上传路径。
   导出目录可用 `MUSE_USAGE_DIR` 覆盖，缺省 `~/.local/share/muse/`，
   文件名 `token-usage.jsonl`。文件不存在视为未安装；存在但不可读时

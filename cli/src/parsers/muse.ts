@@ -25,8 +25,8 @@ const PROJECT_LABEL = "Muse";
  * say — is a malformed record, never a bucket: an out-of-range Date would
  * make the aggregator throw and take every good record down with it.
  */
-const MIN_TS_SECONDS = 1_577_836_800;
-const MAX_TS_SECONDS = 3_471_292_800;
+export const MIN_TS_SECONDS = 1_577_836_800;
+export const MAX_TS_SECONDS = 3_471_292_800;
 
 /**
  * Where the Muse usage export lives.
@@ -110,7 +110,7 @@ export function parseMuseRecord(value: unknown): MuseUsageRecord | null {
  * here as a fallback so a leaked internal id cannot mint a new bucket key
  * (and double-count history once fixed).
  */
-function normalizeModel(model: string | undefined): string {
+export function normalizeModel(model: string | undefined): string {
   if (!model) return DEFAULT_MODEL;
   if (model.startsWith("ipnext/avocado-")) return DEFAULT_MODEL;
   return model;
